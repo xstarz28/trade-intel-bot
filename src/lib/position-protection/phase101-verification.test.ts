@@ -17,28 +17,21 @@ import { describe, it, expect } from "vitest";
 import {
   evaluateAlertRuntimeBridge,
   buildInitialStateStore,
-  extractSnapshot,
-  extractPortfolioSnapshot,
   removePositionFromState,
   removePositionTriggerRecords,
   cleanStaleInstrumentState,
   cleanStaleRuleTriggerRecords,
   type PreviousStateStore,
-  type RuntimeBridgeInput,
 } from "./alert-runtime-bridge";
 
-import type { AlertRule, RuleTriggerRecord, RuleSnapshot } from "./alert-rule-engine";
+import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
 import {
-  evaluateRules,
-  shouldTriggerAlert,
-  updateTriggerRecord,
   alertIdentity,
 } from "./alert-rule-engine";
 
 import {
   buildNotification,
   notificationIdentity,
-  filterNotifications,
   applyRetention,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
@@ -46,30 +39,18 @@ import {
 
 import {
   filterNotificationsByPreferences,
-  isNotificationVisible,
   DEFAULT_PREFERENCES,
-  validatePreferences,
   sanitizePreferences,
   type NotificationPreferences,
 } from "./notification-preferences";
 
 import {
   buildRuntimeHealthSnapshot,
-  calculateOverallHealth,
-  classifyFreshness,
   normalizeRuntimeHealthEvent,
   classifyError,
-  errorCategoryToStatus,
   aggregateRuntimeHealth,
   shouldPersistRuntimeHealth,
-  detectHealthTransitions,
-  FRESH_THRESHOLD_MS,
-  AGING_THRESHOLD_MS,
-  UNAVAILABLE_FAILURE_THRESHOLD,
   type RuntimeHealthEvent,
-  type RuntimeHealthInput,
-  type RuntimeHealthSnapshot,
-  type RuntimeHealthComponent,
 } from "./runtime-health";
 
 import {
@@ -78,14 +59,10 @@ import {
   recordProviderResult,
   shouldPersistFromBuffer,
   markPersisted,
-  getLatestEventForComponent,
   getEventCount,
-  buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
-import type { PortfolioIntelligence } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
@@ -123,9 +100,9 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     ohlcvRegime: "TRENDING_UP",
     shortTermContext: "BULLISH",
     volatilityContext: "NORMAL",
-    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as any,
-    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as any,
-    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as any,
+    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as unknown as PositionIntelligence["h1Analysis"],
+    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as unknown as PositionIntelligence["m15Analysis"],
+    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as unknown as PositionIntelligence["m5Analysis"],
     evidence: [],
     dataQuality: "HIGH",
     dataSource: "TwelveData",
@@ -581,7 +558,7 @@ describe("Phase 101 — Data Provenance", () => {
 describe("Phase 101 — Position/Rule Lifecycle", () => {
   it("position removal cleans previous state", () => {
     const intel1 = makeIntel({ instrument: "BTC/USDT" });
-    const intel2 = makeIntel({ instrument: "ETH/USDT", side: "LONG" as any });
+    const intel2 = makeIntel({ instrument: "ETH/USDT", side: "LONG" as PositionIntelligence["side"] });
     const state = buildInitialStateStore(new Map([["pos-1", intel1], ["pos-2", intel2]]));
 
     const cleaned = removePositionFromState(state, "pos-1");
@@ -704,7 +681,7 @@ describe("Phase 101 — User Isolation", () => {
     const bufA = createHealthEventBuffer();
     const bufB = createHealthEventBuffer();
 
-    let bufA2 = recordProviderResult(bufA, { component: "NEWS", success: true });
+    const bufA2 = recordProviderResult(bufA, { component: "NEWS", success: true });
     expect(getEventCount(bufA2)).toBe(1);
     expect(getEventCount(bufB)).toBe(0);
   });

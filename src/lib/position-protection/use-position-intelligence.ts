@@ -27,7 +27,7 @@
  * INFORMATIONAL_ONLY — never executes trades.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import type { MonitoredPositionState } from "./use-position-protection";
 import {
   useLiveProtectionPolling,
@@ -45,6 +45,7 @@ import {
 import {
   addObservation,
   createObservationState,
+  isFinitePositivePrice,
   type PriceObservationState,
 } from "./price-observation-engine";
 import type { RealTimeEvent } from "./realtime-types";
@@ -58,6 +59,8 @@ export interface UsePositionIntelligenceOptions {
    * are evaluated from these events exactly as the protection dashboard does).
    */
   onLiveEvent?: (events: RealTimeEvent[]) => void;
+  /** Forward accepted and rejected quote results to runtime health. */
+  onQuoteResult?: (state: LiveInstrumentState) => void;
   /** Forward OHLCV provider health events (runtime health recording). */
   onOHLCVHealthEvent?: (event: OHLCVHealthEvent) => void;
 }
@@ -109,6 +112,26 @@ export function usePositionIntelligence(
     [positions],
   );
 
+  const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
+  const onPriceUpdate = useCallback((
+    instrument: string,
+    price: number,
+    _provider: string,
+    quoteTimestamp: number,
+  ) => {
+    if (!isFinitePositivePrice(price) || !Number.isFinite(quoteTimestamp) || quoteTimestamp <= 0) return;
+
+    setPriceObservations((previous) => {
+      const current = previous.get(instrument) ?? createObservationState(instrument);
+      const updated = addObservation(current, price, quoteTimestamp);
+      if (updated === current) return previous;
+
+      const next = new Map(previous);
+      next.set(instrument, updated);
+      return next;
+    });
+  }, []);
+
   const {
     livePrices,
     isPolling,
@@ -121,6 +144,8 @@ export function usePositionIntelligence(
     enabled: monitoredInstruments.length > 0,
     pollIntervalMs: 30_000,
     onEvent: options?.onLiveEvent,
+    onPriceUpdate,
+    onQuoteResult: options?.onQuoteResult,
   });
 
   // ─── OHLCV Data (MTF candles) ────────────────────────────
@@ -131,27 +156,7 @@ export function usePositionIntelligence(
     onHealthEvent: options?.onOHLCVHealthEvent,
   });
 
-  // ─── Price Observations (per instrument) ─────────────────
-  const [priceObservations, setPriceObservations] = useState<Map<string, PriceObservationState>>(new Map());
-
-  // Update observations whenever fresh live prices arrive.
-  useEffect(() => {
-    if (livePrices.size === 0) return;
-
-    setPriceObservations((prev) => {
-      const next = new Map(prev);
-      const now = Date.now();
-
-      for (const [instrument, state] of livePrices) {
-        if (state.sourceMode !== "LIVE" || state.price <= 0) continue;
-
-        const obs = next.get(instrument) ?? createObservationState(instrument);
-        next.set(instrument, addObservation(obs, state.price, now));
-      }
-
-      return next;
-    });
-  }, [livePrices]);
+  // Price observations are appended only from accepted live quote callbacks.
 
   // ─── Generate Intelligence per Position ───────────────────
   const intelligenceMap = useMemo(() => {
@@ -162,7 +167,7 @@ export function usePositionIntelligence(
       const alert = pos.alert;
       const live = livePrices.get(pos.position.instrument);
 
-      const currentPrice = live?.sourceMode === "LIVE" && live.price > 0
+      const currentPrice = live?.sourceMode === "LIVE" && isFinitePositivePrice(live.price)
         ? live.price
         : pos.position.entryPrice;
 

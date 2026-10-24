@@ -12,7 +12,6 @@ import {
   buildFundamentalRegime,
   buildAssetFundamentalContext,
   type FundamentalRegimeInput,
-  type AssetClass,
 } from "./fundamental-regime";
 import { buildAssetCausalContext, buildCausalTransmissions, buildFundamentalCausalResult } from "./fundamental-transmission";
 import type { NewsItem } from "./news-intelligence";
@@ -193,7 +192,7 @@ describe("buildFundamentalInputFromPositionIntel", () => {
   });
 
   it("passes through newsItems", () => {
-    const news: NewsItem[] = [{ id: "n1", headline: "Fed raises rates", timestamp: Date.now(), source: "test", relatedInstruments: ["BTCUSD"], assetClass: "macro" as const, category: "MONETARY_POLICY" as any, sentiment: "BEARISH" as any, impactStrength: "MODERATE" as any, freshness: "FRESH" as any, sourceMode: "LIVE" as any }];
+    const news: NewsItem[] = [{ id: "n1", headline: "Fed raises rates", timestamp: Date.now(), source: "test", relatedInstruments: ["BTCUSD"], assetClass: "macro" as const, category: "MONETARY_POLICY" as NewsItem["category"], sentiment: "BEARISH" as NewsItem["sentiment"], impactStrength: "MODERATE" as NewsItem["impactStrength"], freshness: "FRESH" as NewsItem["freshness"], sourceMode: "LIVE" as NewsItem["sourceMode"] }];
     const input = buildFundamentalInputFromPositionIntel(
       { instrument: "BTCUSD", assetClass: "crypto" },
       { newsItems: news },
@@ -685,11 +684,11 @@ describe("Live wiring — news reaches regime", () => {
       source: "Reuters",
       relatedInstruments: ["BTCUSD"],
       assetClass: "macro" as const,
-      category: "MONETARY_POLICY" as any,
-      sentiment: "BULLISH" as any,
-      impactStrength: "HIGH" as any,
-      freshness: "FRESH" as any,
-      sourceMode: "LIVE" as any,
+      category: "MONETARY_POLICY" as NewsItem["category"],
+      sentiment: "BULLISH" as NewsItem["sentiment"],
+      impactStrength: "HIGH" as NewsItem["impactStrength"],
+      freshness: "FRESH" as NewsItem["freshness"],
+      sourceMode: "LIVE" as NewsItem["sourceMode"],
     },
     {
       id: "n2",
@@ -698,11 +697,11 @@ describe("Live wiring — news reaches regime", () => {
       source: "Bloomberg",
       relatedInstruments: ["XAUUSD"],
       assetClass: "macro" as const,
-      category: "GEOPOLITICAL" as any,
-      sentiment: "BULLISH" as any,
-      impactStrength: "MODERATE" as any,
-      freshness: "FRESH" as any,
-      sourceMode: "LIVE" as any,
+      category: "GEOPOLITICAL" as NewsItem["category"],
+      sentiment: "BULLISH" as NewsItem["sentiment"],
+      impactStrength: "MODERATE" as NewsItem["impactStrength"],
+      freshness: "FRESH" as NewsItem["freshness"],
+      sourceMode: "LIVE" as NewsItem["sourceMode"],
     },
   ];
 

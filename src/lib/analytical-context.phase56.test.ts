@@ -14,7 +14,7 @@ import {
   type IndexRawData,
   type MacroRawData,
 } from "@/lib/data/universal/analytical-depth";
-import { classifyRegime, aggregateRegimes, type RegimeObservation } from "@/lib/data/universal/regime";
+import { classifyRegime } from "@/lib/data/universal/regime";
 
 // ═══════════════════════════════════════════════════════════════
 // FIXTURES
@@ -625,14 +625,14 @@ describe("AL. UI result shape", () => {
 describe("AM. Decision immutability", () => {
   it("AM1 — no recommendation in index depth", () => {
     const d = buildIndexAnalyticalDepth("SPX", spxData());
-    expect((d as any).recommendation).toBeUndefined();
-    expect((d as any).bias).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(d, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(d, "bias")).toBe(false);
   });
 
   it("AM2 — no trade signals in macro depth", () => {
     const d = buildMacroAnalyticalDepth("DXY", macroData());
-    expect((d as any).recommendation).toBeUndefined();
-    expect((d as any).bias).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(d, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(d, "bias")).toBe(false);
   });
 });
 

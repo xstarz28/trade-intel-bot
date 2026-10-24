@@ -14,7 +14,6 @@ import type {
 } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type { ShockAssessment } from "./types";
-import type { GivebackState } from "./giveback-monitor";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES

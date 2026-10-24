@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { runProductionWalkForwardBacktest, runWalkForwardBacktest, type BacktestSignal } from "./walk-forward";
+import { describe, expect, it, vi } from "vitest";
+import { runAnalysis } from "@/lib/analysis-engine";
+vi.mock("@/lib/analysis-engine", { spy: true });
+import { completedHigherTimeframeCandlesAt, runProductionWalkForwardBacktest, runWalkForwardBacktest, type BacktestSignal } from "./walk-forward";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 
 const candles = (count: number, start = 1_700_000_000_000): OhlcvCandle[] =>
@@ -135,6 +137,21 @@ describe("runWalkForwardBacktest", () => {
     expect(trade.netReturnPct).toBeCloseTo(((94.905 - 100.1) / 100.1) * 100, 8);
   });
 
+  it("clamps malformed out-of-range signal confidence to the supported range", () => {
+    const data = candles(30);
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: data,
+      options: { minimumHistory: 20, maxHoldingBars: 2, costBpsPerSide: 0 },
+      analyzeAtClose: (_visible, index) =>
+        index === 19 ? { ...longSignal, confidence: 150 } : { recommendation: "NO_TRADE" },
+    });
+
+    expect(report.executedTrades).toBe(1);
+    expect(report.trades[0].confidence).toBe(100);
+  });
+
   it("models a stop-market fill worse than the trigger after an adverse opening gap", () => {
     const data = candles(30);
     data[21] = { ...data[21], open: 90, high: 92, low: 89, close: 91 };
@@ -165,6 +182,25 @@ describe("runWalkForwardBacktest", () => {
     expect(report.rejectedPlans).toBe(1);
   });
 
+  it("rejects malformed runtime recommendations instead of interpreting them as shorts", () => {
+    const invalidSignal = {
+      recommendation: "WAIT",
+      tradePlan: { direction: "short", entry: "100", stopLoss: "105", takeProfit: "90" },
+      confidence: 80,
+    } as unknown as BacktestSignal;
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: candles(30),
+      options: { minimumHistory: 20 },
+      analyzeAtClose: () => invalidSignal,
+    });
+
+    expect(report.executedTrades).toBe(0);
+    expect(report.rejectedPlans).toBeGreaterThan(0);
+    expect(report.losses).toBe(0);
+  });
+
   it("rejects invalid numeric options instead of silently disabling the replay", () => {
     expect(() => runWalkForwardBacktest({
       instrument: "TEST",
@@ -192,8 +228,138 @@ describe("runWalkForwardBacktest", () => {
     });
     expect(report.candleCount).toBe(225);
     expect(report.signalsChecked).toBeGreaterThan(0);
-    expect(report.warnings.some((warning) => warning.includes("no provider fundamentals, news, COT, derivatives, or MTF feeds are synthesized"))).toBe(true);
+    expect(report.warnings.some((warning) => warning.includes("Provider fundamentals, news, COT, and derivatives are not synthesized"))).toBe(true);
     expect(report.warnings.some((warning) => warning.includes("future profitability"))).toBe(true);
+  });
+
+
+  it("uses only fully closed higher-timeframe candles at the signal close", () => {
+    const day1 = Date.UTC(2026, 9, 18);
+    const day2 = Date.UTC(2026, 9, 19);
+    const day3 = Date.UTC(2026, 9, 20);
+    const daily = [day1, day2, day3].map((timestamp) => ({
+      timestamp,
+      open: 100,
+      high: 105,
+      low: 95,
+      close: 102,
+      volume: 1000,
+    }));
+
+    const visibleAtSignalClose = completedHigherTimeframeCandlesAt(
+      daily,
+      Date.UTC(2026, 9, 19, 12),
+      "D1",
+    );
+
+    expect(visibleAtSignalClose.map((candle) => candle.timestamp)).toEqual([day1]);
+  });
+
+  it("rejects non-finite signal cutoffs instead of exposing future higher-timeframe candles", () => {
+    const daily = candles(3, Date.UTC(2026, 9, 18));
+    expect(completedHigherTimeframeCandlesAt(daily, Number.POSITIVE_INFINITY, "D1")).toEqual([]);
+    expect(completedHigherTimeframeCandlesAt(daily, Number.NaN, "D1")).toEqual([]);
+  });
+
+  it("includes a higher-timeframe candle exactly at its close boundary and excludes later candles", () => {
+    const day1 = Date.UTC(2026, 9, 18);
+    const day2 = Date.UTC(2026, 9, 19);
+    const day3 = Date.UTC(2026, 9, 20);
+    const daily = [day1, day2, day3].map((timestamp) => ({
+      timestamp,
+      open: 100,
+      high: 105,
+      low: 95,
+      close: 102,
+      volume: 1000,
+    }));
+
+    const atBoundary = completedHigherTimeframeCandlesAt(daily, day2, "D1");
+    expect(atBoundary.map((candle) => candle.timestamp)).toEqual([day1]);
+
+    const afterBoundary = completedHigherTimeframeCandlesAt(
+      daily,
+      day2 + 1,
+      "D1",
+    );
+    expect(afterBoundary.map((candle) => candle.timestamp)).toEqual([day1]);
+  });
+
+  it("requires higher-timeframe candles and a strictly higher timeframe together", () => {
+    const primary = candles(225);
+    const daily = candles(225, 1_600_000_000_000);
+    expect(() => runProductionWalkForwardBacktest({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H4",
+      candles: primary,
+      higherTimeframe: "D1",
+      options: { minimumHistory: 220 },
+    })).toThrow(/must be provided together/);
+
+    expect(() => runProductionWalkForwardBacktest({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H4",
+      candles: primary,
+      higherTimeframe: "H1",
+      higherTimeframeCandles: daily,
+      options: { minimumHistory: 220 },
+    })).toThrow(/must be higher/);
+  });
+
+  it("forwards only completed higher-timeframe candles to each production analysis call", () => {
+    vi.mocked(runAnalysis).mockClear();
+    const base = Date.UTC(2026, 9, 1);
+    const primary = Array.from({ length: 150 }, (_, index) => ({
+      timestamp: base + index * 4 * 60 * 60 * 1000,
+      open: 100 + index * 0.1,
+      high: 102 + index * 0.1,
+      low: 98 + index * 0.1,
+      close: 101 + index * 0.1,
+      volume: 1000 + index,
+    }));
+    const daily = candles(35, base).map((candle, index) => ({
+      ...candle,
+      timestamp: base + index * 24 * 60 * 60 * 1000,
+    }));
+
+    runProductionWalkForwardBacktest({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H4",
+      candles: primary,
+      higherTimeframe: "D1",
+      higherTimeframeCandles: daily,
+      options: { minimumHistory: 20, maxHoldingBars: 2 },
+    });
+
+    const calls = vi.mocked(runAnalysis).mock.calls;
+    expect(calls.length).toBeGreaterThan(0);
+    let sawCompletedHigherTimeframe = false;
+    for (const [callIndex, [input]] of calls.entries()) {
+      const visible = input.marketData?.candles;
+      expect(visible?.length).toBeGreaterThan(0);
+      const signalClose = visible![visible!.length - 1].timestamp + 4 * 60 * 60 * 1000;
+      const expected = daily.filter((candle) => candle.timestamp + 24 * 60 * 60 * 1000 <= signalClose);
+      const supplied = input.marketData?.higherTimeframeCandles ?? [];
+      expect(supplied.map((candle) => candle.timestamp)).toEqual(expected.map((candle) => candle.timestamp));
+      expect(supplied.every((candle) => candle.timestamp + 24 * 60 * 60 * 1000 <= signalClose)).toBe(true);
+      if (expected.length > 0) {
+        sawCompletedHigherTimeframe = true;
+      }
+      if (expected.length >= 20) {
+        expect(input.technicalData?.htfContext?.timeframe).toBe("D1");
+        expect(input.technicalData?.htfContext?.dataPoints).toBe(expected.length);
+        const analysisResult = vi.mocked(runAnalysis).mock.results[callIndex];
+        expect(analysisResult?.type).toBe("return");
+        if (analysisResult?.type === "return") {
+          expect(analysisResult.value.htfAlignment).toBeDefined();
+          expect(analysisResult.value.dataFlags.join(" ")).not.toContain("No higher-timeframe structural data");
+        }
+      }
+    }
+    expect(sawCompletedHigherTimeframe).toBe(true);
   });
 
   it("reports no fake performance metrics when no trades execute", () => {
@@ -202,9 +368,14 @@ describe("runWalkForwardBacktest", () => {
       timeframe: "M1",
       candles: candles(30),
       options: { minimumHistory: 20 },
-      analyzeAtClose: () => ({ recommendation: "NO_TRADE" }),
+      analyzeAtClose: () => ({
+        recommendation: "NO_TRADE",
+        noTradeReasons: ["Data completeness is LIMITED", "Core bias is Neutral"],
+      }),
     });
     expect(report.executedTrades).toBe(0);
+    expect(report.noTradeReasonCounts["Data completeness is LIMITED"]).toBe(report.noTradeSignals);
+    expect(report.noTradeReasonCounts["Core bias is Neutral"]).toBe(report.noTradeSignals);
     expect(report.winRatePct).toBeNull();
     expect(report.expectancyR).toBeNull();
     expect(report.profitFactor).toBeNull();

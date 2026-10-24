@@ -72,12 +72,14 @@ export function useMacroContextData(
   // ─── Economic calendar (TickAtlas) — shared across positions ────────
   const [calendarData, setCalendarData] = useState<EconomicCalendarData | null>(null);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
+  const firstInstrument = userPositions[0]?.instrument;
+  const firstAssetClass = userPositions[0]?.assetClass;
+
   useEffect(() => {
-    if (userPositions.length === 0) return;
+    if (!firstInstrument || !firstAssetClass) return;
     let cancelled = false;
     // Use first position's instrument/type for calendar fetch (shared macro data)
-    const firstPos = userPositions[0];
-    fetchCalendar({ instrument: firstPos.instrument, instrumentType: firstPos.assetClass })
+    fetchCalendar({ instrument: firstInstrument, instrumentType: firstAssetClass })
       .then((result) => {
         if (!cancelled && result.success) {
           setCalendarData(result.data ?? null);
@@ -85,11 +87,7 @@ export function useMacroContextData(
       })
       .catch(() => { /* provider failure → calendarData stays null */ });
     return () => { cancelled = true; };
-  }, [
-    fetchCalendar,
-    userPositions.length > 0 ? userPositions[0]?.instrument : null,
-    userPositions.length > 0 ? userPositions[0]?.assetClass : null,
-  ]);
+  }, [fetchCalendar, firstInstrument, firstAssetClass]);
 
   return { treasuryData, calendarData, userPositions };
 }

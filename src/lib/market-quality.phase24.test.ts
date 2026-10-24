@@ -10,12 +10,12 @@
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
-import { sma, rsi, macd, atr, fibonacciLevels } from "./data/technical";
+import { sma, rsi, macd } from "./data/technical";
 import { calculateTechnical } from "./data/technical";
 import { computeSmcContext } from "./data/smc";
 import { buildChain, buildMtfContext } from "./data/mtf";
 import type { AnalysisInput } from "@/types/analysis";
-import type { MarketData, TechnicalData, OhlcvCandle } from "@/lib/data/market-types";
+import type { MarketData, OhlcvCandle } from "@/lib/data/market-types";
 
 // ── helpers ──────────────────────────────────────────────────────
 
@@ -204,8 +204,6 @@ describe("R:R boundary — MIN_RR = 1.5", () => {
     }
     // If RR < 1.5 is the reason, recommendation is NO_TRADE
     if (result.recommendation === "NO_TRADE") {
-      const reasons = result.noTradeReasons.join(" ").toLowerCase();
-      const hasRRGate = reasons.includes("rr") || reasons.includes("risk") || reasons.includes("reward");
       // No_TRADE can happen for many reasons; just verify no tradePlan exists
       expect(result.tradePlan).toBeUndefined();
     }
@@ -276,8 +274,8 @@ describe("metamorphic invariance", () => {
     const a = runAnalysis(input);
     // Create with reversed key order
     const reversed: Record<string, unknown> = {};
-    const keys = Object.keys(input).reverse();
-    for (const k of keys) (reversed as any)[k] = (input as any)[k];
+    const keys = (Object.keys(input) as Array<keyof AnalysisInput>).reverse();
+    Object.assign(reversed, Object.fromEntries(keys.map((key) => [key, input[key]])));
     const b = runAnalysis(reversed as unknown as AnalysisInput);
     expect(a.bias).toBe(b.bias);
     expect(a.confidence).toBe(b.confidence);

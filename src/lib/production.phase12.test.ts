@@ -105,7 +105,7 @@ describe("client-side secret hygiene (static source scan)", () => {
   it("no hardcoded credential-looking literals in client code", () => {
     const offenders: string[] = [];
     const pattern =
-      /(api[_-]?key|secret|password|bearer)\s*[:=]\s*["'][A-Za-z0-9_\-]{16,}["']/i;
+      /(api[_-]?key|secret|password|bearer)\s*[:=]\s*["'][A-Za-z0-9_-]{16,}["']/i;
     for (const dir of ["src/components", "src/lib"]) {
       for (const f of collectFiles(dir)) {
         const src = readFileSync(f, "utf8");

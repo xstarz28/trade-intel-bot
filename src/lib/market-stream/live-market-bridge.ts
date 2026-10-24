@@ -13,12 +13,11 @@
  * Pure functions — no side effects in event creation.
  */
 
-import type { RealTimeEvent, EventType, EventPriority, Timeframe } from "../position-protection/realtime-types";
+import type { RealTimeEvent, Timeframe } from "../position-protection/realtime-types";
 import {
   createPriceEvent,
   createQuoteEvent,
   createCandleEvent,
-  createVolatilityChangeEvent,
   createFundingChangeEvent,
   createOIChangeEvent,
   createLiquidationChangeEvent,
@@ -384,7 +383,7 @@ export function validateInstrumentIdentity(instrument: string): {
   const trimmed = instrument.trim().toUpperCase();
 
   // Must contain only valid characters
-  if (!/^[A-Z0-9/\._-]+$/.test(trimmed)) {
+  if (!/^[A-Z0-9/._-]+$/.test(trimmed)) {
     return { valid: false, canonical: trimmed, reason: "Invalid characters in instrument symbol." };
   }
 

@@ -24,17 +24,9 @@ import {
   filterNotificationsByPreferences,
   DEFAULT_PREFERENCES,
   ALL_CATEGORIES,
+  ALL_SCOPES,
   type NotificationPreferences,
-  type PreferenceScope,
 } from "../lib/position-protection/notification-preferences";
-
-const SEVERITY_ORDER: Record<string, number> = {
-  INFO: 0,
-  LOW: 1,
-  MEDIUM: 2,
-  HIGH: 3,
-  CRITICAL: 4,
-};
 
 const FILTER_OPTIONS: { label: string; value: NotificationFilter }[] = [
   { label: "ALL", value: "ALL" },
@@ -44,6 +36,10 @@ const FILTER_OPTIONS: { label: string; value: NotificationFilter }[] = [
   { label: "MEDIUM", value: "MEDIUM" },
   { label: "LOW", value: "LOW" },
 ];
+
+function isNotificationSeverity(value: unknown): value is NotificationSeverity {
+  return value === "INFO" || value === "LOW" || value === "MEDIUM" || value === "HIGH" || value === "CRITICAL";
+}
 
 function formatTimestamp(ts: number): string {
   const now = Date.now();
@@ -71,14 +67,20 @@ export function NotificationCenter() {
   const prefs: NotificationPreferences = useMemo(() => {
     if (!rawPrefs) return DEFAULT_PREFERENCES;
     return {
-      minimumSeverity: (rawPrefs as any).minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
-      enabledCategories: (rawPrefs as any).enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
-      enabledScopes: (rawPrefs as any).enabledScopes ?? DEFAULT_PREFERENCES.enabledScopes,
-      mutedRuleIds: (rawPrefs as any).mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
-      enabledInstruments: (rawPrefs as any).enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
-      mutedInstruments: (rawPrefs as any).mutedInstruments ?? DEFAULT_PREFERENCES.mutedInstruments,
-      showReadNotifications: (rawPrefs as any).showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
-      showDismissedNotifications: (rawPrefs as any).showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
+      minimumSeverity: isNotificationSeverity(rawPrefs.minimumSeverity)
+        ? rawPrefs.minimumSeverity
+        : DEFAULT_PREFERENCES.minimumSeverity,
+      enabledCategories: rawPrefs.enabledCategories === undefined
+        ? DEFAULT_PREFERENCES.enabledCategories
+        : ALL_CATEGORIES.filter((category) => rawPrefs.enabledCategories.includes(category)),
+      enabledScopes: rawPrefs.enabledScopes === undefined
+        ? DEFAULT_PREFERENCES.enabledScopes
+        : ALL_SCOPES.filter((scope) => rawPrefs.enabledScopes.includes(scope)),
+      mutedRuleIds: rawPrefs.mutedRuleIds ?? DEFAULT_PREFERENCES.mutedRuleIds,
+      enabledInstruments: rawPrefs.enabledInstruments ?? DEFAULT_PREFERENCES.enabledInstruments,
+      mutedInstruments: rawPrefs.mutedInstruments ?? DEFAULT_PREFERENCES.mutedInstruments,
+      showReadNotifications: rawPrefs.showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
+      showDismissedNotifications: rawPrefs.showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
     };
   }, [rawPrefs]);
 

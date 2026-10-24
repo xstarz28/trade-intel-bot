@@ -38,6 +38,8 @@ export interface WalkForwardReport {
   candleCount: number;
   signalsChecked: number;
   noTradeSignals: number;
+  /** Aggregated engine gate reasons for NO_TRADE signals, to diagnose over-rejection. */
+  noTradeReasonCounts: Record<string, number>;
   rejectedPlans: number;
   executedTrades: number;
   wins: number;
@@ -56,6 +58,7 @@ export interface BacktestSignal {
   recommendation: "LONG" | "SHORT" | "NO_TRADE";
   tradePlan?: Pick<TradePlan, "direction" | "entry" | "stopLoss" | "takeProfit">;
   confidence?: number;
+  noTradeReasons?: string[];
 }
 
 export interface WalkForwardInput {
@@ -180,7 +183,7 @@ function simulateTrade(args: {
     grossReturnPct,
     netReturnPct,
     rMultiple: signedMove / risk,
-    confidence: Number.isFinite(signal.confidence) ? Number(signal.confidence) : 0,
+    confidence: Number.isFinite(signal.confidence) ? Math.max(0, Math.min(100, Number(signal.confidence))) : 0,
   };
 }
 
@@ -218,13 +221,14 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
   const warnings = [
     "Backtest quality depends on the supplied historical OHLCV source and timeframe alignment.",
     `Out-of-sample scoring starts at candle index ${firstSignalIndex}; earlier candles are history only.`,
-    "Signals use the production analysis callback on past-only candles; no provider fundamentals, news, COT, derivatives, or MTF feeds are synthesized.",
+    "Signals use the production analysis callback on past-only candles. Provider fundamentals, news, COT, and derivatives are not synthesized; optional higher-timeframe candles are included only after their bars close.",
     "Entry is next-bar open; stop/target touches use OHLC approximations and stop wins if both levels are touched in one bar.",
     "Fees/slippage are a user-configurable per-side assumption; results are not proof of future profitability.",
   ];
   const trades: BacktestTrade[] = [];
   let signalsChecked = 0;
   let noTradeSignals = 0;
+  const noTradeReasonCounts: Record<string, number> = {};
   let rejectedPlans = 0;
   let nextEligibleSignalIndex = firstSignalIndex;
 
@@ -233,8 +237,23 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     const visible = candles.slice(0, i + 1);
     const signal = input.analyzeAtClose(visible, i);
     signalsChecked++;
+    if (
+      !signal ||
+      (signal.recommendation !== "LONG" &&
+        signal.recommendation !== "SHORT" &&
+        signal.recommendation !== "NO_TRADE")
+    ) {
+      // Runtime callers can violate the TypeScript contract; malformed signals
+      // must never be interpreted as a short recommendation by the simulator.
+      rejectedPlans++;
+      continue;
+    }
     if (signal.recommendation === "NO_TRADE") {
       noTradeSignals++;
+      for (const reason of signal.noTradeReasons ?? []) {
+        const normalized = reason.trim();
+        if (normalized) noTradeReasonCounts[normalized] = (noTradeReasonCounts[normalized] ?? 0) + 1;
+      }
       continue;
     }
     const trade = simulateTrade({
@@ -272,6 +291,7 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     candleCount: candles.length,
     signalsChecked,
     noTradeSignals,
+    noTradeReasonCounts,
     rejectedPlans,
     executedTrades: trades.length,
     wins,
@@ -292,13 +312,57 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
  * SMC context from the prefix ending at the signal candle; future bars are
  * never passed to indicator or profile calculations.
  */
+const TIMEFRAME_DURATION_MS: Record<Timeframe, number> = {
+  M1: 60_000,
+  M5: 5 * 60_000,
+  M15: 15 * 60_000,
+  H1: 60 * 60_000,
+  H4: 4 * 60 * 60_000,
+  D1: 24 * 60 * 60_000,
+  W1: 7 * 24 * 60 * 60_000,
+};
+
+/**
+ * Returns only higher-timeframe candles that had fully closed by the signal
+ * candle's close. This avoids leaking an in-progress daily/weekly candle into
+ * a lower-timeframe historical decision.
+ */
+export function completedHigherTimeframeCandlesAt(
+  candles: readonly OhlcvCandle[],
+  signalCloseTimestamp: number,
+  higherTimeframe: Timeframe,
+): OhlcvCandle[] {
+  // Invalid cutoffs must never make future candles appear completed (e.g. +Infinity).
+  if (!Number.isFinite(signalCloseTimestamp)) return [];
+
+  const duration = TIMEFRAME_DURATION_MS[higherTimeframe];
+  return candles.filter((candle) =>
+    Number.isFinite(candle.timestamp) && candle.timestamp + duration <= signalCloseTimestamp
+  );
+}
+
 export function runProductionWalkForwardBacktest(args: {
   instrument: string;
   instrumentType: InstrumentType;
   timeframe: Timeframe;
   candles: OhlcvCandle[];
+  higherTimeframe?: Timeframe;
+  higherTimeframeCandles?: OhlcvCandle[];
   options?: WalkForwardOptions;
 }): WalkForwardReport {
+  const hasHigherTimeframe = args.higherTimeframe !== undefined;
+  const hasHigherCandles = args.higherTimeframeCandles !== undefined;
+  if (hasHigherTimeframe !== hasHigherCandles) {
+    throw new Error("higherTimeframe and higherTimeframeCandles must be provided together.");
+  }
+  if (args.higherTimeframe && TIMEFRAME_DURATION_MS[args.higherTimeframe] <= TIMEFRAME_DURATION_MS[args.timeframe]) {
+    throw new Error("The supplied context timeframe must be higher than the primary timeframe.");
+  }
+  if (args.higherTimeframeCandles) {
+    const higherErrors = validateCandles(args.higherTimeframeCandles);
+    if (higherErrors.length > 0) throw new Error(`Invalid higher-timeframe candles: ${higherErrors.join(" ")}`);
+  }
+
   return runWalkForwardBacktest({
     instrument: args.instrument,
     timeframe: args.timeframe,
@@ -306,6 +370,14 @@ export function runProductionWalkForwardBacktest(args: {
     options: args.options,
     analyzeAtClose: (visibleCandles) => {
       const latest = visibleCandles[visibleCandles.length - 1];
+      const signalCloseTimestamp = latest.timestamp + TIMEFRAME_DURATION_MS[args.timeframe];
+      const completedHigherCandles = args.higherTimeframeCandles && args.higherTimeframe
+        ? completedHigherTimeframeCandlesAt(
+          args.higherTimeframeCandles,
+          signalCloseTimestamp,
+          args.higherTimeframe,
+        )
+        : undefined;
       const marketData: MarketData = {
         instrument: args.instrument,
         instrumentType: args.instrumentType,
@@ -313,15 +385,23 @@ export function runProductionWalkForwardBacktest(args: {
         fetchTimestamp: latest.timestamp,
         price: { price: latest.close, timestamp: latest.timestamp, source: "historical-OHLCV" },
         candles: [...visibleCandles],
+        ...(completedHigherCandles && completedHigherCandles.length > 0
+          ? { higherTimeframeCandles: completedHigherCandles, higherTimeframe: args.higherTimeframe }
+          : {}),
         timeframe: args.timeframe,
         dataFreshness: "delayed",
       };
-      const technicalData: TechnicalData = calculateTechnical([...visibleCandles]);
+      const technicalData: TechnicalData = calculateTechnical(
+        [...visibleCandles],
+        completedHigherCandles,
+        args.higherTimeframe ?? "HTF",
+      );
       technicalData.smc = computeSmcContext([...visibleCandles], args.timeframe);
       const analysisInput: AnalysisInput = {
         instrument: args.instrument,
         instrumentType: args.instrumentType,
         timeframe: args.timeframe,
+        dataMode: "historical",
         currentPrice: String(latest.close),
         marketData,
         technicalData,
@@ -331,6 +411,7 @@ export function runProductionWalkForwardBacktest(args: {
         recommendation: result.recommendation,
         tradePlan: result.tradePlan,
         confidence: result.confidence,
+        noTradeReasons: result.noTradeReasons,
       };
     },
   });

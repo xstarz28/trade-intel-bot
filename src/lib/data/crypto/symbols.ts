@@ -122,9 +122,9 @@ export function toTokenomistSymbol(instrument: string): string | null {
 export function isCryptoInstrument(instrument: string): boolean {
   const sym = instrument.toUpperCase().trim();
   return (
-    COINGLASS_MAP.hasOwnProperty(sym) ||
-    DEFILLAMA_MAP.hasOwnProperty(sym) ||
-    TOKENOMIST_MAP.hasOwnProperty(sym)
+    Object.prototype.hasOwnProperty.call(COINGLASS_MAP, sym) ||
+    Object.prototype.hasOwnProperty.call(DEFILLAMA_MAP, sym) ||
+    Object.prototype.hasOwnProperty.call(TOKENOMIST_MAP, sym)
   );
 }
 

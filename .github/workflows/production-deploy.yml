@@ -47,10 +47,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "22.23.4"
 
       - name: Install dependencies
-        run: npm install --legacy-peer-deps --no-audit --no-fund
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Audit resolved npm dependencies
+        run: npm audit --audit-level=high
 
       - name: Verify production identity
         env:

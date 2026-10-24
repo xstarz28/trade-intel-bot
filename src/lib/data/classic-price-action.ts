@@ -42,7 +42,7 @@ export function analyzeClassicPriceAction(candles: OhlcvCandle[], timeframe = "S
   const supportingEvidence: string[] = [];
   const conflictingEvidence: string[] = [];
 
-  if (candles.length < 10) {
+  if (candles.length < 10 || !timeframe.trim()) {
     return {
       patterns, supplyDemand,
       trendlines: { highs: "insufficient", lows: "insufficient" },

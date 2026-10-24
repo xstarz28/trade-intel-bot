@@ -701,14 +701,14 @@ describe("AD. Determinism", () => {
 describe("AE. Decision immutability", () => {
   it("AE1 — alert has no recommendation/bias/conviction", () => {
     const r = evaluateProtection({ position: longBtc(), evidence: healthyEvidence(), now: NOW });
-    expect((r.alert as any).recommendation).toBeUndefined();
-    expect((r.alert as any).bias).toBeUndefined();
-    expect((r.alert as any).conviction).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(r.alert, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(r.alert, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(r.alert, "conviction")).toBe(false);
   });
 
   it("AE2 — alert has no tradePlan", () => {
     const r = evaluateProtection({ position: longBtc(), evidence: healthyEvidence(), now: NOW });
-    expect((r.alert as any).tradePlan).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(r.alert, "tradePlan")).toBe(false);
   });
 });
 
@@ -861,10 +861,10 @@ describe("AN. Regression compatibility", () => {
   it("AN1 — does not modify existing decision types", () => {
     const r = evaluateProtection({ position: longBtc(), evidence: healthyEvidence(), now: NOW });
     // These fields should NOT exist on the alert
-    expect((r.alert as any).decisionFingerprint).toBeUndefined();
-    expect((r.alert as any).structuralVeto).toBeUndefined();
-    expect((r.alert as any).riskGate).toBeUndefined();
-    expect((r.alert as any).noTradeReason).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(r.alert, "decisionFingerprint")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(r.alert, "structuralVeto")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(r.alert, "riskGate")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(r.alert, "noTradeReason")).toBe(false);
   });
 });
 

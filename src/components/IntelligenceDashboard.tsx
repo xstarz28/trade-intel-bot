@@ -14,24 +14,19 @@
  * All data must come from real intelligence pipeline — no fabricated content.
  */
 
-import React, { useMemo } from "react";
+import React from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapStance, mapPositionImpact, mapDirection, mapRelevance, mapAvailability, mapThesisHealth, mapConfidence, mapDimension, mapSensitivity, mapMarketState, mapSeverity, mapPullbackClassification, mapSide } from "@/lib/i18n/enum-mapping";
 import {
   Newspaper,
   TrendingUp,
-  Calendar,
   Layers,
   GitBranch,
   RefreshCw,
-  AlertTriangle,
   CheckCircle,
-  XCircle,
-  Clock,
   Target,
   Shield,
   Zap,
-  Info,
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════════
@@ -39,7 +34,7 @@ import {
 // ═══════════════════════════════════════════════════════════════
 
 import type { NewsSynthesis, NewsRelevance } from "@/lib/position-protection/news-intelligence";
-import type { FundamentalSynthesis, CatalystAnalysis, FundamentalInterpretation } from "@/lib/position-protection/fundamental-intelligence";
+import type { FundamentalSynthesis, FundamentalInterpretation } from "@/lib/position-protection/fundamental-intelligence";
 import type { HierarchicalEvidence, ScenarioSynthesis, DimensionStatus, MultiDimensionalSynthesis } from "@/lib/position-protection/multi-dimensional-intelligence";
 import type { PositionIntelligence } from "@/lib/position-protection/market-intelligence-analyzer";
 import { HistoricalTimelineView } from "./HistoricalTimeline";
@@ -463,9 +458,8 @@ function AnalyticalSummarySection({
   instrument: string;
   side: "LONG" | "SHORT";
 }) {
-  if (!intelligence) return null;
-
   const { t } = useI18n();
+  if (!intelligence) return null;
   const thesisLabel = intelligence.thesisHealth ?? "UNKNOWN";
   const thesisColor =
     thesisLabel === "HEALTHY" || thesisLabel === "STABLE" ? "text-emerald-400" :
@@ -610,7 +604,6 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
   const { t } = useI18n();
   if (!intelligence) return null;
 
-  const isLong = intelligence.side === "LONG";
   return (
     <IntelSection title={t.intelligence.keyLevelsLabel} icon={<Shield className="size-3" />}>
       <div className="space-y-1 text-[8px] font-mono">
@@ -687,8 +680,6 @@ function KeyLevelsSection({ intelligence, side, instrument }: { intelligence?: P
 export function IntelligenceDashboard({
   intelligence,
   multiDimensional,
-  marketContext,
-  analyticalSummary,
   whatChanged,
   positionSide,
   instrument,

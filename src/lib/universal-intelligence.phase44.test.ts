@@ -30,7 +30,6 @@ import {
   getInstrumentExchanges,
   detectAssetClass,
   isCryptoInstrument,
-  getAllInstrumentIds,
 } from "@/lib/data/universal/instruments";
 
 import {
@@ -52,13 +51,10 @@ import {
 } from "@/lib/data/universal/evidence";
 
 import type {
-  CanonicalInstrument,
   AssetClass,
   ForexIntelligenceContext,
   EquityIntelligenceContext,
   CommodityIntelligenceContext,
-  CrossAssetIntelligenceContext,
-  UniversalIntelligenceContext,
 } from "@/lib/data/universal/types";
 
 // ═══════════════════════════════════════════════════════════════
@@ -865,7 +861,7 @@ describe("Phase 44 — K. Security — No Secrets", () => {
     for (const p of providers) {
       const serialized = JSON.stringify(p);
       expect(serialized).not.toMatch(/sk-[a-zA-Z0-9]{20,}/);
-      expect(serialized).not.toMatch(/api[_-]?key[\"']?\s*[:=]\s*[\"'][a-zA-Z0-9]{10,}/);
+      expect(serialized).not.toMatch(/api[_-]?key["']?\s*[:=]\s*["'][a-zA-Z0-9]{10,}/);
     }
   });
 
@@ -902,13 +898,13 @@ describe("Phase 44 — L. Decision Immutability", () => {
     });
 
     // The universal context should NOT contain any decision-related fields
-    expect((ctx as any).recommendation).toBeUndefined();
-    expect((ctx as any).bias).toBeUndefined();
-    expect((ctx as any).confidence).toBeUndefined();
-    expect((ctx as any).conviction).toBeUndefined();
-    expect((ctx as any).tradePlan).toBeUndefined();
-    expect((ctx as any).actionability).toBeUndefined();
-    expect((ctx as any).decisionFingerprint).toBeUndefined();
+    expect(Reflect.get(ctx, "recommendation")).toBeUndefined();
+    expect(Reflect.get(ctx, "bias")).toBeUndefined();
+    expect(Reflect.get(ctx, "confidence")).toBeUndefined();
+    expect(Reflect.get(ctx, "conviction")).toBeUndefined();
+    expect(Reflect.get(ctx, "tradePlan")).toBeUndefined();
+    expect(Reflect.get(ctx, "actionability")).toBeUndefined();
+    expect(Reflect.get(ctx, "decisionFingerprint")).toBeUndefined();
   });
 
   it("evidence items do not contain decision fields", () => {
@@ -918,10 +914,10 @@ describe("Phase 44 — L. Decision Immutability", () => {
     });
 
     for (const e of ctx.evidence) {
-      expect((e as any).recommendation).toBeUndefined();
-      expect((e as any).bias).toBeUndefined();
-      expect((e as any).confidence).toBeUndefined();
-      expect((e as any).tradePlan).toBeUndefined();
+      expect(Reflect.get(e, "recommendation")).toBeUndefined();
+      expect(Reflect.get(e, "bias")).toBeUndefined();
+      expect(Reflect.get(e, "confidence")).toBeUndefined();
+      expect(Reflect.get(e, "tradePlan")).toBeUndefined();
     }
   });
 });
@@ -1130,7 +1126,7 @@ describe("Phase 44 — Q. Adversarial Cases", () => {
   });
 
   it("routing for nonexistent capability returns no routes", () => {
-    const route = findProviderRoutes("BTC/USD", "nonexistent_capability" as any);
+    const route = findProviderRoutes("BTC/USD", "nonexistent_capability" as Parameters<typeof findProviderRoutes>[1]);
     expect(route.routes.length).toBe(0);
     expect(route.available).toBe(false);
   });

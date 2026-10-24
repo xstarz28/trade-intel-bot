@@ -139,10 +139,6 @@ export interface InvestorPortfolioSummary {
   flags: PortfolioFlag[];
 }
 
-function isUsable(state: InvestorDecisionSynthesis["state"]): boolean {
-  return state === "ALIGNED" || state === "CAUTION" || state === "CONFLICT";
-}
-
 /**
  * Aggregates per-position decision syntheses into one deterministic
  * portfolio-level summary. Pure: identical inputs → identical output;

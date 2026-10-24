@@ -3,12 +3,12 @@
  */
 import { describe, it, expect } from "vitest";
 import { fetchOptionalSlowData } from "./data/optional-providers";
-import type { ProviderThunk, SlowProviderFacts, SlowProviderThunks } from "./data/optional-providers";
+
 import { mapInstrumentToCot, buildCotContext, deriveCotEvidence, classifyCotFreshness } from "./data/cot";
 import { mapInstrumentToOkx, parseOkxResponse } from "./risk/okx-spec";
 import { buildTreasuryContext, deriveMacroYieldEvidence, classifyMacroFreshness } from "./data/treasury";
 import { buildEiaContext, parseEiaResponse, deriveEiaInventoryEvidence } from "./data/eia";
-import { detectAssetClass, normalizeInstrument, toCoinGeckoId, toProviderSymbol, getInstrumentLabel } from "./data/symbols";
+import { detectAssetClass, normalizeInstrument, toCoinGeckoId, getInstrumentLabel } from "./data/symbols";
 import { runAnalysis } from "./analysis-engine";
 import type { AnalysisInput } from "@/types/analysis";
 import { calculateTechnical } from "./data/technical";
@@ -83,8 +83,8 @@ describe("Phase 40 — Orchestration Conditional Policy", () => {
 describe("Phase 40 — Failure Isolation", () => {
   const fail = async () => { throw new Error("net"); };
   const facts = { instrumentType: "forex" as const, instrument: "EUR/USD", tradingStyle: "intraday", hasCompleteSpec: false };
-  it("all fail", async () => { const r = await fetchOptionalSlowData(facts, { cot: fail as any, treasury: fail as any }); expect(r.cotData).toBeUndefined(); expect(r.treasuryData).toBeUndefined(); });
-  it("mixed", async () => { const r = await fetchOptionalSlowData(facts, { cot: async () => ({ success: true, data: { available: true } as any }), treasury: async () => ({ success: false }) }); expect(r.cotData).toBeDefined(); expect(r.treasuryData).toBeUndefined(); });
+  it("all fail", async () => { const r = await fetchOptionalSlowData(facts, { cot: fail, treasury: fail }); expect(r.cotData).toBeUndefined(); expect(r.treasuryData).toBeUndefined(); });
+  it("mixed", async () => { const r = await fetchOptionalSlowData(facts, { cot: async () => ({ success: true, data: { available: true } as unknown as ReturnType<typeof buildCotContext> }), treasury: async () => ({ success: false }) }); expect(r.cotData).toBeDefined(); expect(r.treasuryData).toBeUndefined(); });
   it("non-success", async () => { const r = await fetchOptionalSlowData(facts, { cot: async () => ({ success: false }) }); expect(r.cotData).toBeUndefined(); });
   it("undefined thunk", async () => { const r = await fetchOptionalSlowData(facts, {}); expect(r.cotData).toBeUndefined(); });
 });
@@ -146,7 +146,7 @@ describe("Phase 40 — Provider Failure ≠ Direction", () => {
   it("same rec without optional data", () => {
     const base = runAnalysis(buildInput("BTC/USD", "crypto"));
     const d = { ...buildInput("BTC/USD", "crypto") };
-    delete (d as any).derivativesData; delete (d as any).sentimentData; delete (d as any).fundamentalData;
+    Reflect.deleteProperty(d, "derivativesData"); Reflect.deleteProperty(d, "sentimentData"); Reflect.deleteProperty(d, "fundamentalData");
     expect(runAnalysis(d).recommendation).toBe(base.recommendation);
   });
   it("unavailable COT", () => { expect(buildCotContext([], "BTC/USD", Date.now()).available).toBe(false); });
@@ -218,8 +218,8 @@ describe("Phase 40 — Convex Security", () => {
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — No Fabrication", () => {
   it("empty candles", () => { expect(runAnalysis(buildInput("BTC/USD", "crypto", [])).instrument).toBe("BTC/USD"); });
-  it("no fund", () => { const i = buildInput("BTC/USD", "crypto"); delete (i as any).fundamentalData; delete (i as any).sentimentData; expect(runAnalysis(i).instrument).toBe("BTC/USD"); });
-  it("no deriv", () => { const i = buildInput("BTC/USD", "crypto"); delete (i as any).derivativesData; expect(runAnalysis(i).instrument).toBe("BTC/USD"); });
+  it("no fund", () => { const i = buildInput("BTC/USD", "crypto"); Reflect.deleteProperty(i, "fundamentalData"); Reflect.deleteProperty(i, "sentimentData"); expect(runAnalysis(i).instrument).toBe("BTC/USD"); });
+  it("no deriv", () => { const i = buildInput("BTC/USD", "crypto"); Reflect.deleteProperty(i, "derivativesData"); expect(runAnalysis(i).instrument).toBe("BTC/USD"); });
   it("NO_TRADE no plan", () => { const flat = Array.from({ length: 210 }, (_, i) => ({ timestamp: Date.now() - (210 - i) * 60_000, open: 1.1, high: 1.1001, low: 1.0999, close: 1.1, volume: 1000 })); const r = runAnalysis(buildInput("EUR/USD", "forex", flat)); if (r.recommendation === "NO_TRADE") expect(r.tradePlan).toBeUndefined(); });
 });
 
@@ -228,7 +228,7 @@ describe("Phase 40 — No Fabrication", () => {
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — Decision Integrity", () => {
   it("same input same result", () => { const a = runAnalysis(buildInput("BTC/USD", "crypto")); const b = runAnalysis({ ...buildInput("BTC/USD", "crypto") }); expect(a.recommendation).toBe(b.recommendation); });
-  it("confidence bounded", () => { for (const s of ["BTC/USD", "EUR/USD", "XAU/USD", "AAPL"]) { expect(runAnalysis(buildInput(s, detectAssetClass(s) as any)).confidence).toBeGreaterThanOrEqual(0); } });
+  it("confidence bounded", () => { for (const s of ["BTC/USD", "EUR/USD", "XAU/USD", "AAPL"]) { expect(runAnalysis(buildInput(s, detectAssetClass(s) as "crypto" | "forex" | "commodity" | "stock")).confidence).toBeGreaterThanOrEqual(0); } });
   it("long horizon info", () => { const r = runAnalysis(buildInput("BTC/USD", "crypto")); if (r.longHorizonThesis) expect(typeof r.longHorizonThesis.marketCycle).toBe("string"); });
   it("evidence challenge info", () => { const r = runAnalysis(buildInput("EUR/USD", "forex")); if (r.evidenceChallenge) expect(r.evidenceChallenge.evidenceImpact).toBe("INFORMATIONAL_ONLY"); });
 });
@@ -331,7 +331,7 @@ describe("Phase 40 — Treasury Fault Injection", () => {
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — Orchestration Fault Injection", () => {
   const facts = { instrumentType: "forex" as const, instrument: "EUR/USD", tradingStyle: "intraday", hasCompleteSpec: false };
-  it("concurrent timeout", async () => { let c = 0; const t = async () => { c++; throw new Error("TO"); }; await fetchOptionalSlowData(facts, { cot: t as any, treasury: t as any }); expect(c).toBe(2); });
+  it("concurrent timeout", async () => { let c = 0; const t = async () => { c++; throw new Error("TO"); }; await fetchOptionalSlowData(facts, { cot: t, treasury: t }); expect(c).toBe(2); });
   it("null thunk", async () => { const r = await fetchOptionalSlowData(facts, { cot: async () => null }); expect(r.cotData).toBeUndefined(); });
   it("false success", async () => { const r = await fetchOptionalSlowData(facts, { cot: async () => ({ success: false }) }); expect(r.cotData).toBeUndefined(); });
   it("undefined data", async () => { const r = await fetchOptionalSlowData(facts, { cot: async () => ({ success: true, data: undefined }) }); expect(r.cotData).toBeUndefined(); });
@@ -342,8 +342,8 @@ describe("Phase 40 — Orchestration Fault Injection", () => {
 // ═══════════════════════════════════════════════════════════════════
 describe("Phase 40 — Engine Degraded", () => {
   it("all optional removed", () => { const b = runAnalysis(buildInput("BTC/USD", "crypto")); const d = { instrument: "BTC/USD", instrumentType: "crypto" as const, timeframe: "D1" as const, tradingStyle: "swing" as const, candles: bullCandles(), technicalData: (() => { const t = calculateTechnical(bullCandles()); t.smc = computeSmcContext(bullCandles(), "D1"); t.mtf = buildMtfContext("D1", [{ timeframe: "D1", role: "setup", candles: bullCandles() }]);        return t; })() } as AnalysisInput; expect(runAnalysis(d).recommendation).toBe(b.recommendation); });
-  it("corrupted sentiment", () => { const i = buildInput("EUR/USD", "forex"); (i as any).sentimentData = { provider: "av", timestamp: Date.now(), averageScore: NaN, articleCount: 0, label: "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "unavailable", articles: [] }; expect(Number.isFinite(runAnalysis(i).confidence)).toBe(true); });
-  it("no smc", () => { const i = buildInput("BTC/USD", "crypto"); if (i.technicalData) delete (i.technicalData as any).smc; expect(runAnalysis(i).instrument).toBe("BTC/USD"); });
+  it("corrupted sentiment", () => { const i = buildInput("EUR/USD", "forex"); Reflect.set(i, "sentimentData", { provider: "av", timestamp: Date.now(), averageScore: NaN, articleCount: 0, label: "neutral", breakdown: { positive: 0, negative: 0, neutral: 0 }, confidence: "unavailable", articles: [] }); expect(Number.isFinite(runAnalysis(i).confidence)).toBe(true); });
+  it("no smc", () => { const i = buildInput("BTC/USD", "crypto"); if (i.technicalData) Reflect.deleteProperty(i.technicalData, "smc"); expect(runAnalysis(i).instrument).toBe("BTC/USD"); });
   it("completeness", () => { expect(["full", "partial", "limited"]).toContain(runAnalysis(buildInput("BTC/USD", "crypto")).dataCompleteness); });
 });
 
@@ -406,7 +406,7 @@ describe("Phase 40 — Symbol Boundary", () => {
 describe("Phase 40 — Data Quality", () => {
   it("completeness valid", () => { const pairs: Array<[string, "crypto" | "forex" | "commodity" | "stock"]> = [["BTC/USD", "crypto"], ["EUR/USD", "forex"], ["XAU/USD", "commodity"], ["AAPL", "stock"]]; for (const [s, t] of pairs) { expect(["full", "partial", "limited"]).toContain(runAnalysis(buildInput(s, t)).dataCompleteness); } });
   it("flags array", () => { const pairs: Array<[string, "crypto" | "forex"]> = [["BTC/USD", "crypto"], ["EUR/USD", "forex"]]; for (const [s, t] of pairs) { expect(Array.isArray(runAnalysis(buildInput(s, t)).dataFlags)).toBe(true); } });
-  it("degraded", () => { const i = buildInput("BTC/USD", "crypto"); delete (i as any).sentimentData; delete (i as any).macroData; delete (i as any).fundamentalData; delete (i as any).derivativesData; delete (i as any).cotData; delete (i as any).treasuryData; expect(["partial", "limited"]).toContain(runAnalysis(i).dataCompleteness); });
+  it("degraded", () => { const i = buildInput("BTC/USD", "crypto"); Reflect.deleteProperty(i, "sentimentData"); Reflect.deleteProperty(i, "macroData"); Reflect.deleteProperty(i, "fundamentalData"); Reflect.deleteProperty(i, "derivativesData"); Reflect.deleteProperty(i, "cotData"); Reflect.deleteProperty(i, "treasuryData"); expect(["partial", "limited"]).toContain(runAnalysis(i).dataCompleteness); });
 });
 
 // ═══════════════════════════════════════════════════════════════════

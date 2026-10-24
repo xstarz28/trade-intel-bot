@@ -23,7 +23,7 @@
  *   S. Edge cases & empty states
  */
 
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import {
   validateOhlcvSeries,
   validateQuote,
@@ -34,7 +34,6 @@ import {
   isLiveStatus,
   type OhlcvRecord,
   type LiveStatus,
-  type DataQualityState,
   type ConsistencyVerdict,
 } from "./data/universal/live/types";
 import {
@@ -46,7 +45,6 @@ import {
   readCachedOrUnavailable,
   resetLiveState,
   type Transport,
-  type TransportResponse,
 } from "./data/universal/live/client";
 import {
   resolveInstrument,
@@ -74,7 +72,6 @@ import {
 
 const NOW = Date.now();
 const HOUR = 3_600_000;
-const MINUTE = 60_000;
 
 function makeCandle(
   overrides: Partial<OhlcvRecord> & { hoursBefore?: number } = {},
@@ -96,7 +93,7 @@ function makeCandle(
 
 function makeCandles(n: number, gapHours = 1): OhlcvRecord[] {
   // Oldest first (ascending timestamps)
-  return Array.from({ length: n }, (_, i) => makeCandle({ hoursBefore: n - i }));
+  return Array.from({ length: n }, (_, i) => makeCandle({ hoursBefore: (n - i) * gapHours }));
 }
 
 /** Mock transport that returns a canned JSON response. */
@@ -108,14 +105,6 @@ function mockTransport(body: unknown, status = 200): Transport {
 function mockNetworkError(message = "ECONNREFUSED"): Transport {
   return async () => {
     throw new Error(message);
-  };
-}
-
-/** Mock transport that simulates a timeout. */
-function mockTimeout(ms = 5000): Transport {
-  return async () => {
-    await new Promise((resolve) => setTimeout(resolve, ms));
-    return { ok: false, status: 0 };
   };
 }
 
@@ -729,6 +718,47 @@ describe("H — Live Client Execution", () => {
     expect(isLiveStatus(r.diagnostic.status)).toBe(true);
   });
 
+  it("CoinGecko universal quote requires a fresh provider timestamp", async () => {
+    const valid = await executeLiveRequest({
+      instrument: "BTC/USD",
+      capability: "quote",
+      providerNative: { provider: "coingecko", providerInstrumentId: "bitcoin", assetClass: "crypto" },
+      transport: mockTransport({ bitcoin: { usd: 67_000, last_updated_at: Math.floor(NOW / 1_000) } }),
+      now: NOW,
+    });
+    expect(valid.status).toBe("LIVE_VERIFIED");
+    expect(valid.quote?.price).toBe(67_000);
+
+    const stale = await executeLiveRequest({
+      instrument: "BTC/USD",
+      capability: "quote",
+      providerNative: { provider: "coingecko", providerInstrumentId: "bitcoin", assetClass: "crypto" },
+      transport: mockTransport({ bitcoin: { usd: 67_000, last_updated_at: Math.floor((NOW - 10 * 60_000) / 1_000) } }),
+      now: NOW,
+    });
+    expect(stale.status).toBe("MALFORMED_RESPONSE");
+    expect(stale.quote).toBeUndefined();
+  });
+
+  it("CoinGecko universal endpoint requests provider update timestamps", async () => {
+    let requestedUrl = "";
+    await executeLiveRequest({
+      instrument: "BTC/USD",
+      capability: "quote",
+      providerNative: { provider: "coingecko", providerInstrumentId: "bitcoin", assetClass: "crypto" },
+      transport: async (url) => {
+        requestedUrl = url;
+        return {
+          ok: true,
+          status: 200,
+          json: { bitcoin: { usd: 67_000, last_updated_at: Math.floor(NOW / 1_000) } },
+        };
+      },
+      now: NOW,
+    });
+    expect(new URL(requestedUrl).searchParams.get("include_last_updated_at")).toBe("true");
+  });
+
   it("diagnostic never contains credentials", async () => {
     const tdResponse = {
       symbol: "BTC/USD",
@@ -1242,7 +1272,6 @@ describe("Q — Concurrency", () => {
   });
 
   it("concurrent requests for different instruments maintain isolation", async () => {
-    const nowSec = Math.floor(NOW / 1000);
     const instruments = ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD"];
     const tdBase = { symbol: "X", values: [{ datetime: new Date(NOW - 3600000).toISOString().replace("T", " ").slice(0, 19), open: "100", high: "105", low: "95", close: "102", volume: "1000" }] };
 
@@ -1475,7 +1504,7 @@ describe("S — Edge Cases & Empty States", () => {
   });
 
   it("verifyQuote handles completely empty object", () => {
-    const r = validateQuote({} as any);
+    const r = validateQuote({} as Parameters<typeof validateQuote>[0]);
     expect(r.valid).toBe(false);
   });
 
@@ -1505,7 +1534,7 @@ describe("S — Edge Cases & Empty States", () => {
       ["AAPL", "ohlcv"],
     ];
     pairs.forEach(([inst, cap]) => {
-      const route = routeProviderRequest(inst, cap as any);
+      const route = routeProviderRequest(inst, cap as Parameters<typeof routeProviderRequest>[1]);
       expect(route.routes.length).toBeGreaterThan(0);
     });
   });

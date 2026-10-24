@@ -135,7 +135,7 @@ describe("A. OHLCV Normalization", () => {
       { timestamp: 1000, open: 100, high: 105, low: 95, close: 102, volume: 100 },
       { timestamp: 2000, open: -1, high: 100, low: 0, close: 50, volume: 100 },
       { timestamp: 3000, open: 102, high: 107, low: 97, close: 104, volume: 100 },
-    ] as any[];
+    ] as Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }>;
     const normalized = normalizeCandles(candles);
     expect(normalized.length).toBe(2);
   });

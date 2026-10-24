@@ -13,9 +13,9 @@
  */
 
 import type { PositionSide } from "./types";
-import type { MTFConfluence, TimeframeAnalysis, MarketRegime } from "./multi-timeframe-engine";
+import type { MTFConfluence, MarketRegime } from "./multi-timeframe-engine";
 import type { NewsSynthesis } from "./news-intelligence";
-import type { FundamentalSynthesis, CatalystAnalysis, EconomicEvent } from "./fundamental-intelligence";
+import type { FundamentalSynthesis } from "./fundamental-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // DATA AVAILABILITY
@@ -656,7 +656,6 @@ export function synthesizeMultiDimensionalIntelligence(input: {
 
   // Evidence quality
   const primarySupport = evidence.filter((e) => e.tier === "PRIMARY" && e.direction === "SUPPORTING").length;
-  const primaryConflict = evidence.filter((e) => e.tier === "PRIMARY" && e.direction === "CONFLICTING").length;
   const totalSupport = evidence.filter((e) => e.direction === "SUPPORTING").length;
   const totalConflict = evidence.filter((e) => e.direction === "CONFLICTING").length;
 

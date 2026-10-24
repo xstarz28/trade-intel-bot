@@ -16,16 +16,9 @@ import type {
   AssetClass,
   CanonicalInstrument,
   DataCapability,
-  EvidenceCategory,
-  EvidenceDirection,
   EvidenceQuality,
-  EvidenceStrength,
   FreshnessState,
-  InstrumentSubType,
-  ProviderProfile,
   ProviderRoute,
-  Region,
-  Exchange,
   UniversalEvidenceItem,
 } from "./types";
 
@@ -156,7 +149,7 @@ export interface DataProvenance {
   /** When the data was observed at the source. */
   observedAt: number;
   /** When we fetched/received it. */
-  fetchedAt: number;
+  fetchedAt?: number;
   /** Freshness classification. */
   freshness: FreshnessState;
   /** Quality classification. */
@@ -168,7 +161,7 @@ export interface DataProvenance {
   /** Instrument the data pertains to. */
   instrument: string;
   /** Instrument identity verified against request. */
-  instrumentVerified: boolean;
+  instrumentVerified?: boolean;
 }
 
 // ═══════════════════════════════════════════════════════════════

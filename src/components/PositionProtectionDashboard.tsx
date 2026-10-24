@@ -10,7 +10,7 @@
  *
  * INFORMATIONAL_ONLY — never executes trades.
  */
-import React, { useEffect, useRef, useCallback, useState, useMemo } from "react";
+import React, { useEffect, useRef, useCallback, useState, useMemo, useSyncExternalStore } from "react";
 import { useI18n } from "@/lib/i18n";
 import {
   mapSide,
@@ -30,7 +30,6 @@ import {
   Trash2,
   Bell,
   BellOff,
-  RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PositionRegistrationForm } from "./PositionRegistrationForm";
@@ -43,7 +42,6 @@ import {
 import { evaluateProtection } from "@/lib/position-protection/protection-engine";
 import { type LiveInstrumentState } from "@/lib/position-protection/use-live-protection-polling";
 import type { AlertSeverity } from "@/lib/position-protection/types";
-import type { ProtectionEvent } from "@/lib/position-protection/realtime-types";
 import {
   type PositionIntelligence,
 } from "@/lib/position-protection/market-intelligence-analyzer";
@@ -62,7 +60,6 @@ import { CustomAlertRulesPanel } from "./CustomAlertRulesPanel";
 import { NotificationCenter } from "./NotificationCenter";
 import { RuntimeHealthDashboard } from "./RuntimeHealthDashboard";
 import { TraderWorkspace, PositionDetail } from "./TraderWorkspace";
-import { type RuntimeHealthInput, type RuntimeComponent } from "@/lib/position-protection/runtime-health";
 import {
   createHealthEventBuffer,
   recordProviderResult,
@@ -104,13 +101,38 @@ import {
   mergeSnapshots,
   snapshotIdentity,
   isSnapshotStale,
-  persistedToSnapshot,
-  persistedToEvent,
   type PersistedSnapshot,
   type PersistedEvent,
 } from "@/lib/position-protection/persistent-history-engine";
-import { detectChanges } from "@/lib/position-protection/historical-intelligence";
 import { type OHLCVHealthEvent } from "@/lib/position-protection/use-ohlcv-data";
+
+function normalizeNewsAssetClass(value: string): NewsItem["assetClass"] {
+  switch (value.toLowerCase()) {
+    case "crypto": return "crypto";
+    case "forex": return "forex";
+    case "commodity": return "commodity";
+    case "macro": return "macro";
+    case "equity":
+    case "stock":
+    case "stocks":
+    case "indices": return "equity";
+    default: return "other";
+  }
+}
+
+function categoryForNewsAssetClass(value: string): NewsItem["category"] {
+  switch (value.toLowerCase()) {
+    case "crypto": return "CRYPTO_SPECIFIC";
+    case "forex": return "FOREX";
+    case "commodity": return "COMMODITY";
+    case "equity":
+    case "stock":
+    case "stocks":
+    case "indices": return "COMPANY";
+    case "macro": return "FUNDAMENTAL";
+    default: return "OTHER";
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // SEVERITY → TOAST CONFIG
@@ -180,7 +202,7 @@ function PositionCard({
       horizon: position.horizon,
     },
     evidence: { price: position.entryPrice },
-    now: Date.now(),
+    now: lastUpdateAt ?? position.openedAt,
   }).alert;
 
   const instrumentInfo = getInstrumentInfo(position.instrument);
@@ -309,11 +331,54 @@ export function PositionProtectionDashboard() {
     positions,
     registerPosition: registerPos,
     removePosition: removePos,
-    acknowledgeAlert,
     ingestEvent,
     persistenceAvailable,
     persistenceDegraded,
   } = usePositionProtection();
+
+  const [healthClockNow, setHealthClockNow] = useState(() => Date.now());
+  const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
+  const healthListenersRef = useRef(new Set<() => void>());
+
+  const subscribeHealthBuffer = useCallback((listener: () => void) => {
+    healthListenersRef.current.add(listener);
+    return () => {
+      healthListenersRef.current.delete(listener);
+    };
+  }, []);
+  const getHealthBufferSnapshot = useCallback(() => healthBufferRef.current, []);
+  const healthBuffer = useSyncExternalStore(
+    subscribeHealthBuffer,
+    getHealthBufferSnapshot,
+    getHealthBufferSnapshot,
+  );
+
+  const notifyHealthBuffer = useCallback(() => {
+    for (const listener of healthListenersRef.current) listener();
+  }, []);
+  const touchHealthBuffer = useCallback(() => {
+    // Publish a new immutable snapshot so subscribers retry persistence after an in-flight save.
+    healthBufferRef.current = { ...healthBufferRef.current };
+    notifyHealthBuffer();
+  }, [notifyHealthBuffer]);
+
+  useEffect(() => {
+    const timer = setInterval(() => setHealthClockNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const recordHealthResult = useCallback(
+    (params: Parameters<typeof recordProviderResult>[1]) => {
+      healthBufferRef.current = recordProviderResult(healthBufferRef.current, params);
+      notifyHealthBuffer();
+    },
+    [notifyHealthBuffer],
+  );
+
+  const markHealthSnapshotPersisted = useCallback((snapshot: ReturnType<typeof buildSnapshotFromBuffer>) => {
+    healthBufferRef.current = markPersisted(healthBufferRef.current, snapshot);
+    notifyHealthBuffer();
+  }, [notifyHealthBuffer]);
 
   // ─── Shared Position Intelligence ───────────────────────
   // Single derivation of the per-position intelligence map, shared with the
@@ -325,6 +390,7 @@ export function PositionProtectionDashboard() {
     livePrices,
     ohlcv,
     isPolling,
+    lastPollAt,
     successfulPolls,
     lastError,
   } = usePositionIntelligence(positions, {
@@ -335,7 +401,7 @@ export function PositionProtectionDashboard() {
       }
     },
     onOHLCVHealthEvent: useCallback((event: OHLCVHealthEvent) => {
-      healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+      recordHealthResult({
         component: event.component,
         source: event.source,
         operation: event.operation,
@@ -344,7 +410,31 @@ export function PositionProtectionDashboard() {
         error: event.error,
         message: event.message,
       });
-    }, []),
+    }, [recordHealthResult]),
+    onQuoteResult: useCallback((state: LiveInstrumentState) => {
+      if (state.success && Number.isFinite(state.price) && state.price > 0) {
+        recordHealthResult({
+          component: "MARKET_DATA",
+          source: state.provider,
+          operation: `Price fetch: ${state.instrument}`,
+          success: true,
+        });
+      } else {
+        const error =
+          state.error ??
+          (state.success
+            ? "Provider returned an invalid or non-finite price"
+            : "Provider fetch failed without an error message");
+        recordHealthResult({
+          component: "MARKET_DATA",
+          source: state.provider,
+          operation: `Price fetch: ${state.instrument}`,
+          success: false,
+          error,
+          message: error,
+        });
+      }
+    }, [recordHealthResult]),
   });
   const [activeTab, setActiveTab] = useState<"workspace" | "positions" | "feed" | "portfolio" | "intelligence" | "alerts" | "market" | "notifications" | "system">("workspace");
   const [selectedPositionId, setSelectedPositionId] = useState<string | null>(null);
@@ -353,41 +443,12 @@ export function PositionProtectionDashboard() {
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const prevAlertsRef = useRef<Map<string, AlertSeverity>>(new Map());
 
-  // ─── Phase 100: Record market data health from actual polling results ──
-  useEffect(() => {
-    if (livePrices.size === 0) return;
-
-    const buf = healthBufferRef.current;
-    let anySuccess = false;
-    let anyFailure = false;
-    for (const [, state] of livePrices) {
-      if (state.success && state.price > 0) {
-        anySuccess = true;
-        healthBufferRef.current = recordProviderResult(buf, {
-          component: "MARKET_DATA",
-          source: state.provider,
-          operation: `Price fetch: ${state.instrument}`,
-          success: true,
-        });
-      } else if (!state.success) {
-        anyFailure = true;
-        healthBufferRef.current = recordProviderResult(buf, {
-          component: "MARKET_DATA",
-          source: state.provider,
-          operation: `Price fetch: ${state.instrument}`,
-          success: false,
-          error: state.error,
-          message: state.error,
-        });
-      }
-    }
-  }, [livePrices]);
+  // Market-data health is recorded at the provider-result callback boundary.
 
   // ─── Phase 90: Convex Historical Intelligence Persistence ──
   const saveSnapshotMut = useMutation(api.historicalIntelligence.saveSnapshot);
   const saveEventsMut = useMutation(api.historicalIntelligence.saveEvents);
   const deleteHistoryMut = useMutation(api.historicalIntelligence.deleteHistoryForPosition);
-  const pruneHistoryMut = useMutation(api.historicalIntelligence.pruneHistory);
 
   // ─── Shared Macro Context Data ───────────────────────────
   // Treasury yields + economic calendar are fetched once per mounted
@@ -411,15 +472,17 @@ export function PositionProtectionDashboard() {
         if (cancelled) break;
         try {
           const assetClass = userPositions.find(p => p.instrument === instrument)?.assetClass ?? "crypto";
-          const instrumentType = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
+          const instrumentType: "crypto" | "forex" | "stock" = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
           const result = await fetchIntelligence({
             instrument: instrument.split("/")[0],
-            instrumentType: instrumentType as any,
+            instrumentType,
           });
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
-          const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
+          const newsAssetClass = normalizeNewsAssetClass(String(assetClass));
+          const newsCategory = categoryForNewsAssetClass(String(assetClass));
+          const newsItems: NewsItem[] = articles.map((art, i: number) => ({
             id: `av-${instrument}-${i}`,
             timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
             source: art.source || "AlphaVantage",
@@ -427,10 +490,10 @@ export function PositionProtectionDashboard() {
             summary: art.summary || undefined,
             url: art.url || undefined,
             relatedInstruments: [instrument],
-            assetClass: assetClass as any,
-            category: assetClass === "crypto" ? "CRYPTO_SPECIFIC" as const : "FOREX" as const,
-            sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
-                       art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
+            assetClass: newsAssetClass,
+            category: newsCategory,
+            sentiment: art.sentimentLabel === "positive" || art.sentimentLabel === "somewhat-positive" ? "BULLISH" as const :
+                       art.sentimentLabel === "negative" || art.sentimentLabel === "somewhat-negative" ? "BEARISH" as const : "NEUTRAL" as const,
             impactStrength: "MODERATE" as const,
             freshness: classifyNewsFreshness(
               art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
@@ -477,28 +540,27 @@ export function PositionProtectionDashboard() {
   // Phase 100: Record intelligence engine health events
   useEffect(() => {
     if (intelligenceMap.size === 0 && positions.length === 0) return;
-    const now = Date.now();
     const analyzed = intelligenceMap.size;
     const total = positions.length;
     const success = analyzed > 0 && analyzed >= total;
-    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+    recordHealthResult({
       component: "INTELLIGENCE_ENGINE",
       operation: `Analyzed ${analyzed}/${total} positions`,
       success,
       message: `${analyzed}/${total} positions analyzed`,
     });
-  }, [intelligenceMap.size, positions.length]);
+  }, [intelligenceMap.size, positions.length, recordHealthResult]);
 
   // Phase 100: Record portfolio intelligence health events (uses memoized portfolioIntel)
   useEffect(() => {
     if (!portfolioIntel) return;
-    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+    recordHealthResult({
       component: "PORTFOLIO_INTELLIGENCE",
       operation: "Portfolio analysis",
       success: true,
       message: `${portfolioIntel.summary.totalPositions} positions analyzed`,
     });
-  }, [portfolioIntel]);
+  }, [portfolioIntel, recordHealthResult]);
 
   // ─── Phase 91: Reactive Convex Historical Timeline Queries ──
   // One query per position, reactive — automatically updates when Convex data changes
@@ -526,7 +588,7 @@ export function PositionProtectionDashboard() {
 
   // Map Convex reactive results by positionId
   const convTimelines = useMemo(() => {
-    const map = new Map<string, any>();
+    const map = new Map<string, NonNullable<typeof convTimeline0>>();
     const results = [convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4];
     for (let i = 0; i < positionIds.length && i < results.length; i++) {
       const result = results[i];
@@ -546,9 +608,12 @@ export function PositionProtectionDashboard() {
   const triggerRecordsRef = useRef<Map<string, RuleTriggerRecord>>(new Map());
   const bridgeInitializedRef = useRef(false);
   const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
-  const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
+
   const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
-  const healthSnapshot = useMemo(() => buildSnapshotFromBuffer(healthBufferRef.current, Date.now()), [intelligenceMap]);
+  const healthSnapshot = useMemo(
+    () => buildSnapshotFromBuffer(healthBuffer, healthClockNow),
+    [healthBuffer, healthClockNow],
+  );
 
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
   useEffect(() => {
@@ -591,13 +656,13 @@ export function PositionProtectionDashboard() {
         if (decision.shouldPersistSnapshot && !stale) {
           lastPersistedRef.current.set(posId, snapshotIdentity(snapshot));
           saveSnapshotMut(snapshotToArgs(snapshot)).then(() => {
-            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+            recordHealthResult({
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save snapshot",
               success: true,
             });
           }).catch((err) => {
-            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+            recordHealthResult({
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save snapshot",
               success: false,
@@ -609,13 +674,13 @@ export function PositionProtectionDashboard() {
           saveEventsMut(eventsToArgs(
             posId, intel.instrument, intel.side, decision.newEvents,
           )).then(() => {
-            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+            recordHealthResult({
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save events",
               success: true,
             });
           }).catch((err) => {
-            healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+            recordHealthResult({
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save events",
               success: false,
@@ -656,7 +721,7 @@ export function PositionProtectionDashboard() {
       }
       return next;
     });
-  }, [intelligenceMap, convTimelines, saveSnapshotMut, saveEventsMut]);
+  }, [intelligenceMap, convTimelines, saveSnapshotMut, saveEventsMut, recordHealthResult]);
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ────────────
   const createNotificationMut = useMutation(api.notifications.createNotification);
@@ -706,7 +771,7 @@ export function PositionProtectionDashboard() {
     diagnosticsRef.current = applyDiagnosticRetention([...diagnosticsRef.current, ...result.diagnostics], MAX_DIAGNOSTIC_EVENTS);
 
     // Phase 100: Record alert pipeline health
-    healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+    recordHealthResult({
       component: "ALERT_RULE_ENGINE",
       operation: `Evaluated ${typedRules.length} rules`,
       success: true,
@@ -733,14 +798,14 @@ export function PositionProtectionDashboard() {
         condition: notif.condition,
       }).then(() => {
         // Phase 100: Record notification persistence success
-        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        recordHealthResult({
           component: "NOTIFICATION_PERSISTENCE",
           operation: "Persist notification",
           success: true,
         });
       }).catch((err) => {
         // Phase 100: Record notification persistence failure
-        healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
+        recordHealthResult({
           component: "NOTIFICATION_PERSISTENCE",
           operation: "Persist notification",
           success: false,
@@ -749,7 +814,7 @@ export function PositionProtectionDashboard() {
         });
       });
     }
-  }, [intelligenceMap, alertRules, createNotificationMut]);
+  }, [intelligenceMap, portfolioIntel, alertRules, createNotificationMut, recordHealthResult]);
 
   // ─── Phase 95/97: Reset bridge state when positions are removed ──
   useEffect(() => {
@@ -787,7 +852,6 @@ export function PositionProtectionDashboard() {
     const now = Date.now();
     const snapshotToPersist = shouldPersistFromBuffer(healthBufferRef.current, now);
     if (snapshotToPersist) {
-      healthBufferRef.current = markPersisted(healthBufferRef.current, snapshotToPersist);
       isPersistingHealthRef.current = true;
       saveHealthMut({
         timestamp: snapshotToPersist.timestamp,
@@ -811,13 +875,17 @@ export function PositionProtectionDashboard() {
         staleComponents: snapshotToPersist.staleComponents,
         unavailableComponents: snapshotToPersist.unavailableComponents,
       }).then(() => {
+        // Mark only confirmed writes as persisted; failed writes must remain retryable.
+        markHealthSnapshotPersisted(snapshotToPersist);
         isPersistingHealthRef.current = false;
+        touchHealthBuffer();
       }).catch(() => {
         isPersistingHealthRef.current = false;
-        // Do NOT record a health event for persistence failure — prevents recursive loop
+        // Leave the snapshot unmarked so a later health event or clock tick can retry.
+        // Do NOT record a health event for persistence failure — prevents recursive loop.
       });
     }
-  }, [intelligenceMap, positions.length, saveHealthMut]);
+  }, [intelligenceMap, positions.length, saveHealthMut, healthBuffer, healthSnapshot, markHealthSnapshotPersisted, touchHealthBuffer]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
@@ -859,7 +927,7 @@ export function PositionProtectionDashboard() {
 
       prevAlertsRef.current.set(pos.position.positionId, newSeverity);
     }
-  }, [positions, notificationsEnabled]);
+  }, [positions, notificationsEnabled, t, txi]);
 
   // ─── Register Handler ────────────────────────────────────
   const handleRegister = useCallback(
@@ -875,7 +943,7 @@ export function PositionProtectionDashboard() {
         duration: 3000,
       });
     },
-    [registerPos],
+    [registerPos, t, txi],
   );
 
   // ─── Remove Handler ──────────────────────────────────────
@@ -896,7 +964,7 @@ export function PositionProtectionDashboard() {
         duration: 3000,
       });
     },
-    [removePos, deleteHistoryMut],
+    [removePos, deleteHistoryMut, txi],
   );
 
   // ─── Summary Stats ───────────────────────────────────────
@@ -1219,9 +1287,9 @@ export function PositionProtectionDashboard() {
             notificationPersisted: true,
             historicalSnapshotPersisted: true,
             historicalEventsPersisted: true,
-            lastIntelligenceCycleAt: Date.now(),
+            lastIntelligenceCycleAt: lastPollAt,
             dataQuality: Object.fromEntries(
-              Array.from(intelligenceMap.entries()).map(([pid, intel]) => [
+              Array.from(intelligenceMap.entries()).map(([, intel]) => [
                 intel.instrument,
                 intel.dataQuality,
               ]),

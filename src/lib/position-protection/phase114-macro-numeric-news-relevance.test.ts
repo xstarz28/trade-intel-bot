@@ -23,21 +23,15 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  mapInstrumentToAssetClass,
   buildFundamentalInputFromPositionIntel,
   buildFundamentalRegime,
   buildAssetFundamentalContext,
-  assessTechnicalFundamentalAlignment,
   type FundamentalRegimeInput,
-  type AssetClass,
-  type EvidenceDirection,
 } from "./fundamental-regime";
 import {
-  buildAssetCausalContext,
   buildCausalTransmissions,
-  buildFundamentalCausalResult,
 } from "./fundamental-transmission";
-import { classifyNewsRelevance, type NewsItem, type NewsRelevance } from "./news-intelligence";
+import { classifyNewsRelevance, type NewsItem } from "./news-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
@@ -45,19 +39,19 @@ import { classifyNewsRelevance, type NewsItem, type NewsRelevance } from "./news
 
 const now = Date.now();
 
-function makeNewsItem(headline: string, category: string = "OTHER", instruments: string[] = []): NewsItem {
+function makeNewsItem(headline: string, category: NewsItem["category"] = "OTHER", instruments: string[] = []): NewsItem {
   return {
     id: `n-${Date.now()}-${Math.random()}`,
     headline,
     timestamp: now,
     source: "Test",
     relatedInstruments: instruments,
-    assetClass: "macro" as any,
-    category: category as any,
-    sentiment: "NEUTRAL" as any,
-    impactStrength: "MODERATE" as any,
-    freshness: "FRESH" as any,
-    sourceMode: "LIVE" as any,
+    assetClass: "macro",
+    category: category,
+    sentiment: "NEUTRAL",
+    impactStrength: "MODERATE",
+    freshness: "FRESH",
+    sourceMode: "LIVE",
   };
 }
 
@@ -463,7 +457,7 @@ describe("H. VIX regression — backward compatibility", () => {
 
 describe("I. NewsRelevance integration", () => {
   it("newsRelevance passed through to FundamentalRegimeInput", () => {
-    const news = makeNewsItem("Fed signals rate cuts", "MONETARY_POLICY", ["BTCUSD"]);
+    const news = makeNewsItem("Fed signals rate cuts", "CENTRAL_BANK", ["BTCUSD"]);
     const relevance = classifyNewsRelevance(news, "BTCUSD", "LONG");
     const input = buildFundamentalInputFromPositionIntel(
       { instrument: "BTCUSD", assetClass: "crypto" },
@@ -496,19 +490,19 @@ describe("I. NewsRelevance integration", () => {
 
 describe("J. Asset-specific news relevance", () => {
   it("gold-related news is relevant to XAUUSD", () => {
-    const news = makeNewsItem("Gold prices surge on safe-haven demand", "COMMODITY_FUNDAMENTAL", ["XAU/USD"]);
+    const news = makeNewsItem("Gold prices surge on safe-haven demand", "COMMODITY", ["XAU/USD"]);
     const rel = classifyNewsRelevance(news, "XAUUSD", "LONG");
     expect(rel.relevance).not.toBe("NONE");
   });
 
   it("crypto news is relevant to BTCUSD", () => {
-    const news = makeNewsItem("Bitcoin ETF approval expected", "CRYPTO_FUNDAMENTAL", ["BTC/USD"]);
+    const news = makeNewsItem("Bitcoin ETF approval expected", "CRYPTO_SPECIFIC", ["BTC/USD"]);
     const rel = classifyNewsRelevance(news, "BTCUSD", "LONG");
     expect(rel.relevance).not.toBe("NONE");
   });
 
   it("macro rate news is relevant to crypto", () => {
-    const news = makeNewsItem("Fed signals rate cuts ahead", "MONETARY_POLICY", []);
+    const news = makeNewsItem("Fed signals rate cuts ahead", "CENTRAL_BANK", []);
     const rel = classifyNewsRelevance(news, "BTCUSD", "LONG");
     expect(rel.relevance).not.toBe("NONE");
   });

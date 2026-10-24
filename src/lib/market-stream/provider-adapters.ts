@@ -8,7 +8,7 @@
  * Pure functions and data — no side effects.
  */
 
-import type { StreamConfig, StreamStatus, ProviderHealth } from "./types";
+import type { StreamConfig } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
 // PROVIDER CAPABILITY REGISTRY

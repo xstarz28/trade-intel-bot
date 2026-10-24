@@ -17,11 +17,8 @@
 import { describe, it, expect } from "vitest";
 import {
   buildFundamentalRegime,
-  buildFundamentalInputFromPositionIntel,
   buildAssetFundamentalContext,
   type FundamentalRegimeInput,
-  type InflationObservation,
-  type PolicyRateObservation,
 } from "./fundamental-regime";
 import type { TreasuryData, TreasuryContext } from "../../lib/data/treasury";
 

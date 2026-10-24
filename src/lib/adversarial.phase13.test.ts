@@ -12,14 +12,12 @@ import {
   assemble,
   buildMtf,
   BULL_LEVELS,
-  BEAR_LEVELS,
   macro,
   sentiment,
   treasury,
   cot,
   execution,
 } from "./benchmark-fixtures.phase9";
-import type { AnalysisInput } from "@/types/analysis";
 
 const run = (spec: Parameters<typeof assemble>[0] = {}) =>
   runAnalysis({ ...assemble(spec), ...spec } as never);

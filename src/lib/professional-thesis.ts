@@ -20,7 +20,6 @@
  */
 
 import type { AnalysisResult } from "@/types/analysis";
-import type { EvidenceItem } from "@/lib/analyst-thesis";
 import { buildMarketRegime, type MarketRegimeContext } from "@/lib/market-regime";
 import { buildFundamentalThesis, type FundamentalThesis } from "@/lib/fundamental-thesis";
 import type { MarketScenarioContext } from "@/lib/market-scenario";

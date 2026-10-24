@@ -205,9 +205,8 @@ describe("associateInvestorIntelligence — thesis vs protection separation", ()
 
   it("preserves thesis defaults when no alert exists", () => {
     const pos = makePosition({ positionId: "pos-a" });
-    const { alert, ...rest } = pos;
     const rows = associateInvestorIntelligence(
-      [{ ...rest, alert: null } as MonitoredPositionState],
+      [{ ...pos, alert: null } as MonitoredPositionState],
       new Map(),
     );
     expect(rows[0].severity).toBe("NONE");
@@ -240,7 +239,7 @@ describe("classifyIntelAvailability", () => {
   });
 
   it("never promotes unknown/future data quality to AVAILABLE", () => {
-    const intel = makeIntel("BTC/USD", { dataQuality: "SOMETHING_NEW" as any });
+    const intel = makeIntel("BTC/USD", { dataQuality: "SOMETHING_NEW" });
     expect(classifyIntelAvailability(intel)).toBe("INSUFFICIENT");
   });
 

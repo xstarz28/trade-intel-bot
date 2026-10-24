@@ -615,12 +615,17 @@ export function computeVolumeProfile(candles: OhlcvCandle[]): VolumeProfileConte
   }
 
   const meanVol = totalVolume / rows.length;
+  // Select the strongest/weakest nodes by relative volume, not the first
+  // qualifying rows in ascending price order. Otherwise low-price nodes can
+  // crowd out more meaningful HVNs/LVNs simply because of their location.
   const hvn = rows
     .filter((row) => row.value >= 1.5 * meanVol)
+    .sort((a, b) => b.value - a.value || a.price - b.price)
     .slice(0, 5)
     .map((row) => row.price);
   const lvn = rows
     .filter((row) => row.value <= 0.35 * meanVol)
+    .sort((a, b) => a.value - b.value || a.price - b.price)
     .slice(0, 5)
     .map((row) => row.price);
 
@@ -728,7 +733,7 @@ export function computeSmcContext(
     tpoProfile: (() => {
       const profile = calculateTpoProfile(candles, { rows: VOLUME_PROFILE_BINS, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE });
       return profile.available
-        ? { available: true, poc: profile.poc, vah: profile.vah, val: profile.val, totalTpo: profile.total, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE }
+        ? { available: true, poc: profile.poc, vah: profile.vah, val: profile.val, totalTpo: profile.total, blockMinutes: profile.blockMinutes ?? 30, valueAreaPercent: VALUE_AREA_COVERAGE }
         : { available: false, unavailableReason: profile.reason, blockMinutes: 30, valueAreaPercent: VALUE_AREA_COVERAGE };
     })(),
   };

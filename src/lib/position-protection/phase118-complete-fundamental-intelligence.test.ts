@@ -20,15 +20,12 @@
 import { describe, it, expect } from "vitest";
 import {
   buildFundamentalRegime,
-  buildFundamentalInputFromPositionIntel,
   buildAssetFundamentalContext,
   type FundamentalRegimeInput,
   type InflationObservation,
-  type PolicyRateRegime,
 } from "./fundamental-regime";
 import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
 import type { EconomicEvent as CalendarEvent } from "../../lib/data/calendar-types";
-import type { EconomicCalendarData } from "../../lib/data/calendar-types";
 import type { TreasuryData, TreasuryContext } from "../../lib/data/treasury";
 
 // ═══════════════════════════════════════════════════════════════
@@ -50,18 +47,6 @@ function makeCalendarEvent(overrides: Partial<CalendarEvent> = {}): CalendarEven
     source: "tickatlas",
     status: "released",
     ...overrides,
-  };
-}
-
-function makeCalendarData(events: CalendarEvent[] = []): EconomicCalendarData {
-  return {
-    provider: "tickatlas",
-    events,
-    macroRisk: { level: "low", explanation: "test", highImpact24h: 0, highImpact72h: 0 },
-    timestamp: Date.now(),
-    freshness: events.length > 0 ? "recent" : "unavailable",
-    confidence: events.length > 0 ? "medium" : "unavailable",
-    availability: { upcoming24h: false, upcoming72h: false, recentReleased: events.length > 0 },
   };
 }
 

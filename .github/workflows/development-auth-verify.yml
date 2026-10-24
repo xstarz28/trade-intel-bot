@@ -1,42 +1,12 @@
-# Phase 315 — Google authentication configuration acceptance.
-#
-# WHY THIS EXISTS
-# ---------------
-# Phase 311 shipped the auth surface and its operator verifier
-# (`scripts/verify-google-auth-config.mjs`, npm script `auth:verify`). The
-# verifier classifies THIS environment's variables into exactly three honest
-# states — CONFIGURED / NOT_CONFIGURED / INVALID — and never prints a value.
-# Until now it had no runtime wiring: this workflow runs it against the
-# deployed development deployment's own environment from a networked runner,
-# through the same `development` environment the deploy uses.
-#
-# WHAT MAKES THE RESULT TRUSTWORTHY
-# ---------------------------------
-# · It reads the deployment's REAL variables (`npx convex env list` under the
-#   dev-scoped `CONVEX_DEPLOY_KEY`), filters to the four auth-relevant names,
-#   and exports them into the verifier's process — values are never echoed,
-#   logged, or uploaded. The JSON report carries state + missing NAMES only.
-# · Fail-closed: exit 1 (NOT_CONFIGURED) and exit 2 (INVALID) both fail the
-#   job with the exact missing/invalid variable names as the message. A missing
-#   credential is a named external dependency, never a simulated PASS.
-# · The verifier itself restates: configuration validity is not sign-in
-#   acceptance — a real browser sign-in remains a separate act (phase 311).
-#
-# CREDENTIALS: only `CONVEX_DEPLOY_KEY` (dev-scoped, the deploy key the deploy
-# workflow already uses). No Google secret is stored, read as a value, or
-# printed anywhere.
-
 name: Development auth verify
 
 on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Branch, tag or SHA to verify (defaults to the dispatched ref)"
+        description: "Branch, tag, or SHA containing the verifier (defaults to the dispatched ref)"
         required: false
         type: string
-  repository_dispatch:
-    types: [development-auth-verify-relay]
 
 permissions:
   contents: read
@@ -47,220 +17,97 @@ concurrency:
 
 jobs:
   auth-verify:
-    name: Classify the deployment's Google auth configuration
-    if: github.event_name == 'workflow_dispatch'
+    name: Verify development Google auth configuration (read-only)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: development
     env:
       CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
+      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
     steps:
-      - name: Check out the selected ref
+      - name: Check out the selected verifier source
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
 
-      - name: Recovery STEP 1 — effective configuration check (fingerprint + effective variables)
-        # Fresh-recovery gate: before ANY deploy, prove the three configuration
-        # surfaces are NEW and coherent. All three shown values are non-secret
-        # (the deploy URL is embedded in the public frontend build; the
-        # deployment name appears in every CLI banner). The key's secret half
-        # (after '|') is never printed. A stale value FAILS this step, so a
-        # deploy can never follow a stale configuration silently.
-        env:
-          EXPECTED_DEPLOYMENT: dev:xstarz-production:xstarz-analysis
-          EXPECTED_URL: https://calculating-eagle-241.convex.cloud
-          EXPECTED_FINGERPRINT: dev:calculating-eagle-241
-          EFFECTIVE_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
-          EFFECTIVE_URL: ${{ vars.VITE_CONVEX_URL }}
-        run: |
-          set -euo pipefail
-          FAIL=0
-          if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
-            echo "::notice title=deploy key fingerprint::${CONVEX_DEPLOY_KEY%%|*} (prefix only — secret after '|' never printed)"
-            if [ "${CONVEX_DEPLOY_KEY%%|*}" = "${EXPECTED_FINGERPRINT}" ]; then
-              echo "::notice title=fingerprint verdict::NEW — key targets calculating-eagle-241"
-            else
-              echo "::error title=fingerprint verdict::key targets '${CONVEX_DEPLOY_KEY%%|*}' — expected ${EXPECTED_FINGERPRINT}"
-              FAIL=1
-            fi
-          else
-            echo "::error title=fingerprint verdict::CONVEX_DEPLOY_KEY not present in this job"
-            FAIL=1
-          fi
-          echo "::notice title=effective CONVEX_DEPLOYMENT::'${EFFECTIVE_DEPLOYMENT:-<empty>}' (expected '${EXPECTED_DEPLOYMENT}')"
-          if [ "${EFFECTIVE_DEPLOYMENT:-}" = "${EXPECTED_DEPLOYMENT}" ]; then
-            echo "::notice title=CONVEX_DEPLOYMENT verdict::NEW"
-          else
-            echo "::error title=CONVEX_DEPLOYMENT verdict::stale or absent — set it to ${EXPECTED_DEPLOYMENT} in Environment development"
-            FAIL=1
-          fi
-          echo "::notice title=effective VITE_CONVEX_URL::'${EFFECTIVE_URL:-<empty>}' (expected '${EXPECTED_URL}')"
-          if [ "${EFFECTIVE_URL:-}" = "${EXPECTED_URL}" ]; then
-            echo "::notice title=VITE_CONVEX_URL verdict::NEW"
-          else
-            echo "::error title=VITE_CONVEX_URL verdict::stale or absent — set it to ${EXPECTED_URL} in Environment development"
-            FAIL=1
-          fi
-          exit "$FAIL"
-
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "22.23.4"
           cache: npm
 
-      - name: Install (the repository's own install mode)
-        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
 
-      - name: Read the deployment's auth variables and classify (values never printed)
-        env:
-          AUTH_VERIFY_REF: ${{ inputs.ref || github.ref }}
+      - name: Fail closed unless the configured target is the intended development deployment
+        shell: bash
         run: |
           set -euo pipefail
-          echo "verifying ref: ${AUTH_VERIFY_REF}"
-          # Pull the deployment's OWN variable list, keep only the four
-          # auth-relevant names, export them into the verifier's process.
-          # Values stay in the process environment — never echoed, never
-          # redirected to disk, never uploaded.
-          AUTH_VARS="$(npx convex env list 2>/dev/null | grep -E '^(AUTH_GOOGLE_ID|AUTH_GOOGLE_SECRET|CONVEX_SITE_URL|SITE_URL)=' || true)"
+          if [ -z "${CONVEX_DEPLOY_KEY:-}" ]; then
+            echo "::error::CONVEX_DEPLOY_KEY is absent from the development environment."
+            exit 1
+          fi
+          case "${CONVEX_DEPLOYMENT:-}" in
+            dev:*) ;;
+            *) echo "::error::CONVEX_DEPLOYMENT must identify a dev deployment; refusing to inspect or mutate another environment."; exit 1 ;;
+          esac
+          if ! printf '%s' "${VITE_CONVEX_URL:-}" | grep -Eq '^https://[a-z0-9][a-z0-9-]*\.convex\.cloud$'; then
+            echo "::error::VITE_CONVEX_URL must be an HTTPS *.convex.cloud origin."
+            exit 1
+          fi
+          host="${VITE_CONVEX_URL#https://}"
+          slug="${host%.convex.cloud}"
+          case "$slug" in
+            tough-goose-455|pleasant-curlew-264|calculating-eagle-241)
+              echo "::error::The configured Convex host is retired; refusing to verify Google auth against it."
+              exit 1
+              ;;
+          esac
+          expected_fingerprint="dev:$slug"
+          actual_fingerprint="${CONVEX_DEPLOY_KEY%%|*}"
+          if [ "$actual_fingerprint" != "$expected_fingerprint" ]; then
+            echo "::error::Deploy-key target does not match the configured development host (expected $expected_fingerprint, found $actual_fingerprint)."
+            exit 1
+          fi
+          echo "Development deployment identity checks passed for host $slug; no credential values were printed."
+
+      - name: Read auth variables from the selected deployment without logging values
+        shell: bash
+        run: |
+          set -euo pipefail
+          env_file="$RUNNER_TEMP/convex-env-list.txt"
+          if ! npx convex env list > "$env_file" 2> "$RUNNER_TEMP/convex-env-list.err"; then
+            echo "::error::Could not read the selected development deployment's environment; raw CLI output is suppressed."
+            exit 1
+          fi
           while IFS= read -r line; do
-            [ -z "${line}" ] && continue
-            export "${line%%=*}=${line#*=}"
-          done <<< "${AUTH_VARS}"
+            case "$line" in
+              AUTH_GOOGLE_ID=*|AUTH_GOOGLE_SECRET=*|SITE_URL=*|CONVEX_SITE_URL=*)
+                export "$line"
+                ;;
+            esac
+          done < <(grep -E '^(AUTH_GOOGLE_ID|AUTH_GOOGLE_SECRET|SITE_URL|CONVEX_SITE_URL)=' "$env_file" || true)
+
+          # Convex supplies CONVEX_SITE_URL as a system value; it may not appear
+          # in env list. Derive its host only from the already-verified backend.
+          if [ -z "${CONVEX_SITE_URL:-}" ]; then
+            export CONVEX_SITE_URL="${VITE_CONVEX_URL%.convex.cloud}.convex.site"
+            echo "::notice::CONVEX_SITE_URL is system-derived from the verified backend host."
+          fi
+
           set +e
           node scripts/verify-google-auth-config.mjs --json | tee auth-verify.json
-          STATUS="${PIPESTATUS[0]}"
+          status="${PIPESTATUS[0]}"
           set -e
-          STATE="$(jq -r '.state' auth-verify.json)"
-          MISSING="$(jq -r 'if (.missing | length) > 0 then (.missing | join(",")) else "none" end' auth-verify.json)"
-          INVALID="$(jq -r 'if (.invalid | length) > 0 then (.invalid | join("; ")) else "none" end' auth-verify.json)"
-          CALLBACK="$(jq -r '.callbackUrl // "none"' auth-verify.json)"
-          LEVEL="notice"
-          [ "${STATE}" = "GOOGLE_AUTH_NOT_CONFIGURED" ] && LEVEL="warning"
-          [ "${STATE}" = "GOOGLE_AUTH_INVALID" ] && LEVEL="error"
-          echo "::${LEVEL} title=Google auth ${STATE}::state=${STATE} · missing=${MISSING} · invalid=${INVALID} · callback=${CALLBACK} · config-validity only, a real browser sign-in is a separate acceptance act"
-          echo "auth state: ${STATE} (missing: ${MISSING})"
-          exit "${STATUS}"
-
-      - name: Anonymous runtime sign-in — capture the exact underlying error
-        # Launch-activation diagnostic: the smoke harness sanitizes the sign-in
-        # error, so the exact runtime failure was unreadable. This runs ONE
-        # real anonymous sign-in against the deployment (exactly what every
-        # smoke run does) and re-emits the verifier's own output as
-        # annotations. Does not change the job's conclusion.
-        if: always()
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: |
-          set +e
-          npx convex run auth:signIn '{"provider":"anonymous"}' > /tmp/signin-before.txt 2>&1
-          RC=$?
-          set -e
-          if [ "$RC" -eq 0 ]; then
-            echo "::notice title=anonymous sign-in::PASS before any remediation (a real session was created)"
-          else
-            tail -4 /tmp/signin-before.txt | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error title=auth:signIn failed::${line:0:600}"
-            done
+          state="$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync("auth-verify.json","utf8")).state)')"
+          echo "::notice title=Google auth configuration state::$state"
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Google auth configuration is not accepted; inspect only the missing/invalid variable names in the report."
+            exit "$status"
           fi
 
-      - name: Bounded retention sweep (the Phase-320 documented CLI lifecycle)
-        # The retention sweep is the deployment's designed, delete-only,
-        # idempotent storage-recovery lifecycle ("2026-10-12 cron or owner
-        # CLI"). If the deployment is over its plan's storage limit, data-plane
-        # writes (which anonymous sign-in performs) can be refused while
-        # control-plane pushes still succeed — exactly the observed split.
-        # Draining the legacy staging rows IS the documented remedy. Bounded
-        # to 6 invocations; stops immediately on the first error.
-        if: always()
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: |
-          for i in 1 2 3 4 5 6; do
-            OUT="$(npx convex run discoveryRetention:runBoundedCleanupSweep '{}' 2>&1 | tail -2)"
-            echo "::notice title=retention sweep ${i}/6::$(printf '%s' "$OUT" | tr '\r\n' '  ' | head -c 500)"
-            RC=$?
-            if [ "$RC" -ne 0 ] || printf '%s' "$OUT" | grep -qi "error"; then
-              echo "::error title=retention sweep stopped at iteration ${i}::$(printf '%s' "$OUT" | tr '\r\n' '  ' | head -c 500)"
-              break
-            fi
-          done
-
-      - name: Anonymous runtime sign-in — recheck after the sweep
-        if: always()
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: |
-          set +e
-          npx convex run auth:signIn '{"provider":"anonymous"}' > /tmp/signin-after.txt 2>&1
-          RC=$?
-          set -e
-          if [ "$RC" -eq 0 ]; then
-            echo "::notice title=anonymous sign-in AFTER sweep::PASS (guest sessions are writable again — full smoke matrix may proceed)"
-          else
-            tail -4 /tmp/signin-after.txt | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error title=auth:signIn still failing::${line:0:600}"
-            done
-          fi
-
-      - name: Fresh deployment access check (calculating-eagle-241)
-        # Owner created a fresh project/deployment for the recovery. This step
-        # proves, without printing any secret: (a) whether both deployment
-        # hosts answer their public instance endpoint, (b) WHICH deployment
-        # the workflow's deploy key targets — discriminated by the runtime
-        # error text alone (old deployment says "free plan limits"; a fresh
-        # undeployed one says the function does not exist) — and (c) whether
-        # the fresh host accepts a PUBLIC anonymous sign-in (exactly the API
-        # the app uses). Session tokens are never printed.
-        if: always()
-        env:
-          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-        run: |
-          probe() { curl -s --max-time 20 "$1" | head -c 120; }
-          echo "::notice title=old deployment instance::$(probe https://tough-goose-455.convex.cloud/instance_name)"
-          echo "::notice title=new deployment instance::$(probe https://calculating-eagle-241.convex.cloud/instance_name)"
-          # Non-secret fingerprint: a deploy key is "<type>:<deploymentName>|<secret>".
-          # Printing ONLY the part before "|" names the deployment the saved key
-          # targets and never exposes the secret itself.
-          echo "::notice title=diagnostic ref::dispatch-ref=${{ inputs.ref || github.ref }} head-sha=${GITHUB_SHA::12}"
-          echo "::notice title=diagnostic workflow file sha::$(git hash-object .github/workflows/development-auth-verify.yml)"
-          echo "::notice title=diagnostic job environment::${GITHUB_ENVIRONMENT:-<none attached>}"
-          if [ -n "${CONVEX_DEPLOY_KEY:-}" ]; then
-            echo "::notice title=installed deploy key identifies::${CONVEX_DEPLOY_KEY%%|*} (prefix only — the secret after '|' is never printed)"
-          else
-            echo "::error title=deploy key::CONVEX_DEPLOY_KEY is NOT PRESENT in this job (empty secret)"
-          fi
-          set +e
-          npx convex run auth:signIn '{"provider":"anonymous"}' > /tmp/keytarget.txt 2>&1
-          RC=$?
-          set -e
-          if [ "$RC" -eq 0 ]; then
-            echo "::notice title=key-targeted sign-in::PASS (the deploy key's deployment executes data-plane functions)"
-          elif grep -qi "free plan limits" /tmp/keytarget.txt; then
-            echo "::error title=key targets the OLD deployment::deploy key still resolves to tough-goose-455 (free-plan refused) — update the CONVEX_DEPLOY_KEY secret to the new deployment's dev key"
-          elif grep -qiE "function (not found|does not exist)|Could not find public function|no function" /tmp/keytarget.txt; then
-            echo "::notice title=key targets the NEW deployment::function set not deployed yet — push the backend, then re-run this check"
-          else
-            tail -3 /tmp/keytarget.txt | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error title=key-targeted sign-in (unexpected)::${line:0:600}"
-            done
-          fi
-          set +e
-          RESP="$(curl -s --max-time 25 -X POST https://calculating-eagle-241.convex.cloud/api/mutation -H 'Content-Type: application/json' -d '{"path":"auth:signIn","args":{"provider":"anonymous"},"format":"json"}')"
-          RC=$?
-          set -e
-          if [ "$RC" -ne 0 ]; then
-            echo "::error title=new-host public sign-in::curl transport error"
-          elif printf '%s' "$RESP" | grep -q '"status":"success"'; then
-            echo "::notice title=new-host public sign-in::SUCCESS — a real anonymous session was created via the public API (token not printed)"
-          else
-            printf '%s' "$RESP" | head -c 400 | while IFS= read -r line; do
-              [ -n "$line" ] && echo "::error title=new-host public sign-in failed::${line:0:600}"
-            done
-          fi
-
-      - name: Upload the (non-secret) verdict
+      - name: Upload the non-secret configuration verdict
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -269,8 +116,8 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: This job does not admit a release
+      - name: State the acceptance boundary
         if: always()
         run: |
-          echo "A CONFIGURED state proves the deployment's variables are present and plausible."
-          echo "It does not prove a sign-in worked, and it is not release admission."
+          echo "CONFIGURED means required variables are present and structurally plausible."
+          echo "This read-only workflow does not create guest sessions, run cleanup, deploy code, or prove browser Google sign-in."

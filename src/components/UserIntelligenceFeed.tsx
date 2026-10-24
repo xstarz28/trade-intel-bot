@@ -12,10 +12,6 @@ import { mapTrendLabel, mapFreshness, mapAvailability, mapSide, mapPositionImpac
 import {
   Newspaper,
   Zap,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  ExternalLink,
 } from "lucide-react";
 import type {
   UserIntelligenceFeed as FeedType,

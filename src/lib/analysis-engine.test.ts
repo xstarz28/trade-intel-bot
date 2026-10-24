@@ -196,6 +196,28 @@ describe("scoreIndicators (via breakdown)", () => {
     expect(result.bias).toBe("Neutral");
   });
 
+  it("does not assign a directional profile vote when VPVR is above value but TPO is inside value", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "100",
+      technicalData: {
+        rsi14: 50,
+        macdHistogram: 0,
+        swingHighs: [],
+        swingLows: [],
+        structure: "range",
+        supportLevels: [],
+        resistanceLevels: [],
+        volumeTrend: "unknown",
+        dataPoints: 60,
+        smc: {
+          volumeProfile: { available: true, vah: 95, val: 90, poc: 92 },
+          tpoProfile: { available: true, vah: 110, val: 90, poc: 100 },
+        } as unknown as NonNullable<NonNullable<AnalysisInput["technicalData"]>["smc"]>,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(0);
+  });
+
   it("scores 0 with empty context", () => {
     const result = runAnalysis(baseInput());
     expect(result.breakdown.indicator).toBe(0);
@@ -762,11 +784,11 @@ describe("dataCompleteness", () => {
 
   it("does not crash for malformed optional provider payloads", () => {
     expect(() => runAnalysis(baseInput({
-      derivativesData: { confidence: "medium" } as any,
+      derivativesData: { confidence: "medium" } as unknown as AnalysisInput["derivativesData"],
       marketData: {
         instrument: "EUR/USD", instrumentType: "forex", provider: "test", fetchTimestamp: Date.now(),
         price: undefined, candles: [], timeframe: "D1", dataFreshness: "unavailable",
-      } as any,
+      } as unknown as AnalysisInput["marketData"],
     }))).not.toThrow();
   });
 
@@ -956,5 +978,52 @@ describe("confidence", () => {
     const neutral = runAnalysis(baseInput());
     expect(neutral.confidence).toBeGreaterThanOrEqual(20);
     expect(neutral.confidence).toBeLessThanOrEqual(95);
+  });
+});
+
+
+describe("technical-only confluence", () => {
+  it("allows strong aligned indicators to confirm an already directional structure without creating the bias", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "1.2",
+      technicalData: {
+        swingHighs: [1.15, 1.18],
+        swingLows: [1.05, 1.1],
+        structure: "HH/HL",
+        bosDirection: "bullish",
+        supportLevels: [1.05, 1.1],
+        resistanceLevels: [1.15, 1.18],
+        volumeTrend: "unknown",
+        dataPoints: 100,
+        rsi14: 25,
+        macdHistogram: 0.02,
+        sma50: 1.1,
+        sma100: 1.0,
+      },
+    }));
+
+    expect(result.bias).toBe("Bullish");
+    expect(result.noTradeReasons.some((reason) => reason.includes("Confluence too weak"))).toBe(false);
+  });
+
+  it("does not let indicators create direction when external structure is unavailable", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "1.2",
+      technicalData: {
+        swingHighs: [],
+        swingLows: [],
+        structure: "range",
+        supportLevels: [],
+        resistanceLevels: [],
+        volumeTrend: "unknown",
+        dataPoints: 100,
+        rsi14: 25,
+        macdHistogram: 0.02,
+        sma50: 1.1,
+        sma100: 1.0,
+      },
+    }));
+
+    expect(result.bias).toBe("Neutral");
   });
 });

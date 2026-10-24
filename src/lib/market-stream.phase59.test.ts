@@ -13,8 +13,6 @@ import { describe, it, expect } from "vitest";
 import {
   DEFAULT_STREAM_CONFIG,
   type StreamEvent,
-  type StreamHealthState,
-  type ReconciliationResult,
   type SymbolMapping,
   type RegisteredPosition,
 } from "./market-stream/types";
@@ -92,7 +90,6 @@ import {
   detectGivebackAcceleration,
   detectVolatilityAcceleration,
   calculateAcceleration,
-  type AccelerationResult,
 } from "./position-protection/acceleration-monitor";
 
 // ═══════════════════════════════════════════════════════════════

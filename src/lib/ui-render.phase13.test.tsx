@@ -8,8 +8,7 @@
  */
 import { describe, it, expect } from "vitest";
 import * as RTL from "@testing-library/react";
-const { render } = RTL;
-const screen = (RTL as any).screen;
+const { render, screen } = RTL;
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { runAnalysis } from "./analysis-engine";
 import {
@@ -20,7 +19,7 @@ import {
   execution,
   macro,
 } from "./benchmark-fixtures.phase9";
-import type { AnalysisInput } from "@/types/analysis";
+
 
 type RunSpec = Parameters<typeof assemble>[0] & Record<string, unknown>;
 const run = (spec: RunSpec = {}) =>

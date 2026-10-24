@@ -109,15 +109,15 @@ function makeBullishResultWithCryptoIntel(): AnalysisResult {
     ...makeAnalysisResult(),
     cryptoIntelligenceContext: makeCryptoContext(),
     marketRegimeContext: {
-      regime: "TREND_DEVELOPING" as any,
+      regime: "TREND_DEVELOPING" as NonNullable<AnalysisResult["marketRegimeContext"]>["regime"],
       marketPhase: "EARLY_TREND",
       currentDirection: "bullish",
       continuationQuality: "STRONG",
       exhaustionSignals: [],
       trendTransition: {
         currentTrend: "bullish",
-        transitionType: "CONTINUATION" as any,
-        confidenceLevel: "developing" as any,
+        transitionType: "CONTINUATION" as NonNullable<NonNullable<AnalysisResult["marketRegimeContext"]>["trendTransition"]>["transitionType"],
+        confidenceLevel: "developing" as NonNullable<NonNullable<AnalysisResult["marketRegimeContext"]>["trendTransition"]>["confidenceLevel"],
         evidence: [],
         confirmationConditions: [],
         invalidationConditions: [],
@@ -458,7 +458,7 @@ describe("Phase 42 — Instrument Isolation", () => {
 
   for (const [inst, type] of nonCryptoInstruments) {
     it(`${inst} (${type}): no crypto intelligence`, () => {
-      const result = makeAnalysisResult({ instrument: inst, instrumentType: type as any });
+      const result = makeAnalysisResult({ instrument: inst, instrumentType: type as AnalysisResult["instrumentType"] });
       const thesis = buildLongHorizonThesis(result);
       // No crypto-specific evidence
       const hasCrypto = thesis.supportingEvidence.concat(thesis.conflictingEvidence).some(

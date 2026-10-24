@@ -17,8 +17,8 @@ import type {
   MonitoringState,
   ProfitProtectionUrgency,
   WhyTpNowExplanation,
+  ThesisHealthState,
 } from "./types";
-import { alertSeverityRank } from "./types";
 import { calculateProfitMetrics } from "./profit-state";
 import {
   evaluateThesisHealth,
@@ -33,6 +33,20 @@ import {
   updateMonitoringState,
   deduplicateByDependencyGroup,
 } from "./alert-lifecycle";
+
+function normalizeThesisHealthState(value: string): ThesisHealthState {
+  switch (value) {
+    case "HEALTHY":
+    case "STABLE":
+    case "DETERIORATING":
+    case "SEVERELY_DETERIORATING":
+    case "INVALIDATED":
+    case "UNKNOWN":
+      return value;
+    default:
+      return "UNKNOWN";
+  }
+}
 
 // ═══════════════════════════════════════════════════════════════
 // ALERT SEVERITY DETERMINATION
@@ -132,7 +146,6 @@ function determineUrgency(
   shock: ShockAssessment,
   givebackPct?: number,
 ): { urgency: ProfitProtectionUrgency; reason: string } {
-  const isProfitable = profit.profitState === "PROFITABLE" || profit.profitState === "STRONGLY_PROFITABLE";
 
   if (severity === "INVALIDATED") {
     return { urgency: "CRITICAL", reason: "Thesis invalidated — key conditions supporting the position are no longer present." };
@@ -203,6 +216,9 @@ function buildWhyTpNow(
   if (shock.state === "SHOCK") {
     confirmations.push(`Market shock detected — ${shock.description}`);
   }
+  if (givebackPct !== undefined && Number.isFinite(givebackPct) && givebackPct > 30) {
+    confirmations.push(`Profit giveback reached ${givebackPct.toFixed(0)}% of peak unrealized profit.`);
+  }
 
   // Still supporting
   const stillSupporting = supportingEvidence.slice(0, 5);
@@ -256,8 +272,6 @@ function buildAlertMessage(
   severity: AlertSeverity,
   thesisHealth: { state: string; score: number; deteriorationCount: number },
   profit: ProfitMetrics,
-  shock: ShockAssessment,
-  supportingCount: number,
 ): string {
   switch (severity) {
     case "NONE":
@@ -381,14 +395,14 @@ export function evaluateProtection(input: ProtectionEngineInput): ProtectionEngi
     urgency,
     urgencyReason,
     whyTpNow,
-    thesisHealth: thesisHealth.state as any,
+    thesisHealth: normalizeThesisHealthState(thesisHealth.state),
     thesisHealthScore: thesisHealth.score,
     profit,
     shock,
     supportingEvidence,
     conflictingEvidence,
     missingData,
-    alertMessage: buildAlertMessage(severity, thesisHealth, profit, shock, supportingEvidence.length),
+    alertMessage: buildAlertMessage(severity, thesisHealth, profit),
     actionRecommendation: determineAction(severity, profit),
     protectionReference: protectionRef.available ? protectionRef.level : undefined,
     deteriorationSignals: deduplicated,

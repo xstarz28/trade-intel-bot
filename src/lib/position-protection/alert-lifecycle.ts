@@ -6,7 +6,7 @@
  */
 
 import type { AlertSeverity, AlertLifecycleState, AlertLifecycleEntry, MonitoringState } from "./types";
-import { ALERT_SEVERITY_ORDER, alertSeverityRank } from "./types";
+import { alertSeverityRank } from "./types";
 
 // ═══════════════════════════════════════════════════════════════
 // COOLDOWN PERIODS (ms)
@@ -128,14 +128,14 @@ export function updateMonitoringState(
 // DEDUPLICATE DEPENDENCY GROUPS
 // ═══════════════════════════════════════════════════════════════
 
-export function deduplicateByDependencyGroup<T extends { dependencyGroup: string }>(
+export function deduplicateByDependencyGroup<T extends { dependencyGroup: string; severity: number }>(
   signals: T[],
 ): T[] {
   const seen = new Map<string, T>();
   for (const sig of signals) {
     const existing = seen.get(sig.dependencyGroup);
     // Keep the higher-severity one
-    if (!existing || (sig as any).severity > (existing as any).severity) {
+    if (!existing || sig.severity > existing.severity) {
       seen.set(sig.dependencyGroup, sig);
     }
   }

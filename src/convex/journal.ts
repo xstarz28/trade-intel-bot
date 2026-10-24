@@ -6,27 +6,22 @@
  * Never trust client-provided ownership fields.
  */
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 
 /** Resolve user from auth identity. */
-async function resolveUser(ctx: {
-  auth: { getUserIdentity: () => Promise<{ email?: string; subject: string } | null> };
-  db: any;
-}) {
+async function resolveUser(ctx: QueryCtx | MutationCtx) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
   if (identity.email) {
     const byEmail = await ctx.db
       .query("users")
-      .withIndex("email", (q: any) => q.eq("email", identity.email))
+      .withIndex("email", (q) => q.eq("email", identity.email))
       .unique();
     if (byEmail) return byEmail;
   }
-  try {
-    return await ctx.db.get(identity.subject);
-  } catch {
-    return null;
-  }
+  const userId = ctx.db.normalizeId("users", identity.subject) as import("./_generated/dataModel").Id<"users"> | null;
+  if (!userId) return null;
+  return await ctx.db.get(userId);
 }
 
 // ── Create ───────────────────────────────────────────────────────
@@ -137,18 +132,19 @@ export const transition = mutation({
     }
 
     const now = Date.now();
-    const update: Record<string, any> = {
+    const update = {
       status: args.newStatus,
       "timestamps.updatedAt": now,
+      ...(args.newStatus === "CLOSED"
+        ? {
+            closedAt: now,
+            ...(args.exitPrice !== undefined ? { exitPrice: args.exitPrice } : {}),
+            ...(args.pnl !== undefined ? { pnl: args.pnl } : {}),
+            ...(args.pnlPercent !== undefined ? { pnlPercent: args.pnlPercent } : {}),
+            ...(args.outcome !== undefined ? { outcome: args.outcome } : {}),
+          }
+        : {}),
     };
-
-    if (args.newStatus === "CLOSED") {
-      update.closedAt = now;
-      if (args.exitPrice !== undefined) update.exitPrice = args.exitPrice;
-      if (args.pnl !== undefined) update.pnl = args.pnl;
-      if (args.pnlPercent !== undefined) update.pnlPercent = args.pnlPercent;
-      if (args.outcome !== undefined) update.outcome = args.outcome;
-    }
 
     await ctx.db.patch(args.journalId, update);
     return args.journalId;
@@ -183,15 +179,23 @@ export const updateFields = mutation({
     if (!entry) throw new Error("Journal entry not found");
     if (entry.userId !== user._id) throw new Error("Not authorized");
 
-    const update: Record<string, any> = {
+    const update = {
       "timestamps.updatedAt": Date.now(),
+      ...(args.entry !== undefined ? { entry: args.entry } : {}),
+      ...(args.stopLoss !== undefined ? { stopLoss: args.stopLoss } : {}),
+      ...(args.takeProfit !== undefined ? { takeProfit: args.takeProfit } : {}),
+      ...(args.riskReward !== undefined ? { riskReward: args.riskReward } : {}),
+      ...(args.positionSize !== undefined ? { positionSize: args.positionSize } : {}),
+      ...(args.notionalValue !== undefined ? { notionalValue: args.notionalValue } : {}),
+      ...(args.entryReason !== undefined ? { entryReason: args.entryReason } : {}),
+      ...(args.thesisAtEntry !== undefined ? { thesisAtEntry: args.thesisAtEntry } : {}),
+      ...(args.confirmationObserved !== undefined ? { confirmationObserved: args.confirmationObserved } : {}),
+      ...(args.invalidationObserved !== undefined ? { invalidationObserved: args.invalidationObserved } : {}),
+      ...(args.whatWentRight !== undefined ? { whatWentRight: args.whatWentRight } : {}),
+      ...(args.whatWentWrong !== undefined ? { whatWentWrong: args.whatWentWrong } : {}),
+      ...(args.lessons !== undefined ? { lessons: args.lessons } : {}),
+      ...(args.notes !== undefined ? { notes: args.notes } : {}),
     };
-
-    // Only include defined fields
-    for (const [key, val] of Object.entries(args)) {
-      if (key === "journalId") continue;
-      if (val !== undefined) update[key] = val;
-    }
 
     await ctx.db.patch(args.journalId, update);
     return args.journalId;
@@ -224,7 +228,7 @@ export const list = query({
 
     return await ctx.db
       .query("journal")
-      .withIndex("by_user_journal", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user_journal", (q) => q.eq("userId", user._id))
       .order("desc")
       .take(100);
   },
@@ -238,7 +242,7 @@ export const getByInstrument = query({
 
     return await ctx.db
       .query("journal")
-      .withIndex("by_instrument", (q: any) =>
+      .withIndex("by_instrument", (q) =>
         q.eq("userId", user._id).eq("instrument", args.instrument)
       )
       .order("desc")
@@ -254,7 +258,7 @@ export const getByStatus = query({
 
     return await ctx.db
       .query("journal")
-      .withIndex("by_status", (q: any) =>
+      .withIndex("by_status", (q) =>
         q.eq("userId", user._id).eq("status", args.status)
       )
       .order("desc")

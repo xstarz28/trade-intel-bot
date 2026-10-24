@@ -83,6 +83,11 @@ export interface AnalysisInput {
   instrument: string;
   instrumentType: InstrumentType;
   timeframe: Timeframe;
+  /**
+   * Historical mode is restricted to past-only backtests. Live analysis remains
+   * the default and continues to enforce wall-clock price freshness.
+   */
+  dataMode?: "live" | "historical";
   // Optional user-supplied data (fallback when auto-fetch is unavailable)
   currentPrice?: string;
   recentHigh?: string;

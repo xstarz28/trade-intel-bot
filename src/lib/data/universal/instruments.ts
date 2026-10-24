@@ -14,8 +14,6 @@ import type {
   AssetClass,
   CanonicalInstrument,
   Exchange,
-  InstrumentSubType,
-  ProviderSymbolMapping,
   Region,
 } from "./types";
 

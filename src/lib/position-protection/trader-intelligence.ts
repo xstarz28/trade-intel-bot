@@ -139,7 +139,11 @@ export function generatePositionThesis(
       direction: aligned ? "SUPPORTING" : "CONFLICTING",
       strength: "STRONG",
     };
-    aligned ? supporting.push(item) : conflicting.push(item);
+    if (aligned) {
+      supporting.push(item);
+    } else {
+      conflicting.push(item);
+    }
   }
 
   // M15 trend
@@ -152,7 +156,11 @@ export function generatePositionThesis(
       direction: aligned ? "SUPPORTING" : opposing ? "CONFLICTING" : "SUPPORTING",
       strength: "MODERATE",
     };
-    aligned ? supporting.push(item) : conflicting.push(item);
+    if (aligned) {
+      supporting.push(item);
+    } else {
+      conflicting.push(item);
+    }
   }
 
   // M5 momentum
@@ -362,7 +370,7 @@ export function buildTimelineEntry(
   changes: ChangeDetection,
   confluence: MTFConfluence,
 ): TimelineEntry | null {
-  if (!changes.changed || changes.changes.length === 0) return null;
+  if (!changes.changed || changes.changes.length === 0 || confluence.regime === "INSUFFICIENT_DATA") return null;
 
   return {
     timestamp: Date.now(),
@@ -561,7 +569,6 @@ function buildRegimeNarrative(
 ): string {
   const h1Trend = h1?.trend ?? "UNKNOWN";
   const m15Trend = m15?.trend ?? "UNKNOWN";
-  const m5Trend = m5?.trend ?? "UNKNOWN";
 
   switch (regime) {
     case "TRENDING_UP":

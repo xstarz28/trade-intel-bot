@@ -11,7 +11,6 @@ import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import {
   evaluateAlertRuntimeBridge,
-  extractSnapshot,
   extractPortfolioSnapshot,
   buildInitialStateStore,
   removePositionFromState,
@@ -22,7 +21,6 @@ import {
 } from "./alert-runtime-bridge";
 import {
   generatePortfolioIntelligence,
-  type PortfolioIntelligence,
 } from "./portfolio-intelligence";
 import {
   buildNotification,
@@ -52,14 +50,14 @@ function makeIntel(overrides: Record<string, unknown> = {}): PositionIntelligenc
     mediumTermContext: "BULLISH",
     volatilityContext: "NORMAL",
     marketState: "BULLISH",
-    dataQuality: "AVAILABLE",
+    dataQuality: "SUFFICIENT",
     pnlPct: 8.33,
     severity: "NONE",
     actionRecommendation: "Hold and monitor.",
     evidence: [],
-    h1Analysis: { timeframe: "H1", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 60, volatility: "NORMAL", atrValue: 100, atrPct: 0.5, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 66000, lastSwingLow: 63000, swingCount: 5, priceVsMA: "ABOVE", dataQuality: "AVAILABLE", candleCount: 100 } as any,
-    m15Analysis: { timeframe: "M15", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 58, volatility: "NORMAL", atrValue: 50, atrPct: 0.3, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 65500, lastSwingLow: 63500, swingCount: 8, priceVsMA: "ABOVE", dataQuality: "AVAILABLE", candleCount: 200 } as any,
-    m5Analysis: { timeframe: "M5", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 55, volatility: "NORMAL", atrValue: 20, atrPct: 0.1, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 65200, lastSwingLow: 64800, swingCount: 12, priceVsMA: "ABOVE", dataQuality: "AVAILABLE", candleCount: 500 } as any,
+    h1Analysis: { timeframe: "H1", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 60, volatility: "NORMAL", atrValue: 100, atrPct: 0.5, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 66000, lastSwingLow: 63000, priceVsMA: "ABOVE", dataQuality: "SUFFICIENT", candleCount: 100 },
+    m15Analysis: { timeframe: "M15", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 58, volatility: "NORMAL", atrValue: 50, atrPct: 0.3, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 65500, lastSwingLow: 63500, priceVsMA: "ABOVE", dataQuality: "SUFFICIENT", candleCount: 200 },
+    m5Analysis: { timeframe: "M5", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 55, volatility: "NORMAL", atrValue: 20, atrPct: 0.1, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 65200, lastSwingLow: 64800, priceVsMA: "ABOVE", dataQuality: "SUFFICIENT", candleCount: 500 },
     invalidationConditions: [],
     nextMonitor: [],
   };
@@ -324,6 +322,7 @@ describe("Phase 97 — LONG → SHORT Lifecycle", () => {
       new Map(),
       5000,
     );
+    expect(r1).toHaveProperty("notifications");
 
     // SHORT position — same instrument, different side
     const shortIntel = makeIntel({ side: "SHORT" });
@@ -667,11 +666,11 @@ describe("Phase 97 — Stale Instrument State Cleanup", () => {
 
 describe("Phase 97 — Safety", () => {
   it("no execution language in any notification", () => {
-    const conditions = ["THESIS_STATE_CHANGED", "NEWS_BECAME_CONFLICTING", "PORTFOLIO_CONFLICT_DETECTED", "DATA_BECAME_UNAVAILABLE"];
+    const conditions: AlertRule["condition"][] = ["THESIS_STATE_CHANGED", "NEWS_BECAME_CONFLICTING", "PORTFOLIO_CONFLICT_DETECTED", "DATA_BECAME_UNAVAILABLE"];
     for (const condition of conditions) {
       const alert = {
         alertId: "a1", ruleId: "r1", ruleName: "R", userId: "u1",
-        instrument: "BTC/USDT", condition: condition as any,
+        instrument: "BTC/USDT", condition,
         severity: "HIGH" as const, description: "test description", timestamp: 1000, source: "CUSTOM_RULE" as const,
       };
       const notif = buildNotification(alert, "LONG", 2000);
@@ -684,11 +683,11 @@ describe("Phase 97 — Safety", () => {
   });
 
   it("no probability language in any notification", () => {
-    const conditions = ["THESIS_STATE_CHANGED", "REGIME_CHANGED", "NEWS_BECAME_SUPPORTING"];
+    const conditions: AlertRule["condition"][] = ["THESIS_STATE_CHANGED", "REGIME_CHANGED", "NEWS_BECAME_SUPPORTING"];
     for (const condition of conditions) {
       const alert = {
         alertId: "a1", ruleId: "r1", ruleName: "R", userId: "u1",
-        instrument: "BTC/USDT", condition: condition as any,
+        instrument: "BTC/USDT", condition,
         severity: "HIGH" as const, description: "test description", timestamp: 1000, source: "CUSTOM_RULE" as const,
       };
       const notif = buildNotification(alert, "LONG", 2000);

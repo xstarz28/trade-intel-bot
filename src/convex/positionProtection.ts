@@ -6,7 +6,7 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 
 const MAX_ALERT_HISTORY = 500;
 
@@ -16,22 +16,20 @@ const MAX_ALERT_HISTORY = 500;
 
 async function resolveUser(ctx: {
   auth: { getUserIdentity: () => Promise<{ email?: string; subject: string } | null> };
-  db: any;
+  db: QueryCtx["db"] | MutationCtx["db"];
 }) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
   if (identity.email) {
     const byEmail = await ctx.db
       .query("users")
-      .withIndex("email", (q: any) => q.eq("email", identity.email))
+      .withIndex("email", (q) => q.eq("email", identity.email))
       .unique();
     if (byEmail) return byEmail;
   }
-  try {
-    return await ctx.db.get(identity.subject);
-  } catch {
-    return null;
-  }
+  const userId = ctx.db.normalizeId("users", identity.subject) as import("./_generated/dataModel").Id<"users"> | null;
+  if (!userId) return null;
+  return await ctx.db.get(userId);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -66,7 +64,7 @@ export const savePosition = mutation({
     // Check if position already exists for this user
     const existing = await ctx.db
       .query("monitoredPositions")
-      .withIndex("by_user_position", (q: any) =>
+      .withIndex("by_user_position", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId)
       )
       .unique();
@@ -127,7 +125,7 @@ export const getPosition = query({
 
     return await ctx.db
       .query("monitoredPositions")
-      .withIndex("by_user_position", (q: any) =>
+      .withIndex("by_user_position", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId)
       )
       .unique();
@@ -143,7 +141,7 @@ export const listActivePositions = query({
 
     return await ctx.db
       .query("monitoredPositions")
-      .withIndex("by_user_lifecycle", (q: any) =>
+      .withIndex("by_user_lifecycle", (q) =>
         q.eq("userId", user._id).eq("monitoringLifecycle", "MONITORING")
       )
       .collect();
@@ -159,7 +157,7 @@ export const deletePosition = mutation({
 
     const existing = await ctx.db
       .query("monitoredPositions")
-      .withIndex("by_user_position", (q: any) =>
+      .withIndex("by_user_position", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId)
       )
       .unique();
@@ -208,7 +206,7 @@ export const saveAlert = mutation({
 
     const alerts = await ctx.db
       .query("alertHistory")
-      .withIndex("by_user_alerts", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user_alerts", (q) => q.eq("userId", user._id))
       .order("desc")
       .take(MAX_ALERT_HISTORY + 1);
     for (const old of alerts.slice(MAX_ALERT_HISTORY)) {
@@ -232,7 +230,7 @@ export const listAlerts = query({
     const limit = args.limit ?? 50;
     return await ctx.db
       .query("alertHistory")
-      .withIndex("by_user_position_alerts", (q: any) =>
+      .withIndex("by_user_position_alerts", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId)
       )
       .order("desc")
@@ -250,11 +248,11 @@ export const acknowledgeAlert = mutation({
     // Find the alert — we need to scan since we only have position-based index
     const allAlerts = await ctx.db
       .query("alertHistory")
-      .withIndex("by_user_alerts", (q: any) => q.eq("userId", user._id))
+      .withIndex("by_user_alerts", (q) => q.eq("userId", user._id))
       .order("desc")
       .take(500);
 
-    const alert = allAlerts.find((a: any) => a.alertId === args.alertId);
+    const alert = allAlerts.find((a) => a.alertId === args.alertId);
     if (alert) {
       await ctx.db.patch(alert._id, { acknowledged: true });
       return true;
@@ -283,7 +281,7 @@ export const saveCursor = mutation({
     // Upsert: find existing cursor for this provider/instrument
     const existing = await ctx.db
       .query("streamCursors")
-      .withIndex("by_user_provider_instrument", (q: any) =>
+      .withIndex("by_user_provider_instrument", (q) =>
         q.eq("userId", user._id).eq("provider", args.provider).eq("instrument", args.instrument)
       )
       .unique();
@@ -320,7 +318,7 @@ export const getCursor = query({
 
     return await ctx.db
       .query("streamCursors")
-      .withIndex("by_user_provider_instrument", (q: any) =>
+      .withIndex("by_user_provider_instrument", (q) =>
         q.eq("userId", user._id).eq("provider", args.provider).eq("instrument", args.instrument)
       )
       .unique();

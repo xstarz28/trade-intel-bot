@@ -34,7 +34,6 @@ import { describe, it, expect, beforeEach } from "vitest";
 
 import {
   resolveInstrument,
-  getInstrumentsByAssetClass,
   getProviderSymbol,
   detectAssetClass,
   isCryptoInstrument,
@@ -53,17 +52,14 @@ import {
   cacheSet,
   cacheGet,
   cacheHas,
-  cacheDelete,
   cacheClearInstrument,
   cacheClearProvider,
-  cacheClear,
   cacheStats,
   resetCache,
 } from "@/lib/data/universal/cache";
 
 import {
   createEvidenceItem,
-  createUnavailableEvidence,
   detectDoubleCounting,
 } from "@/lib/data/universal/evidence";
 
@@ -519,7 +515,7 @@ describe("Phase 45 — L. Cache Isolation", () => {
     cacheSet({ instrument: "BTC/USD", capability: "ohlcv", providerId: "twelve-data" }, { price: 50000 });
     const entry = cacheGet({ instrument: "BTC/USD", capability: "ohlcv", providerId: "twelve-data" });
     expect(entry).not.toBeNull();
-    expect((entry!.data as any).price).toBe(50000);
+    expect(Reflect.get(entry!.data as object, "price")).toBe(50000);
   });
 
   it("cacheHas returns correct result", () => {
@@ -631,7 +627,7 @@ describe("Phase 45 — N. Evidence Normalization", () => {
     const dirs = ["SUPPORTING", "CONFLICTING", "NEUTRAL", "UNAVAILABLE"];
     for (const d of dirs) {
       const item = createEvidenceItem({
-        source: "Test", category: "MACRO", direction: d as any,
+        source: "Test", category: "MACRO", direction: d as "SUPPORTING" | "CONFLICTING" | "NEUTRAL" | "UNAVAILABLE",
         strength: "WEAK", quality: "VERIFIED", freshness: "FRESH",
         dependencyGroup: "MACRO_RATES", explanation: "test",
         providerAvailable: true, assetClass: "forex", instrument: "EUR/USD",
@@ -696,7 +692,7 @@ describe("Phase 45 — P. Double-Counting", () => {
       createEvidenceItem({
         source: "Test", category: "MACRO", direction: "NEUTRAL",
         strength: "WEAK", quality: "VERIFIED", freshness: "FRESH",
-        dependencyGroup: (i < 3 ? "MACRO_RATES" : "MACRO_YIELD_CURVE") as any,
+        dependencyGroup: i < 3 ? "MACRO_RATES" : "MACRO_YIELD_CURVE",
         explanation: `item ${i}`,
         providerAvailable: true, assetClass: "forex", instrument: "EUR/USD",
       }),
@@ -832,15 +828,15 @@ describe("Phase 45 — U. Security", () => {
 describe("Phase 45 — V. Decision Immutability", () => {
   it("intelligence engines produce no decision fields", () => {
     const forex = buildForexIntelligence("EUR/USD", makeForexCtx("EUR/USD"));
-    expect((forex as any).recommendation).toBeUndefined();
-    expect((forex as any).bias).toBeUndefined();
-    expect((forex as any).confidence).toBeUndefined();
-    expect((forex as any).conviction).toBeUndefined();
-    expect((forex as any).tradePlan).toBeUndefined();
+    expect(Reflect.get(forex, "recommendation")).toBeUndefined();
+    expect(Reflect.get(forex, "bias")).toBeUndefined();
+    expect(Reflect.get(forex, "confidence")).toBeUndefined();
+    expect(Reflect.get(forex, "conviction")).toBeUndefined();
+    expect(Reflect.get(forex, "tradePlan")).toBeUndefined();
 
     const equity = buildEquityIntelligence("AAPL", makeEquityCtx("AAPL"));
-    expect((equity as any).recommendation).toBeUndefined();
-    expect((equity as any).bias).toBeUndefined();
+    expect(Reflect.get(equity, "recommendation")).toBeUndefined();
+    expect(Reflect.get(equity, "bias")).toBeUndefined();
   });
 
   it("evidence items contain no decision fields", () => {
@@ -850,9 +846,9 @@ describe("Phase 45 — V. Decision Immutability", () => {
       dependencyGroup: "EQUITY_FINANCIAL_STATEMENTS", explanation: "test",
       providerAvailable: true, assetClass: "equity", instrument: "AAPL",
     });
-    expect((item as any).recommendation).toBeUndefined();
-    expect((item as any).bias).toBeUndefined();
-    expect((item as any).tradePlan).toBeUndefined();
+    expect(Reflect.get(item, "recommendation")).toBeUndefined();
+    expect(Reflect.get(item, "bias")).toBeUndefined();
+    expect(Reflect.get(item, "tradePlan")).toBeUndefined();
   });
 
   it("universal assembly produces no decision fields", () => {
@@ -860,11 +856,11 @@ describe("Phase 45 — V. Decision Immutability", () => {
       instrument: "EUR/USD",
       forex: buildForexIntelligence("EUR/USD", makeForexCtx("EUR/USD")),
     });
-    expect((result as any).recommendation).toBeUndefined();
-    expect((result as any).bias).toBeUndefined();
-    expect((result as any).confidence).toBeUndefined();
-    expect((result as any).tradePlan).toBeUndefined();
-    expect((result as any).decisionFingerprint).toBeUndefined();
+    expect(Reflect.get(result, "recommendation")).toBeUndefined();
+    expect(Reflect.get(result, "bias")).toBeUndefined();
+    expect(Reflect.get(result, "confidence")).toBeUndefined();
+    expect(Reflect.get(result, "tradePlan")).toBeUndefined();
+    expect(Reflect.get(result, "decisionFingerprint")).toBeUndefined();
   });
 });
 
@@ -937,8 +933,8 @@ describe("Phase 45 — X. Adversarial Cross-Instrument", () => {
     const aapl = cacheGet({ instrument: "AAPL", capability: "earnings", providerId: "alpha-vantage" });
     const crossCheck = cacheGet({ instrument: "AAPL", capability: "ohlcv", providerId: "twelve-data" });
 
-    expect((btc!.data as any).price).toBe(50000);
-    expect((aapl!.data as any).eps).toBe(1.50);
+    expect(Reflect.get(btc!.data as object, "price")).toBe(50000);
+    expect(Reflect.get(aapl!.data as object, "eps")).toBe(1.50);
     expect(crossCheck).toBeNull();
   });
 

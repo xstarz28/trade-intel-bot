@@ -29,7 +29,6 @@ import {
   getEventsForComponent,
   getEventCount,
   buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 
 // ─── Helpers ────────────────────────────────────────────────
@@ -343,7 +342,6 @@ describe("Phase 100 — Health Aggregation", () => {
 
 describe("Phase 100 — Health Transitions", () => {
   it("detects status change", () => {
-    const now = Date.now();
     const prev = makeSnapshot({
       components: [
         { component: "NEWS", status: "HEALTHY", consecutiveFailures: 0, message: "", freshness: "FRESH" },
@@ -439,6 +437,22 @@ describe("Phase 100 — Buffer Persistence Integration", () => {
     const snapshot = shouldPersistFromBuffer(buf, Date.now());
     expect(snapshot).not.toBeNull();
     expect(snapshot!.overallStatus).toBeDefined();
+  });
+
+  it("keeps a failed write retryable until persistence is confirmed", () => {
+    let buf = createHealthEventBuffer();
+    buf = recordProviderResult(buf, {
+      component: "MARKET_DATA",
+      success: true,
+    });
+
+    const firstAttempt = shouldPersistFromBuffer(buf, Date.now());
+    expect(firstAttempt).not.toBeNull();
+
+    // A rejected persistence call must not call markPersisted.
+    // The next event/clock-driven attempt should still see a pending snapshot.
+    const retryAttempt = shouldPersistFromBuffer(buf, Date.now() + 30_000);
+    expect(retryAttempt).not.toBeNull();
   });
 
   it("shouldPersistFromBuffer returns null when no change", () => {

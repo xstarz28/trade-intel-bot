@@ -30,15 +30,14 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { PositionContext, ProtectionAlert, AlertSeverity } from "./types";
+import type { PositionContext, AlertSeverity } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type {
-  RealTimeEvent,
   PositionSnapshot,
 } from "./realtime-types";
-import type { WhyTpNowExplanation } from "./types";
+
 import { evaluateProtection } from "./protection-engine";
-import { classifyEarlyProtection, type EarlyProtectionInput } from "./early-protection";
+import { classifyEarlyProtection } from "./early-protection";
 import { aggregateTimeframeEvidence, type TimeframeEvidence } from "./multi-timeframe-engine";
 import { detectShock } from "./shock-detector";
 import { calculateProfitMetrics } from "./profit-state";
@@ -58,15 +57,12 @@ import {
 import {
   createMonitorState,
   processEvent,
-  processEvents,
   coalesceEvents,
   addPosition,
   removePosition,
   cleanup,
 } from "./realtime-monitor";
 import {
-  createDispatcherState,
-  shouldDispatch,
   severityToNotificationPriority,
 } from "./alert-dispatcher";
 import {
@@ -77,25 +73,16 @@ import {
 } from "./alert-lifecycle";
 import {
   createPriceEvent,
-  createQuoteEvent,
-  createCandleEvent,
   createStructureChangeEvent,
   createMomentumChangeEvent,
   createVolatilityChangeEvent,
   createFundingChangeEvent,
-  createOIChangeEvent,
-  createLiquidationChangeEvent,
-  createCrossAssetEvent,
-  createMacroChangeEvent,
-  createNewsEvent,
   createDataStaleEvent,
   createProviderDegradedEvent,
   createProviderRecoveredEvent,
-  createPositionUpdateEvent,
 } from "./market-event-bridge";
 import {
   validateRegistration,
-  createSnapshotFromRegistration,
   generatePositionId,
   inferAssetClass,
 } from "./position-registration";
@@ -118,9 +105,7 @@ import {
   type PersistedAlert,
 } from "./persistence";
 import {
-  ALERT_SEVERITY_ORDER,
   alertSeverityRank,
-  type ProfitProtectionUrgency,
   urgencyRank,
 } from "./types";
 
@@ -1068,10 +1053,10 @@ describe("R. Decision Immutability", () => {
       monitoringState: createMonitoringState("BTC/USDT"), now: NOW,
     });
     // ProtectionAlert has no recommendation, bias, conviction, tradePlan fields
-    expect((result.alert as any).recommendation).toBeUndefined();
-    expect((result.alert as any).bias).toBeUndefined();
-    expect((result.alert as any).conviction).toBeUndefined();
-    expect((result.alert as any).tradePlan).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).recommendation).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).bias).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).conviction).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).tradePlan).toBeUndefined();
   });
 });
 
@@ -1263,7 +1248,7 @@ describe("W. Alert Lifecycle", () => {
 
 describe("X. Performance / Memory Bounds", () => {
   it("cleanup limits dispatcher history", () => {
-    let state = createMonitorState();
+    const state = createMonitorState();
     // Add lots of alerts
     for (let i = 0; i < 100; i++) {
       state.dispatcher.history.push({
@@ -1362,7 +1347,7 @@ describe("Y. Behavioral Scenario: Profitable LONG → Deteriorating", () => {
 
   it("system should NOT wait for SL before warning", () => {
     // Position with SL at 95, currently at 110, starts dropping
-    let monitoring = createMonitoringState("BTC/USDT");
+    const monitoring = createMonitoringState("BTC/USDT");
     const sl = 95;
 
     // Price drops to 100 but hasn't hit SL yet
@@ -1448,7 +1433,7 @@ describe("BB. Position Registration", () => {
 
   it("validates side", () => {
     const result = validateRegistration({
-      positionId: "test", instrument: "BTC/USDT", side: "LONG" as any, entryPrice: 100000, horizon: "SWING",
+      positionId: "test", instrument: "BTC/USDT", side: "LONG", entryPrice: 100000, horizon: "SWING",
     });
     expect(result.valid).toBe(true);
   });
@@ -1550,9 +1535,9 @@ describe("EE. Market Radar Compatibility", () => {
       monitoringState: createMonitoringState("BTC/USDT"), now: NOW,
     });
     // These fields must NOT exist on ProtectionAlert
-    expect((result.alert as any).recommendation).toBeUndefined();
-    expect((result.alert as any).bias).toBeUndefined();
-    expect((result.alert as any).conviction).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).recommendation).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).bias).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).conviction).toBeUndefined();
   });
 });
 
@@ -1562,9 +1547,6 @@ describe("EE. Market Radar Compatibility", () => {
 
 describe("FF. Horizon Sensitivity", () => {
   it("SCALPING has tighter thresholds than INVESTING", () => {
-    const scalp = longBtc({ horizon: "SCALPING" });
-    const invest = longBtc({ horizon: "INVESTING" });
-
     // For SCALPING, even small giveback should be detected
     const scalpGb = calculateGiveback(
       { ...createTestSnapshot(), currentPrice: 112000, horizon: "SCALPING" },

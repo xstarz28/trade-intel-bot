@@ -17,33 +17,24 @@ import { describe, it, expect } from "vitest";
 import {
   evaluateAlertRuntimeBridge,
   buildInitialStateStore,
-  removePositionFromState,
   removePositionTriggerRecords,
-  cleanStaleRuleTriggerRecords,
-  type PreviousStateStore,
 } from "./alert-runtime-bridge";
 import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
 import { alertIdentity } from "./alert-rule-engine";
 import {
   buildNotification,
   notificationIdentity,
-  filterNotifications,
   applyRetention,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
 } from "./notification-engine";
 import {
   filterNotificationsByPreferences,
-  isNotificationVisible,
   sanitizePreferences,
   DEFAULT_PREFERENCES,
-  ALL_CATEGORIES,
-  ALL_SCOPES,
-  type NotificationPreferences,
 } from "./notification-preferences";
 import {
   buildRuntimeHealthSnapshot,
-  calculateOverallHealth,
   classifyFreshness,
   normalizeRuntimeHealthEvent,
   aggregateRuntimeHealth,
@@ -51,11 +42,7 @@ import {
   detectHealthTransitions,
   FRESH_THRESHOLD_MS,
   AGING_THRESHOLD_MS,
-  UNAVAILABLE_FAILURE_THRESHOLD,
   MAX_RUNTIME_HEALTH_EVENTS,
-  type RuntimeHealthEvent,
-  type RuntimeHealthSnapshot,
-  type RuntimeHealthComponent,
   type RuntimeComponent,
 } from "./runtime-health";
 import {
@@ -64,10 +51,8 @@ import {
   recordProviderResult,
   shouldPersistFromBuffer,
   markPersisted,
-  getLatestEventForComponent,
   getEventCount,
   buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 
@@ -90,9 +75,9 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     entryPrice: 60000, currentPrice: 65000, thesisHealth: "HEALTHY", thesisHealthScore: 80,
     confidence: "STRONG_EVIDENCE", ohlcvRegime: "TRENDING_UP", shortTermContext: "BULLISH",
     volatilityContext: "NORMAL",
-    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as any,
-    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as any,
-    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as any,
+    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as unknown as PositionIntelligence["h1Analysis"],
+    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as unknown as PositionIntelligence["m15Analysis"],
+    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as unknown as PositionIntelligence["m5Analysis"],
     evidence: [], dataQuality: "HIGH", dataSource: "TwelveData", ...overrides,
   } as PositionIntelligence;
 }
@@ -532,9 +517,10 @@ describe("Phase 105 — Security / Data Provenance", () => {
   });
 
   it("no fabricated market values", () => {
+    const now = 1_700_000_000_000;
     const health = buildRuntimeHealthSnapshot(
-      { marketDataAvailable: true, marketDataLastSuccess: Date.now() },
-      Date.now(),
+      { marketDataAvailable: true, marketDataLastSuccess: now },
+      now,
     );
     const json = JSON.stringify(health);
     expect(json).not.toContain("$");

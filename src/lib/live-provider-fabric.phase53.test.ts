@@ -19,12 +19,11 @@ import {
   acquireBatchLiveData,
   getProviderHealthSummary,
   resetAdapters,
-  type ProviderAdapter,
 } from "./market-radar/provider-registry";
 
 // ── Types ──
 import type { AssetClass } from "./data/universal/types";
-import type { MarketSnapshot, FreshnessLevel } from "./market-radar/types";
+import type { MarketSnapshot } from "./market-radar/types";
 import { assessFreshness } from "./market-radar/freshness";
 import { meetsFreshness } from "./market-radar/types";
 import { RadarCache, buildCacheKey } from "./market-radar/cache";
@@ -36,15 +35,13 @@ import {
   validateOhlcvSeries,
   validateQuote,
   compareCrossProviderPrices,
-  assessDataQuality,
-  type OhlcvRecord,
 } from "./data/universal/live/types";
 
 // ── Universe ──
-import { DEFAULT_UNIVERSE, CORRELATION_CLUSTERS, getClusterForInstrument } from "./market-radar/universe";
+import { getClusterForInstrument, DEFAULT_UNIVERSE } from "./market-radar/universe";
 
 // ── Radar ──
-import { scanRadar, buildRadarState } from "./market-radar/radar";
+import { scanRadar } from "./market-radar/radar";
 import { buildRadarCandidate, type RadarCandidateSource } from "./market-radar/candidate-builder";
 
 const NOW = Date.now();
@@ -593,7 +590,7 @@ describe("AC — Total Provider Failure", () => {
 
 describe("AD — Missing Credentials", () => {
   it("Twelve Data unavailable without API key", async () => {
-    const result = await acquireLiveData("EUR/USD", "forex", (name) => undefined);
+    const result = await acquireLiveData("EUR/USD", "forex", () => undefined);
     // Without API key, Twelve Data adapter is not available
     // CoinGecko doesn't support forex, so result should be null
     expect(result.success).toBe(false);
@@ -864,7 +861,7 @@ describe("AS — Radar Independence from Analysis History", () => {
 
   it("radar produces results from snapshot-only sources", () => {
     const source = makeSource("BTC/USD", "crypto");
-    (source as any).analysisResult = undefined;
+    Object.assign(source, { analysisResult: undefined });
     const result = scanRadar([source], { horizons: ["INTRADAY"], maxResults: 5 }, undefined, NOW);
     expect(result.totalScanned).toBe(1);
   });
@@ -984,10 +981,10 @@ describe("AZ — Decision Immutability", () => {
     const source = makeSource("BTC/USD", "crypto");
     const result = scanRadar([source], { horizons: ["SWING"], maxResults: 5 }, undefined, NOW);
     const opp = result.results.get("SWING")![0];
-    expect((opp as any).recommendation).toBeUndefined();
-    expect((opp as any).bias).toBeUndefined();
-    expect((opp as any).conviction).toBeUndefined();
-    expect((opp as any).tradePlan).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(opp, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "conviction")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "tradePlan")).toBe(false);
   });
 });
 
@@ -1032,9 +1029,10 @@ describe("BB — Concurrent Scanning", () => {
 describe("BC — Sequential Scanning Isolation", () => {
   it("sequential scans don't leak state", () => {
     const config = { horizons: ["INTRADAY" as const], maxResults: 5 };
-    const r1 = scanRadar([makeSource("BTC/USD", "crypto")], config, undefined, NOW);
-    const r2 = scanRadar([makeSource("EUR/USD", "forex")], config, undefined, NOW);
-    expect(r2.results.get("INTRADAY")!.some(o => o.instrument === "BTC/USD")).toBe(false);
+    const btcScan = scanRadar([makeSource("BTC/USD", "crypto")], config, undefined, NOW);
+    const eurScan = scanRadar([makeSource("EUR/USD", "forex")], config, undefined, NOW);
+    expect(eurScan.results.get("INTRADAY")!.some(o => o.instrument === "BTC/USD")).toBe(false);
+    expect(btcScan.results.get("INTRADAY")!.some(o => o.instrument === "EUR/USD")).toBe(false);
   });
 });
 

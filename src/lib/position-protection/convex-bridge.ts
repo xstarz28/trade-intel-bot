@@ -60,6 +60,9 @@ export class ConvexPersistenceBridge implements MonitoringStateRepository {
   private local: InMemoryRepository;
   private client: ConvexClientLike | null;
   private degraded = false;
+  private readonly persistedPositionSignatures = new Map<string, { signature: string; persistedAt: number }>();
+  private readonly inFlightPositionWrites = new Map<string, string>();
+  private static readonly POSITION_HEARTBEAT_INTERVAL_MS = 30_000;
 
   constructor(client?: ConvexClientLike | null) {
     this.local = new InMemoryRepository();
@@ -74,11 +77,12 @@ export class ConvexPersistenceBridge implements MonitoringStateRepository {
   // ─── Position State ──────────────────────────────────────
 
   async savePositionState(state: PersistedPositionState): Promise<boolean> {
-    // Always save locally first (fast path)
+    // Keep the monitoring engine's local state current regardless of remote persistence.
     await this.local.savePositionState(state);
 
-    // Async persist to Convex (non-blocking)
-    this.persistToConvex("positionProtection:savePosition", {
+    if (!this.client) return true;
+
+    const args = {
       positionId: state.positionId,
       instrument: state.instrument,
       side: state.side,
@@ -96,8 +100,41 @@ export class ConvexPersistenceBridge implements MonitoringStateRepository {
       lastUpdateAt: state.lastUpdateAt,
       lastAlertAt: state.lastAlertAt,
       consecutiveSameSeverity: state.consecutiveSameSeverity,
-    });
+    };
+    // lastUpdateAt is a heartbeat, not a decision-state change. Avoid rewriting
+    // the same position on every monitoring tick; still refresh durability every
+    // 30 seconds and persist immediately when any meaningful field changes.
+    const { lastUpdateAt: heartbeatTimestamp, ...decisionState } = args;
+    void heartbeatTimestamp;
+    const signature = JSON.stringify(decisionState);
+    const previous = this.persistedPositionSignatures.get(state.positionId);
+    const inFlightSignature = this.inFlightPositionWrites.get(state.positionId);
+    const now = Date.now();
+    if (
+      (previous?.signature === signature &&
+        now - previous.persistedAt < ConvexPersistenceBridge.POSITION_HEARTBEAT_INTERVAL_MS) ||
+      inFlightSignature === signature
+    ) {
+      return true;
+    }
 
+    this.inFlightPositionWrites.set(state.positionId, signature);
+    // Keep remote I/O off the monitoring hot path. Failed writes are not cached,
+    // so a later state update can retry instead of silently losing durability.
+    void Promise.resolve()
+      .then(() => this.client!.mutation("positionProtection:savePosition", args))
+      .then(() => {
+        this.persistedPositionSignatures.set(state.positionId, { signature, persistedAt: Date.now() });
+        this.degraded = false;
+      })
+      .catch(() => {
+        this.degraded = true;
+      })
+      .finally(() => {
+        if (this.inFlightPositionWrites.get(state.positionId) === signature) {
+          this.inFlightPositionWrites.delete(state.positionId);
+        }
+      });
     return true;
   }
 
@@ -129,6 +166,8 @@ export class ConvexPersistenceBridge implements MonitoringStateRepository {
 
   async deletePositionState(positionId: string): Promise<boolean> {
     await this.local.deletePositionState(positionId);
+    this.persistedPositionSignatures.delete(positionId);
+    this.inFlightPositionWrites.delete(positionId);
     this.persistToConvex("positionProtection:deletePosition", { positionId });
     return true;
   }

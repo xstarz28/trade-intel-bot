@@ -24,10 +24,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { PositionContext, ProtectionAlert, AlertSeverity } from "./types";
+import type { PositionContext } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type { ProfitProtectionUrgency } from "./types";
-import type { RealTimeEvent } from "./realtime-types";
+
 import {
   createControllerState,
   registerPosition,
@@ -49,7 +49,6 @@ import {
   computeEventPriority,
   comparePriority,
   isCriticalEvent,
-  type EventPriorityLevel,
 } from "./event-priority";
 import {
   fuseSignals,
@@ -64,19 +63,14 @@ import {
 } from "./monitoring-cadence";
 import {
   computePositionPriority,
-  comparePositionPriority,
   sortByPriority,
-  type PositionPriorityRank,
 } from "./position-priority";
 import {
   createPriceEvent,
   createStructureChangeEvent,
   createMomentumChangeEvent,
-  createVolatilityChangeEvent,
   createFundingChangeEvent,
-  createOIChangeEvent,
   createLiquidationChangeEvent,
-  createCrossAssetEvent,
   createMacroChangeEvent,
   createProviderDegradedEvent,
   createProviderRecoveredEvent,
@@ -87,13 +81,11 @@ import {
 } from "./protection-engine";
 import { detectShock } from "./shock-detector";
 import {
-  calculateGiveback,
   classifyGivebackSeverity,
 } from "./giveback-monitor";
 import {
   createAccelerationState,
   recordPriceObservation,
-  detectPriceAcceleration,
 } from "./acceleration-monitor";
 import {
   createMonitoringState,
@@ -105,11 +97,23 @@ import {
   type PersistedPositionState,
 } from "./persistence";
 import {
-  alertSeverityRank,
   urgencyRank,
   type AlertSeverity as AlertSeverityType,
 } from "./types";
 import { aggregateTimeframeEvidence, type TimeframeEvidence } from "./multi-timeframe-engine";
+
+function makeGivebackState(givebackPct: number) {
+  return {
+    peakPrice: 100,
+    currentPrice: 100,
+    peakProfit: 0,
+    currentProfit: 0,
+    givebackAbsolute: 0,
+    givebackPct,
+    pullbackType: "NORMAL_PULLBACK" as const,
+    accelerating: false,
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
@@ -811,7 +815,7 @@ describe("Q. Alert Deduplication", () => {
 
 describe("R. Dashboard", () => {
   it("getDashboard returns correct counts", () => {
-    let state = registerTestPosition(createControllerState());
+    const state = registerTestPosition(createControllerState());
     const dashboard = getDashboard(state);
     expect(dashboard.totalPositions).toBe(1);
     expect(dashboard.activePositions).toBe(1);
@@ -928,10 +932,10 @@ describe("V. Decision Immutability", () => {
       position: longBtc(), evidence: deterioratingEvidence(104000),
       monitoringState: createMonitoringState("BTC/USDT"), now: NOW,
     });
-    expect((result.alert as any).recommendation).toBeUndefined();
-    expect((result.alert as any).bias).toBeUndefined();
-    expect((result.alert as any).conviction).toBeUndefined();
-    expect((result.alert as any).tradePlan).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).recommendation).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).bias).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).conviction).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).tradePlan).toBeUndefined();
   });
 });
 
@@ -1037,7 +1041,7 @@ describe("Z. Performance / Memory", () => {
 
 describe("AA. Trader Scenario: Profitable LONG → Protection BEFORE SL", () => {
   it("full lifecycle: healthy → early deterioration → acceleration → giveback → alert BEFORE SL", () => {
-    let state = registerTestPosition(createControllerState());
+    const state = registerTestPosition(createControllerState());
     const pos = state.positions.get("btc-long-1")!;
 
     // Step 1: Healthy
@@ -1139,8 +1143,8 @@ describe("AD. Radar Compatibility", () => {
       position: longBtc(), evidence: deterioratingEvidence(104000),
       monitoringState: createMonitoringState("BTC/USDT"), now: NOW,
     });
-    expect((result.alert as any).recommendation).toBeUndefined();
-    expect((result.alert as any).bias).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).recommendation).toBeUndefined();
+    expect((result.alert as unknown as Record<string, unknown>).bias).toBeUndefined();
   });
 });
 
@@ -1150,7 +1154,7 @@ describe("AD. Radar Compatibility", () => {
 
 describe("AE. Event Processing End-to-End", () => {
   it("processes price events and increments evaluation count", () => {
-    let state = registerTestPosition(createControllerState());
+    const state = registerTestPosition(createControllerState());
     const event = createPriceEvent("BTC/USDT", 113000, "test");
     const result = processEventForController(state, event, NOW);
     expect(result.state.evaluationsPerformed).toBeGreaterThanOrEqual(0);
@@ -1163,11 +1167,9 @@ describe("AE. Event Processing End-to-End", () => {
       createMomentumChangeEvent("BTC/USDT", -15, "M5", "test"),
       createStructureChangeEvent("BTC/USDT", true, "M15", "test"),
     ];
-    let totalEvals = 0;
     for (const event of events) {
       const result = processEventForController(state, event, NOW);
       state = result.state;
-      totalEvals += result.alerts.length;
     }
     expect(state.evaluationsPerformed).toBeGreaterThanOrEqual(0);
   });
@@ -1217,9 +1219,9 @@ describe("AG. Shock Interaction", () => {
 describe("AH. Horizon Sensitivity", () => {
   it("SCALPING tighter than INVESTING for giveback", () => {
     // Use a giveback % that SCALPING classifies more aggressively than INVESTING
-    const gb = { givebackPct: 30 };
-    const scalp = classifyGivebackSeverity({ ...gb } as any, "SCALPING");
-    const invest = classifyGivebackSeverity({ ...gb } as any, "INVESTING");
+    const gb = makeGivebackState(30);
+    const scalp = classifyGivebackSeverity(gb, "SCALPING");
+    const invest = classifyGivebackSeverity(gb, "INVESTING");
     // SCALPING 30% >= partialTpPct(25) → PARTIAL_TP; INVESTING 30% < watchPct(40) → NONE
     const givebackOrder: Record<string, number> = { "NONE": 0, "WATCH": 1, "PARTIAL_TP": 2, "MANUAL_TP": 3, "PROTECT_NOW": 4 };
     expect(givebackOrder[scalp] ?? -1).toBeGreaterThanOrEqual(givebackOrder[invest] ?? -1);

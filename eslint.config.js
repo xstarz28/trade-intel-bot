@@ -6,7 +6,7 @@ import tseslint from "typescript-eslint";
 import eslintConfigPrettier from "eslint-config-prettier/flat";
 
 export default tseslint.config(
-  { ignores: ["dist"] },
+  { ignores: ["dist", "src/convex/_generated/**"] },
   {
     extends: [
       js.configs.recommended,
@@ -29,5 +29,15 @@ export default tseslint.config(
         { allowConstantExport: true },
       ],
     },
+  },
+  {
+    // These shared UI modules intentionally export both components and their public hooks/style helpers.
+    files: [
+      "src/components/ui/button-group.tsx",
+      "src/components/ui/form.tsx",
+      "src/components/ui/navigation-menu.tsx",
+      "src/components/ui/sidebar.tsx",
+    ],
+    rules: { "react-refresh/only-export-components": "off" },
   },
 );

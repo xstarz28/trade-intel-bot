@@ -9,6 +9,12 @@ import { isCryptoInstrument, toCoinGlassSymbol } from "./symbols";
 const BASE_URL = "https://www.okx.com";
 const REQUEST_TIMEOUT_MS = 4_000;
 
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function positive(value: unknown): number | undefined {
   if (value === null || value === undefined || value === "") return undefined;
   const n = typeof value === "number" ? value : Number(value);
@@ -24,7 +30,7 @@ function finite(value: unknown): number | undefined {
 export function toOkxSwapInstrument(instrument: string): string | null {
   const cleaned = instrument.trim().toUpperCase();
   if (!isCryptoInstrument(cleaned)) return null;
-  const base = toCoinGlassSymbol(cleaned) ?? cleaned.split(/[\/-]/)[0];
+  const base = toCoinGlassSymbol(cleaned) ?? cleaned.split(/[/-]/)[0];
   return base && /^[A-Z0-9]{2,20}$/.test(base) ? base + "-USDT-SWAP" : null;
 }
 
@@ -35,12 +41,13 @@ export class OkxPublicDerivativesAdapter {
     this.fetchFn = fetchFn ?? fetch;
   }
 
-  private async getJson(path: string): Promise<any> {
+  private async getJson(path: string): Promise<JsonRecord> {
     const response = await this.fetchFn(BASE_URL + path, {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     });
-    const json = await response.json().catch(() => null);
+    const payload: unknown = await response.json().catch(() => null);
+    const json = isRecord(payload) ? payload : undefined;
     if (!response.ok) {
       throw new Error("OKX HTTP " + response.status + ": " + String(json?.msg ?? response.statusText ?? "request failed"));
     }
@@ -64,10 +71,11 @@ export class OkxPublicDerivativesAdapter {
       this.getJson("/api/v5/public/instruments?instType=SWAP&instId=" + encoded),
     ]);
 
-    const firstRow = (result: PromiseSettledResult<any>) =>
-      result.status === "fulfilled" && Array.isArray(result.value?.data)
-        ? result.value.data[0]
-        : undefined;
+    const firstRow = (result: PromiseSettledResult<JsonRecord>): JsonRecord | undefined => {
+      if (result.status !== "fulfilled" || !Array.isArray(result.value.data)) return undefined;
+      const row: unknown = result.value.data[0];
+      return isRecord(row) ? row : undefined;
+    };
     const oiRow = firstRow(oiResult);
     const fundingRow = firstRow(fundingResult);
     const instrumentRow = firstRow(instrumentResult);
@@ -77,7 +85,7 @@ export class OkxPublicDerivativesAdapter {
     const rawFunding = finite(fundingRow?.fundingRate);
     const fundingRate = rawFunding !== undefined ? { currentRate: rawFunding } : undefined;
 
-    const ratioRows = ratioResult.status === "fulfilled" && Array.isArray(ratioResult.value?.data)
+    const ratioRows = ratioResult.status === "fulfilled" && Array.isArray(ratioResult.value.data)
       ? ratioResult.value.data
       : [];
     const latestRatioRow = ratioRows
@@ -90,14 +98,15 @@ export class OkxPublicDerivativesAdapter {
     // the last hour, and convert contract size using the exact public contract
     // metadata. If size/contract value cannot be verified, leave this dataset
     // unavailable instead of inventing a USD notional.
-    const liquidationGroups = liquidationResult.status === "fulfilled" && Array.isArray(liquidationResult.value?.data)
+    const liquidationGroups = liquidationResult.status === "fulfilled" && Array.isArray(liquidationResult.value.data)
       ? liquidationResult.value.data
       : [];
-    const details = liquidationGroups.flatMap((group: any) =>
-      Array.isArray(group?.details) ? group.details : []
-    );
+    const details: JsonRecord[] = liquidationGroups.flatMap((group: unknown) => {
+      if (!isRecord(group) || !Array.isArray(group.details)) return [];
+      return group.details.filter(isRecord);
+    });
     const now = Date.now();
-    const recent = details.filter((row: any) => {
+    const recent = details.filter((row: JsonRecord) => {
       const timestamp = finite(row?.ts ?? row?.time);
       return timestamp !== undefined && timestamp <= now && now - timestamp <= 60 * 60 * 1000;
     });
@@ -105,7 +114,7 @@ export class OkxPublicDerivativesAdapter {
     const contractValueCurrency = String(instrumentRow?.ctValCcy ?? "").toUpperCase();
     const contractType = String(instrumentRow?.ctType ?? "").toLowerCase();
     const quoteCurrency = instId.split("-")[1]?.toUpperCase();
-    const liquidationUsd = (row: any): number | undefined => {
+    const liquidationUsd = (row: JsonRecord): number | undefined => {
       const size = positive(row?.sz);
       const bankruptcyPrice = positive(row?.bkPx);
       if (size === undefined || contractValue === undefined) return undefined;
@@ -149,7 +158,7 @@ export class OkxPublicDerivativesAdapter {
     };
     const count = Object.values(availability).filter(Boolean).length;
     if (count === 0) {
-      const describe = (label: string, result: PromiseSettledResult<any>) =>
+      const describe = (label: string, result: PromiseSettledResult<JsonRecord>) =>
         result.status === "rejected"
           ? label + ": " + (result.reason instanceof Error ? result.reason.message : String(result.reason))
           : label + ": response contained no usable fields";

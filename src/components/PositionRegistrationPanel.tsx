@@ -12,7 +12,6 @@ import {
   Plus,
   Shield,
   AlertTriangle,
-  CheckCircle,
   Info,
   ChevronDown,
   ChevronRight,

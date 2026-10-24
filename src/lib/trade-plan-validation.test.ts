@@ -56,18 +56,30 @@ describe("validateTradePlanAgainstMarket", () => {
     });
   });
 
-  it("rejects a short entry after the latest candle wicked above its stop even if it closed back below", () => {
+  it("does not reject a short setup because an earlier wick crossed its stop before the entry decision", () => {
     expect(validateTradePlanAgainstMarket({
       direction: "short", entry: "101", stopLoss: "104", takeProfit: "95",
-    }, [{ ...candles[0], high: 105, close: 101 }], 3)).toEqual({
+    }, [{ ...candles[0], high: 105, close: 101 }], 3)).toEqual({ valid: true });
+  });
+
+  it("does not reject a long setup because an earlier wick crossed its target before the entry decision", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "long", entry: "101", stopLoss: "97", takeProfit: "107",
+    }, [{ ...candles[0], high: 108, close: 101 }], 3)).toEqual({ valid: true });
+  });
+
+  it("rejects a long setup when the latest confirmed close is below its stop", () => {
+    expect(validateTradePlanAgainstMarket({
+      direction: "long", entry: "101", stopLoss: "97", takeProfit: "107",
+    }, [{ ...candles[0], low: 95, close: 96 }], 3)).toEqual({
       valid: false, reason: "target_or_stop_already_crossed",
     });
   });
 
-  it("rejects a long entry after the latest candle already touched its target intrabar", () => {
+  it("rejects a short setup when the latest confirmed close is above its stop", () => {
     expect(validateTradePlanAgainstMarket({
-      direction: "long", entry: "101", stopLoss: "97", takeProfit: "107",
-    }, [{ ...candles[0], high: 108, close: 101 }], 3)).toEqual({
+      direction: "short", entry: "101", stopLoss: "104", takeProfit: "95",
+    }, [{ ...candles[0], high: 106, close: 105 }], 3)).toEqual({
       valid: false, reason: "target_or_stop_already_crossed",
     });
   });

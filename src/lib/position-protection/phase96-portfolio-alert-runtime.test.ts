@@ -5,18 +5,15 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
+import type { AlertRule } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 import {
   evaluateAlertRuntimeBridge,
   extractPortfolioSnapshot,
-  buildInitialStateStore,
   type PreviousStateStore,
-  type PortfolioSnapshot,
 } from "./alert-runtime-bridge";
 import {
   generatePortfolioIntelligence,
-  type PortfolioIntelligence,
 } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
@@ -39,14 +36,14 @@ function makeIntel(overrides: Record<string, unknown> = {}): PositionIntelligenc
     mediumTermContext: "BULLISH",
     volatilityContext: "NORMAL",
     marketState: "BULLISH",
-    dataQuality: "AVAILABLE",
+    dataQuality: "SUFFICIENT",
     pnlPct: 8.33,
     severity: "NONE",
     actionRecommendation: "Hold and monitor.",
     evidence: [],
-    h1Analysis: { timeframe: "H1", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 60, volatility: "NORMAL", atrValue: 100, atrPct: 0.5, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 66000, lastSwingLow: 63000, swingCount: 5, priceVsMA: "ABOVE", dataQuality: "AVAILABLE", candleCount: 100 } as any,
-    m15Analysis: { timeframe: "M15", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 58, volatility: "NORMAL", atrValue: 50, atrPct: 0.3, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 65500, lastSwingLow: 63500, swingCount: 8, priceVsMA: "ABOVE", dataQuality: "AVAILABLE", candleCount: 200 } as any,
-    m5Analysis: { timeframe: "M5", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 55, volatility: "NORMAL", atrValue: 20, atrPct: 0.1, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 65200, lastSwingLow: 64800, swingCount: 12, priceVsMA: "ABOVE", dataQuality: "AVAILABLE", candleCount: 500 } as any,
+    h1Analysis: { timeframe: "H1", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 60, volatility: "NORMAL", atrValue: 100, atrPct: 0.5, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 66000, lastSwingLow: 63000, priceVsMA: "ABOVE", dataQuality: "SUFFICIENT", candleCount: 100 },
+    m15Analysis: { timeframe: "M15", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 58, volatility: "NORMAL", atrValue: 50, atrPct: 0.3, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 65500, lastSwingLow: 63500, priceVsMA: "ABOVE", dataQuality: "SUFFICIENT", candleCount: 200 },
+    m5Analysis: { timeframe: "M5", trend: "BULLISH", momentum: "POSITIVE", rsiValue: 55, volatility: "NORMAL", atrValue: 20, atrPct: 0.1, structure: "HIGHER_HIGHS_HIGHER_LOWS", structureBroken: false, lastSwingHigh: 65200, lastSwingLow: 64800, priceVsMA: "ABOVE", dataQuality: "SUFFICIENT", candleCount: 500 },
     invalidationConditions: [],
     nextMonitor: [],
   };

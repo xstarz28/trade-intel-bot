@@ -16,12 +16,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: "22"
+          node-version: "22.23.4"
       - name: Install dependencies
-        run: npm install --legacy-peer-deps --no-audit --no-fund
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Audit resolved npm dependencies
+        run: npm audit --audit-level=high
       - name: Validate GitHub Actions workflow YAML
         run: |
           ruby -ryaml -e 'ARGV.each { |path| YAML.parse_file(path); puts "Valid YAML: #{path}" }' .github/workflows/*.yml
@@ -34,8 +36,13 @@ jobs:
         run: node --test scripts/verify-frontend-release.smoke.test.mjs
       - name: Syntax-check production runtime smoke
         run: node --check scripts/production-runtime-smoke.mjs
+      - name: Syntax-check CoinGecko live verifier
+        run: node --check scripts/verify-coingecko-live.mjs
+      - name: Test CoinGecko live verifier
+        run: node --test scripts/verify-coingecko-live.test.mjs
       - name: Test suite
         run: npm test
-      - name: Lint (advisory)
-        continue-on-error: true
+      - name: Test Google auth config verifier
+        run: node --test scripts/verify-google-auth-config.test.mjs
+      - name: Lint
         run: npm run lint

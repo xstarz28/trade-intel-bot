@@ -12,6 +12,13 @@ describe("TPO and VPVR",()=>{
     expect(p.available).toBe(true); expect(p.poc).toBeGreaterThan(0);
     expect(p.val).toBeLessThanOrEqual(p.poc!); expect(p.vah).toBeGreaterThanOrEqual(p.poc!);
   });
+  it("does not claim 30-minute TPO resolution from four-hour candles",()=>{
+    const h4=candles().map((c,i)=>({...c,timestamp:1_800_000_000_000+i*4*60*60_000}));
+    const profile=calculateTpoProfile(h4,{rows:32,blockMinutes:30});
+    expect(profile.available).toBe(true);
+    expect(profile.blockMinutes).toBe(240);
+  });
+
   it("calculates approximate VPVR only with positive usable volume",()=>{
     const p=calculateVpvrProfile(candles(100),{rows:32});
     expect(p.available).toBe(true); expect(p.approximation).toContain("not true trade-level");
@@ -24,6 +31,19 @@ describe("TPO and VPVR",()=>{
   it("rejects insufficient candle history",()=>{
     expect(calculateTpoProfile(candles().slice(0,10)).available).toBe(false);
     expect(calculateVpvrProfile(candles().slice(0,2)).available).toBe(false);
+  });
+
+  it("does not double-count duplicate provider candle timestamps",()=>{
+    const data=candles(100);
+    const baseline=calculateVpvrProfile(data,{rows:32});
+    const duplicated=calculateVpvrProfile([...data,data[data.length-1]],{rows:32});
+    expect(baseline.available).toBe(true);
+    expect(duplicated.available).toBe(true);
+    expect(duplicated.total).toBeCloseTo(baseline.total!,8);
+
+    const tpoBaseline=calculateTpoProfile(data,{rows:32,blockMinutes:30});
+    const tpoDuplicated=calculateTpoProfile([...data,data[data.length-1]],{rows:32,blockMinutes:30});
+    expect(tpoBaseline.total).toBe(tpoDuplicated.total);
   });
 
   it("ignores malformed OHLC candles and sanitizes non-finite options",()=>{

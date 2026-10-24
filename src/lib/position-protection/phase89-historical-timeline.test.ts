@@ -417,7 +417,7 @@ describe("N. Multi-Position History", () => {
       makeSnapshot({ positionId: "p2", instrument: "ETH/USDT" }),
       makeSnapshot({ positionId: "p3", instrument: "EUR/USD" }),
     ];
-    let timelines = snaps.map(s => buildTimeline(null, s));
+    const timelines = snaps.map(s => buildTimeline(null, s));
     // Evolve each differently
     timelines[0] = buildTimeline(timelines[0], makeSnapshot({ positionId: "p1", thesisState: "CAUTION" }));
     timelines[1] = buildTimeline(timelines[1], makeSnapshot({ positionId: "p2", thesisState: "INVALIDATED" }));

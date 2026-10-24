@@ -4,16 +4,14 @@ import { Loader2, UserRound } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import { useAuth } from "@/hooks/use-auth";
+import { resolveAuthRedirect } from "@/lib/auth-redirect";
 
-function resolveRedirect(returnTo: string | null, fallback="/dashboard") {
-  return returnTo?.startsWith("/") && !returnTo.startsWith("//") ? returnTo : fallback;
-}
 
 export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectAfterAuth?: string }) {
   const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
-  const redirect = resolveRedirect(params.get("returnTo"), redirectAfterAuth);
+  const redirect = resolveAuthRedirect(params.get("returnTo"), redirectAfterAuth);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 

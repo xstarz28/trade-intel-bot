@@ -22,7 +22,6 @@ import {
   resetProviderHealth,
 } from "../routing-engine";
 import { cacheGet, cacheSet } from "../cache";
-import type { CacheKey } from "../engine-types";
 import type {
   LiveStatus,
   OhlcvRecord,
@@ -115,15 +114,25 @@ const ENDPOINTS: Record<string, EndpointSpec> = {
     },
   },
   coingecko: {
-    buildUrl: (sym) => `https://api.coingecko.com/api/v3/simple/price?ids=${sym.toLowerCase()}&vs_currencies=usd`,
+    buildUrl: (sym) => `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(sym.toLowerCase())}&vs_currencies=usd&include_last_updated_at=true`,
     extract: (json, p) => {
-      const j = json as Record<string, { usd?: number }>;
+      const j = json as Record<string, { usd?: number; last_updated_at?: number }>;
       const id = p.providerSymbol?.toLowerCase() ?? "";
-      const price = j[id]?.usd;
+      const record = j[id];
+      const price = record?.usd;
+      const updatedAt = record?.last_updated_at;
+      const now = p.now ?? Date.now();
+      const validPrice = typeof price === "number" && Number.isFinite(price) && price > 0;
+      const validTimestamp = typeof updatedAt === "number"
+        && Number.isFinite(updatedAt)
+        && updatedAt > 0
+        && updatedAt * 1_000 <= now + 60_000
+        && now - updatedAt * 1_000 <= 5 * 60_000;
+      const valid = validPrice && validTimestamp;
       return {
-        symbol: price !== undefined ? id : null,
-        quote: price !== undefined ? { price } : undefined,
-        fields: price !== undefined ? ["price"] : [],
+        symbol: valid ? id : null,
+        quote: valid ? { price } : undefined,
+        fields: valid ? ["price", "last_updated_at"] : [],
       };
     },
   },

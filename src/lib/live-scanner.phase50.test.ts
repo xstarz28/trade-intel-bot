@@ -51,10 +51,9 @@ import {
   selectCandidatesForHorizon,
   scanInstruments,
   type ScanConfig,
-  type ScanResult,
 } from "./liveScanner";
 
-import type { CandidateInput } from "./recommendation-engine";
+
 import type { MarketData, TechnicalData } from "./data/market-types";
 
 // ═══════════════════════════════════════════════════════════════
@@ -172,7 +171,7 @@ describe("A — Live Candidate Ingestion", () => {
         tradingStyle: "intraday",
         tradePlan: { direction: "long", entry: "65000", entryBasis: "market", stopLoss: "64000", slBasis: "structure", takeProfit: "67000", tpBasis: "resistance", riskReward: 2.0 },
         priceSnapshot: { price: 65000, timestamp: NOW, source: "twelve-data" },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
     const candidate = buildCandidateFromSource(source);
     expect(candidate.hasAnalysis).toBe(true);
@@ -200,7 +199,7 @@ describe("A — Live Candidate Ingestion", () => {
         noTradeReasons: [],
         timestamp: NOW - MINUTE,
         priceSnapshot: { price: 65000, timestamp: NOW - MINUTE, source: "twelve-data" },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
 
     const candidate = buildCandidateFromSource(source);
@@ -629,7 +628,7 @@ describe("O — Multi-Timeframe Alignment", () => {
         priceSnapshot: { price: 65000, timestamp: NOW, source: "twelve-data" },
         tradingStyle: "intraday",
         mtfSummary: { alignment: "ALIGNED_BULLISH", chainUsed: ["D1", "H4", "H1"], unavailable: [], htfBias: "long", setupTimeframe: "H4" },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
     const candidate = buildCandidateFromSource(source);
     expect(candidate.mtfAlignment).toBe("ALIGNED_BULLISH");
@@ -752,7 +751,7 @@ describe("U — Cross-Instrument Isolation", () => {
   it("XAU/USD does not inherit WTI inventory", () => {
     const sources = [
       makeSource({ instrument: "XAU/USD", assetClass: "commodity", eiaData: undefined }),
-      makeSource({ instrument: "WTI", assetClass: "commodity", eiaData: { available: true, series: [{ productId: "WTI", latestValue: 420_000_000 }], freshness: "FRESH" } as any }),
+      makeSource({ instrument: "WTI", assetClass: "commodity", eiaData: { available: true, series: [{ productId: "WTI", latestValue: 420_000_000 }], freshness: "FRESH" } as unknown as NonNullable<LiveCandidateSource["eiaData"]> }),
     ];
     const candidates = buildCandidatesFromSources(sources);
     const xau = candidates.find(c => c.instrument === "XAU/USD");

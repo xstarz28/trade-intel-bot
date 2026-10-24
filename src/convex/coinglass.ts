@@ -18,14 +18,16 @@ import type {
 import { DeFiLlamaAdapter } from "../lib/data/crypto/defillama-adapter";
 import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tokenomist-adapter";
 import { PatternPlusUnlockAdapter } from "../lib/data/crypto/patternplus-unlocks-adapter";
-import { parseCoinGeckoSupplyFallback } from "../lib/data/crypto/coingecko-supply";
+import { fetchCoinGeckoSupplyPayload, parseCoinGeckoSupplyFallback } from "../lib/data/crypto/coingecko-supply";
 import { getProviderSymbol } from "../lib/data/universal/instruments";
+import { normalizeDerivativeSymbol } from "../lib/data/derivatives-symbol";
+import { toCoinGlassSymbol } from "../lib/data/crypto/symbols";
 import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivatives-adapter";
 import { OkxPublicDerivativesAdapter } from "../lib/data/crypto/okx-derivatives-adapter";
 
 // ── In-memory cache (10 min TTL) ────────────────────────────────
-const cache = new Map<string, { data: any; expiresAt: number }>();
+const cache = new Map<string, { data: unknown; expiresAt: number }>();
 const CACHE_TTL = 10 * 60 * 1000;
 
 function getCached<T>(key: string): T | null {
@@ -35,7 +37,7 @@ function getCached<T>(key: string): T | null {
   return null;
 }
 
-function setCache(key: string, data: any, ttlMs = CACHE_TTL): void {
+function setCache(key: string, data: unknown, ttlMs = CACHE_TTL): void {
   cache.set(key, { data, expiresAt: Date.now() + ttlMs });
 }
 
@@ -47,6 +49,17 @@ const binanceFallback = new BinancePublicDerivativesAdapter();
 const bybitFallback = new BybitPublicDerivativesAdapter();
 const okxFallback = new OkxPublicDerivativesAdapter();
 const BINANCE_FALLBACK_CACHE_TTL = 60 * 1000;
+
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function rowsFrom(value: unknown): JsonRecord[] {
+  if (Array.isArray(value)) return value.filter(isRecord);
+  return isRecord(value) ? [value] : [];
+}
 
 async function fetchPublicDerivativesFallback(instrument: string): Promise<{ data: CryptoDerivativesData | null; error: string }> {
   const [binanceResult, bybitResult, okxResult] = await Promise.allSettled([
@@ -73,7 +86,7 @@ async function fetchPublicDerivativesFallback(instrument: string): Promise<{ dat
   };
 }
 
-async function cgFetch(path: string, apiKey: string): Promise<any> {
+async function cgFetch(path: string, apiKey: string): Promise<unknown> {
   const res = await fetch(CG_BASE + path, {
     headers: {
       accept: "application/json",
@@ -88,38 +101,46 @@ async function cgFetch(path: string, apiKey: string): Promise<any> {
     }
     throw new Error("CoinGlass HTTP " + res.status + ": " + res.statusText);
   }
-  const json = await res.json();
+  const payload: unknown = await res.json();
+  if (!isRecord(payload)) throw new Error("CoinGlass returned a non-object response.");
   // CoinGlass V4 wraps successful responses in { code: "0", msg, data }.
-  if (json.code !== undefined && String(json.code) !== "0") {
-    const msg = String(json.msg || "Unknown CoinGlass error");
-    if (String(json.code) === "429" || msg.toLowerCase().includes("rate")) {
+  if (payload.code !== undefined && String(payload.code) !== "0") {
+    const msg = String(payload.msg || "Unknown CoinGlass error");
+    if (String(payload.code) === "429" || msg.toLowerCase().includes("rate")) {
       throw new Error("RATE_LIMIT:" + msg);
     }
-    if (["401", "403"].includes(String(json.code)) || /auth|api.?key|permission/i.test(msg)) {
+    if (["401", "403"].includes(String(payload.code)) || /auth|api.?key|permission/i.test(msg)) {
       throw new Error("AUTH_ERROR:" + msg);
     }
-    throw new Error("CoinGlass error " + json.code + ": " + msg);
+    throw new Error("CoinGlass error " + String(payload.code) + ": " + msg);
   }
-  return json.data ?? json;
+  return payload.data ?? payload;
 }
 
 // ── Symbol mapping ──────────────────────────────────────────────
 
 function mapSymbolForCG(instrument: string): string {
-  // BTC/USD → BTC, ETH/USD → ETH
-  const sym = instrument.toUpperCase().trim();
-  return sym.split("/")[0];
+  // CoinGlass aggregates derivatives by base asset, while callers may supply
+  // canonical pairs (BTC/USD) or exchange-native IDs (BTC-USDT-SWAP).
+  const normalized = toCoinGlassSymbol(instrument) ?? normalizeDerivativeSymbol(instrument);
+  return normalized || instrument.trim().toUpperCase();
 }
 
 // ── Main Action ─────────────────────────────────────────────────
 
 export const fetchDerivatives = action({
-  args: { instrument: v.string() },
+  args: {
+    instrument: v.string(),
+    includeTokenomics: v.optional(v.boolean()),
+  },
   handler: async (_ctx, args): Promise<DerivativesResult> => {
     const apiKey = process.env.COINGLASS_API_KEY;
     const symbol = mapSymbolForCG(args.instrument);
-    // Start Tokenomist concurrently so it cannot serialize CoinGlass requests.
-    const tokenomicsPromise = fetchTokenomics(args.instrument);
+    // Background radar needs derivatives only; skip tokenomics fan-out unless
+    // explicitly requested so scanning does not trigger unrelated provider calls.
+    const tokenomicsPromise = args.includeTokenomics === false
+      ? Promise.resolve(undefined)
+      : fetchTokenomics(args.instrument);
 
     try {
       const cacheKey = "deriv:" + symbol;
@@ -144,7 +165,7 @@ export const fetchDerivatives = action({
           };
         }
         return {
-          success: Boolean(tokenomics.available),
+          success: Boolean(tokenomics?.available),
           tokenomics,
           error: "CoinGlass API key is not configured. Public derivatives fallbacks failed: " + fallback.error,
           errorCode: "AUTH_ERROR",
@@ -205,7 +226,7 @@ export const fetchDerivatives = action({
           };
         }
         return {
-          success: Boolean(tokenomics.available),
+          success: Boolean(tokenomics?.available),
           tokenomics,
           error: error + " Public derivatives fallbacks failed: " + fallback.error,
           errorCode,
@@ -232,7 +253,7 @@ export const fetchDerivatives = action({
       // Only cache responses containing real provider data.
       setCache(cacheKey, data);
       return { success: true, data, tokenomics };
-    } catch (err: any) {
+    } catch (err: unknown) {
       const tokenomics = await tokenomicsPromise;
       return {
         success: Boolean(tokenomics?.available),
@@ -282,7 +303,7 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
       const result = await tokenomistAdapter.fetch(key);
       if (result?.success && result.data && typeof result.data === "object") {
         const normalized = parseTokenomistResult(
-          result.data as Record<string, any>,
+          result.data as Record<string, unknown>,
           key,
           result.observedAt ?? Date.now(),
         );
@@ -302,41 +323,41 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
   // Missing records remain unavailable; they are never interpreted as zero unlocks.
   try {
     const fallback = await patternPlusUnlockAdapter.fetch(key);
+    let coinGeckoFailure: string | undefined;
     if (!fallback.available) {
-      // Supply metrics are a separate, useful tokenomics fallback when neither
-      // Tokenomist nor PatternPlus has a verified unlock record. Never infer
-      // zero unlocks from a missing calendar row.
+      // Supply metrics are a separate fallback, never an inferred unlock schedule.
       const coinGeckoId = getProviderSymbol(key, "coingecko");
       if (coinGeckoId) {
-        try {
-          const response = await fetch(
-            "https://api.coingecko.com/api/v3/coins/" + encodeURIComponent(coinGeckoId) +
-              "?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false",
-            { headers: { accept: "application/json" }, signal: AbortSignal.timeout(3_000) },
-          );
-          if (response.ok) {
-            const supplyFallback = parseCoinGeckoSupplyFallback(await response.json());
-            if (supplyFallback) {
-              const result = {
-                ...supplyFallback,
-                failureReason: "Supply fallback active. Verified unlock calendar unavailable: " +
-                  (fallback.failureReason ?? tokenomistFailure ?? "no dated unlock records returned"),
-              };
-              tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
-              return result;
-            }
+        const fetched = await fetchCoinGeckoSupplyPayload(coinGeckoId, {
+          apiKey: process.env.COINGECKO_DEMO_API_KEY,
+        });
+        if (fetched.payload !== undefined) {
+          const supplyFallback = parseCoinGeckoSupplyFallback(fetched.payload);
+          if (supplyFallback) {
+            const result = {
+              ...supplyFallback,
+              failureReason: "Supply fallback active. Verified unlock calendar unavailable: " +
+                (fallback.failureReason ?? tokenomistFailure ?? "no dated unlock records returned"),
+            };
+            tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
+            return result;
           }
-        } catch {
-          // Keep the explicit unlock-provider failure below; never synthesize supply.
+          coinGeckoFailure = "CoinGecko returned no valid supply metrics.";
+        } else {
+          coinGeckoFailure = fetched.failureReason;
         }
+      } else {
+        coinGeckoFailure = "CoinGecko fallback unavailable: no verified provider ID for this instrument.";
       }
     }
-    const result = !fallback.available && tokenomistFailure
-      ? {
-          ...fallback,
-          failureReason: "Tokenomist fallback failed (" + tokenomistFailure + "); " +
-            (fallback.failureReason ?? "PatternPlus has no usable record."),
-        }
+
+    const failureReasons = [
+      tokenomistFailure ? "Tokenomist unavailable (" + tokenomistFailure + ")." : undefined,
+      fallback.failureReason ?? (!fallback.available ? "PatternPlus has no usable record." : undefined),
+      coinGeckoFailure,
+    ].filter((reason): reason is string => Boolean(reason));
+    const result = !fallback.available && failureReasons.length > 0
+      ? { ...fallback, failureReason: failureReasons.join(" ") }
       : fallback;
     tokenomicsCache.set(key, { data: result, expiresAt: Date.now() + TOKENOMICS_TTL });
     return result;
@@ -355,7 +376,7 @@ async function fetchTokenomics(instrument: string): Promise<import("../lib/data/
 const defiLlamaAdapter = new DeFiLlamaAdapter();
 const DEFI_LLAMA_CACHE_TTL = 10 * 60 * 1000;
 const defiLlamaCache = new Map<string, {
-  data: Record<string, any>;
+  data: Record<string, unknown>;
   provider: string;
   observedAt: number;
   expiresAt: number;
@@ -397,7 +418,7 @@ export const fetchDeFiLlamaFundamentals = action({
 
       const normalized = {
         success: true as const,
-        data: result.data as Record<string, any>,
+        data: result.data as Record<string, unknown>,
         provider: result.provider,
         observedAt: result.observedAt,
       };
@@ -426,8 +447,8 @@ function finiteNumber(value: unknown): number | undefined {
 
 async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenInterestData | undefined> {
   const data = await cgFetch("/futures/open-interest/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey);
-  const rows = Array.isArray(data) ? data : data ? [data] : [];
-  const latest = rows.find((item: any) => String(item.exchange || "").toLowerCase() === "all") ?? rows[0];
+  const rows = rowsFrom(data);
+  const latest = rows.find((item) => String(item.exchange ?? "").toLowerCase() === "all") ?? rows[0];
   const current = finiteNumber(latest?.open_interest_usd);
   if (current === undefined || current <= 0) return undefined;
   const change1h = finiteNumber(latest?.open_interest_change_percent_1h);
@@ -441,25 +462,29 @@ async function fetchOpenInterest(symbol: string, apiKey: string): Promise<OpenIn
 
 async function fetchFundingRate(symbol: string, apiKey: string): Promise<FundingRateData | undefined> {
   const data = await cgFetch("/futures/funding-rate/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey);
-  const rows = Array.isArray(data) ? data : data ? [data] : [];
-  const item = rows.find((row: any) => String(row.symbol || "").toUpperCase() === symbol.toUpperCase()) ?? rows[0];
-  const exchanges = Array.isArray(item?.stablecoin_margin_list) ? item.stablecoin_margin_list : [];
+  const rows = rowsFrom(data);
+  const item = rows.find((row) => String(row.symbol ?? "").toUpperCase() === symbol.toUpperCase()) ?? rows[0];
+  const exchanges = Array.isArray(item?.stablecoin_margin_list)
+    ? item.stablecoin_margin_list.filter(isRecord)
+    : [];
   const actualRates = exchanges
-    .map((entry: any) => ({
-      name: String(entry.exchange || "unknown"),
+    .map((entry) => ({
+      name: String(entry.exchange ?? "unknown"),
       rawRate: finiteNumber(entry.funding_rate),
       intervalHours: finiteNumber(entry.funding_rate_interval) ?? 8,
     }))
-    .filter((entry: any) => entry.rawRate !== undefined);
+    .filter((entry): entry is { name: string; rawRate: number; intervalHours: number } =>
+      entry.rawRate !== undefined,
+    );
   if (actualRates.length === 0) return undefined;
 
   // CoinGlass v4 funding_rate is percentage units (0.0073 means 0.0073%).
-  const selected = actualRates.find((entry: any) => entry.name.toLowerCase() === "binance") ?? actualRates[0];
-  const currentRate = selected.rawRate! / 100;
+  const selected = actualRates.find((entry) => entry.name.toLowerCase() === "binance") ?? actualRates[0];
+  const currentRate = selected.rawRate / 100;
   return {
     currentRate,
     annualizedRate: currentRate * (24 / Math.max(1, selected.intervalHours)) * 365,
-    exchanges: actualRates.map((entry: any) => ({ name: entry.name, rate: entry.rawRate! / 100 })),
+    exchanges: actualRates.map((entry) => ({ name: entry.name, rate: entry.rawRate / 100 })),
   };
 }
 
@@ -469,7 +494,7 @@ async function fetchLongShort(symbol: string, apiKey: string): Promise<LongShort
   const path = "/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=" +
     encodeURIComponent(pair) + "&interval=4h&limit=1";
   const data = await cgFetch(path, apiKey);
-  const points = Array.isArray(data) ? data : data ? [data] : [];
+  const points = rowsFrom(data);
   const latest = points[points.length - 1];
   const ratio = finiteNumber(latest?.global_account_long_short_ratio);
   if (ratio === undefined || ratio <= 0) return undefined;

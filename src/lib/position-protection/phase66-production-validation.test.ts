@@ -23,9 +23,10 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { PositionContext, AlertSeverity } from "../position-protection/types";
-import type { MarketEvidence } from "../position-protection/thesis-health";
-import type { MarketEvidence as ThesisMarketEvidence } from "../position-protection/thesis-health";
+import type { GivebackState } from "../position-protection/giveback-monitor";
+import type { PositionContext } from "../position-protection/types";
+
+
 
 // Scenario engine
 import {
@@ -52,11 +53,10 @@ import {
 } from "../position-protection/alert-lifecycle";
 import { detectShock } from "../position-protection/shock-detector";
 import {
-  calculateGiveback,
   classifyGivebackSeverity,
 } from "../position-protection/giveback-monitor";
 import { classifyEarlyProtection } from "../position-protection/early-protection";
-import { alertSeverityRank, urgencyRank } from "../position-protection/types";
+import { alertSeverityRank } from "../position-protection/types";
 import {
   createAccelerationState,
   recordPriceObservation,
@@ -77,7 +77,6 @@ import {
   registerInstrumentForPolling,
   processPollSuccess,
   processPollFailure,
-  shouldPollInstrument,
   getPollingDashboard,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
@@ -94,6 +93,19 @@ import {
 } from "../position-protection/continuous-protection-controller";
 
 const NOW = Date.now();
+
+function makeGivebackState(givebackPct: number): GivebackState {
+  return {
+    peakPrice: 100,
+    currentPrice: 100,
+    peakProfit: 0,
+    currentProfit: 0,
+    givebackAbsolute: 0,
+    givebackPct,
+    pullbackType: "NORMAL_PULLBACK",
+    accelerating: false,
+  };
+}
 
 // ═══════════════════════════════════════════════════════════════
 // A. HEALTHY PROFITABLE LONG SCENARIO
@@ -705,7 +717,7 @@ describe("AA. End-to-End Profit Protection Flow", () => {
       leverage: 10, openedAt: NOW - 3600_000, horizon: "SWING",
     };
 
-    let monitorState = createMonitoringState("BTC/USDT");
+    const monitorState = createMonitoringState("BTC/USDT");
 
     const s1 = evaluateProtection({
       position: { ...pos, currentPrice: 115 },
@@ -782,9 +794,9 @@ describe("AC. Missing SL/TP Safety", () => {
 
 describe("AD. Horizon Sensitivity", () => {
   it("SCALPING is more sensitive than INVESTING to giveback", () => {
-    const gb = { givebackPct: 30 };
-    const scalp = classifyGivebackSeverity(gb as any, "SCALPING");
-    const invest = classifyGivebackSeverity(gb as any, "INVESTING");
+    const gb = makeGivebackState(30);
+    const scalp = classifyGivebackSeverity(gb, "SCALPING");
+    const invest = classifyGivebackSeverity(gb, "INVESTING");
     const order: Record<string, number> = { NONE: 0, WATCH: 1, PARTIAL_TP: 2, MANUAL_TP: 3, PROTECT_NOW: 4 };
     expect(order[scalp] ?? -1).toBeGreaterThanOrEqual(order[invest] ?? -1);
   });
@@ -839,11 +851,11 @@ describe("AF. Why TP Now Quality", () => {
 
 describe("AG. Giveback Classification Boundaries", () => {
   it("0% giveback is NONE", () => {
-    expect(classifyGivebackSeverity({ givebackPct: 0 } as any, "SWING")).toBe("NONE");
+    expect(classifyGivebackSeverity(makeGivebackState(0), "SWING")).toBe("NONE");
   });
 
   it("100% giveback is PROTECT_NOW", () => {
-    expect(classifyGivebackSeverity({ givebackPct: 100 } as any, "SWING")).toBe("PROTECT_NOW");
+    expect(classifyGivebackSeverity(makeGivebackState(100), "SWING")).toBe("PROTECT_NOW");
   });
 });
 

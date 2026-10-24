@@ -9,7 +9,7 @@
  * - LIVE SMOKE tests: make real requests, only run with credentials
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 
 // ── Provider Registry ──
 import {
@@ -21,14 +21,13 @@ import {
   resetAdapters,
   type ProviderAdapter,
   type ProviderHealth,
-  type ProviderHealthStatus,
 } from "./market-radar/provider-registry";
 
 // ── Provider-Registry Types ──
 
 // ── Radar Types ──
 import type { AssetClass } from "./data/universal/types";
-import type { MarketSnapshot, FreshnessLevel } from "./market-radar/types";
+import type { MarketSnapshot } from "./market-radar/types";
 import { assessFreshness } from "./market-radar/freshness";
 import { RadarCache, buildCacheKey } from "./market-radar/cache";
 import { RateLimitController } from "./market-radar/rate-limit";
@@ -40,7 +39,6 @@ import {
   compareCrossProviderPrices,
   assessDataQuality,
   type OhlcvRecord,
-  type LiveStatus,
 } from "./data/universal/live/types";
 
 // ═══════════════════════════════════════════════════════════════
@@ -156,7 +154,7 @@ describe("B — Provider Routing", () => {
     // Add a degraded adapter first
     const degraded = makeFakeAdapter("degraded-p", ["crypto"], ["quote"], makeSnapshot());
     // Simulate degradation
-    (degraded as any).getHealth().status = "DEGRADED";
+    Object.defineProperty(degraded, "getHealth", { value: () => ({ ...degraded.getHealth(), status: "DEGRADED" }) });
     // selectBestAdapter should prefer healthy over degraded
     const adapter = selectBestAdapter("BTC/USD", "crypto", "quote");
     // The default twelve-data adapter should still be available
@@ -527,8 +525,8 @@ describe("U — Security", () => {
 describe("V — No Secrets", () => {
   it("snapshot does not contain auth headers", () => {
     const snapshot = makeSnapshot();
-    expect((snapshot as any).authorization).toBeUndefined();
-    expect((snapshot as any).headers).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "authorization")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "headers")).toBe(false);
   });
 });
 
@@ -562,10 +560,10 @@ describe("W — Deterministic Normalization", () => {
 describe("X — Decision Immutability", () => {
   it("snapshot contains no recommendation/bias/conviction", () => {
     const snapshot = makeSnapshot();
-    expect((snapshot as any).recommendation).toBeUndefined();
-    expect((snapshot as any).bias).toBeUndefined();
-    expect((snapshot as any).conviction).toBeUndefined();
-    expect((snapshot as any).tradePlan).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "conviction")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(snapshot, "tradePlan")).toBe(false);
   });
 
   it("data quality is informational only", () => {
@@ -574,8 +572,8 @@ describe("X — Decision Immutability", () => {
       consistency: "CONSISTENT",
     });
     // Quality should not contain any decision fields
-    expect((qa as any).recommendation).toBeUndefined();
-    expect((qa as any).bias).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(qa, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(qa, "bias")).toBe(false);
   });
 });
 

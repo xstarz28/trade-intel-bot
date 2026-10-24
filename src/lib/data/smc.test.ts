@@ -370,6 +370,21 @@ describe("computeVolumeProfile", () => {
     expect(nodes.every((price) => price >= 9.8 && price <= 20.1)).toBe(true);
   });
 
+  it("ranks HVNs by relative volume instead of taking the lowest-price qualifying rows", () => {
+    const candles = Array.from({ length: 10 }, (_, i) => {
+      const price = 10 + i * 1.5;
+      return candle(T(i), price - 0.1, price + 0.1, price - 0.2, price, 100);
+    });
+    candles.push(candle(T(10), 29.9, 30.1, 29.8, 30.0, 3_000));
+
+    const vp = computeVolumeProfile(candles);
+    expect(vp.available).toBe(true);
+    expect(vp.hvn?.length).toBeGreaterThan(0);
+    // The strongest high-volume node is the 30-price cluster, not an earlier
+    // low-price row that merely crossed the threshold.
+    expect(vp.hvn?.[0]).toBeGreaterThan(28);
+  });
+
   it("refuses to fabricate a profile from zero-volume data", () => {
     const candles = [
       candle(T(0), 9.9, 10.1, 9.8, 10.0, 0),

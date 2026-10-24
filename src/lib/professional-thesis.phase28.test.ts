@@ -21,9 +21,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
-import { buildMarketRegime } from "./market-regime";
-import { buildFundamentalThesis } from "./fundamental-thesis";
-import { buildProfessionalThesis } from "./professional-thesis";
+
 import type { AnalysisInput } from "@/types/analysis";
 import type { MarketData, OhlcvCandle } from "@/lib/data/market-types";
 import { calculateTechnical } from "./data/technical";
@@ -319,11 +317,9 @@ describe("Phase 28 — I56: Style changes context, not facts", () => {
     const baseInput = buildInput("BTC/USD", "crypto", candles);
 
     const scalpingInput = { ...baseInput, tradingStyle: "scalping" as const };
-    const intradayInput = { ...baseInput, tradingStyle: "intraday" as const };
     const swingInput = { ...baseInput, tradingStyle: "swing" as const };
 
     const rScalping = runAnalysis(scalpingInput);
-    const rIntraday = runAnalysis(intradayInput);
     const rSwing = runAnalysis(swingInput);
 
     // Market facts should be identical — only policy may differ

@@ -4,7 +4,7 @@
  * Convex server-side action that fetches REAL market data from free/available
  * providers and normalizes it into ProviderQuoteData for the protection pipeline.
  *
- * CoinGecko: free, no API key needed — crypto (BTC, ETH, SOL, DOGE, etc.)
+ * Crypto quotes: CoinGecko (Demo API key when configured), with public Binance Spot fallback for exact USDT pairs.
  * TwelveData free tier: limited forex (EUR/USD with demo key if configured)
  *
  * NO FABRICATION. NO FAKE DATA. REAL HTTP REQUESTS ONLY.
@@ -12,11 +12,21 @@
  */
 "use node";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown";
+}
+
+
 import { action } from "./_generated/server";
 import { v } from "convex/values";
+import { normalizeTwelveDataQuotePayload, normalizeYahooFinanceQuotePayload } from "./provider-quote-validation";
 
 // ═══════════════════════════════════════════════════════════════
-// COINGECKO — FREE, NO KEY NEEDED
+// COINGECKO — AUTHENTICATED WHEN CONFIGURED, RATE-LIMIT-AWARE FALLBACK
 // ═══════════════════════════════════════════════════════════════
 
 /** CoinGecko coin ID mapping from common trading symbols */
@@ -39,125 +49,210 @@ const COINGECKO_IDS: Record<string, string> = {
   "UNI/USDT": "uniswap",
 };
 
-/** Fetch real prices from CoinGecko — batch endpoint, no key needed */
-async function fetchCoingeckoPrices(
+type CryptoPriceResult = {
+  instrument: string;
+  coinId: string;
+  price: number;
+  change24h?: number;
+  volume24h?: number;
+  marketCap?: number;
+  timestamp: number;
+  success: boolean;
+  provider: "CoinGecko" | "BinanceSpot";
+  error?: string;
+};
+
+const COINGECKO_CACHE_TTL_MS = 15_000;
+const COINGECKO_BACKOFF_DEFAULT_MS = 30_000;
+const coingeckoPriceCache = new Map<string, CryptoPriceResult>();
+let coingeckoRateLimitedUntil = 0;
+
+function failedCryptoResult(
+  instrument: string,
+  coinId: string,
+  error: string,
+  provider: CryptoPriceResult["provider"] = "CoinGecko",
+): CryptoPriceResult {
+  return {
+    instrument, coinId, price: 0, timestamp: Date.now(), success: false, provider, error,
+  };
+}
+
+/** Public exchange fallback for exact USDT spot pairs; never invents USD/USDT equivalence. */
+async function fetchBinanceSpotFallback(
+  instruments: Array<{ instrument: string; coinId: string }>,
+): Promise<Map<string, CryptoPriceResult>> {
+  const eligible = instruments.filter(({ instrument }) => instrument.endsWith("/USDT"));
+  if (eligible.length === 0) return new Map();
+
+  const symbolToInstrument = new Map<string, { instrument: string; coinId: string }>(
+    eligible.map(({ instrument, coinId }) => [
+      instrument.replace("/", ""),
+      { instrument, coinId },
+    ] as const),
+  );
+  const symbols = [...symbolToInstrument.keys()];
+  try {
+    const url = "https://api.binance.com/api/v3/ticker/price?symbols=" +
+      encodeURIComponent(JSON.stringify(symbols));
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!response.ok) return new Map();
+    const payload: unknown = await response.json();
+    if (!Array.isArray(payload)) return new Map();
+
+    const results = new Map<string, CryptoPriceResult>();
+    const timestamp = Date.now();
+    for (const item of payload) {
+      if (!isRecord(item) || typeof item.symbol !== "string") continue;
+      const mapped = symbolToInstrument.get(item.symbol);
+      const price = typeof item.price === "string" ? Number(item.price) : item.price;
+      if (!mapped || typeof price !== "number" || !Number.isFinite(price) || price <= 0) continue;
+      const result: CryptoPriceResult = {
+        instrument: mapped.instrument,
+        coinId: mapped.coinId,
+        price,
+        timestamp,
+        success: true,
+        provider: "BinanceSpot",
+      };
+      results.set(mapped.instrument, result);
+      coingeckoPriceCache.set(mapped.instrument, result);
+    }
+    return results;
+  } catch {
+    return new Map();
+  }
+}
+
+const coingeckoInflightRequests = new Map<string, Promise<CryptoPriceResult[]>>();
+
+/** Coalesce concurrent identical batches so a burst of protection polls shares one provider request. */
+async function fetchCoingeckoPrices(instruments: string[]): Promise<CryptoPriceResult[]> {
+  const batchKey = [...new Set(instruments.map((instrument) => instrument.toUpperCase().trim()))]
+    .sort()
+    .join("|");
+  const existing = coingeckoInflightRequests.get(batchKey);
+  if (existing) return (await existing).map((result) => ({ ...result }));
+
+  const request = fetchCoingeckoPricesUnshared(instruments);
+  coingeckoInflightRequests.set(batchKey, request);
+  try {
+    return (await request).map((result) => ({ ...result }));
+  } finally {
+    if (coingeckoInflightRequests.get(batchKey) === request) {
+      coingeckoInflightRequests.delete(batchKey);
+    }
+  }
+}
+
+/** Fetch real crypto prices; authenticate when a CoinGecko Demo key is configured and fail over on rate limits. */
+async function fetchCoingeckoPricesUnshared(
   instruments: string[],
-): Promise<
-  Array<{
-    instrument: string;
-    coinId: string;
-    price: number;
-    change24h: number;
-    volume24h: number;
-    marketCap: number;
-    timestamp: number;
-    success: boolean;
-    error?: string;
-  }>
-> {
-  // Map instruments to CoinGecko IDs
+): Promise<CryptoPriceResult[]> {
   const idMap = instruments.map((inst) => ({
     instrument: inst.toUpperCase().trim(),
     coinId: COINGECKO_IDS[inst.toUpperCase().trim()] ?? null,
   }));
+  const validCoins = idMap.filter(
+    (coin): coin is { instrument: string; coinId: string } => coin.coinId !== null,
+  );
+  const unknownResults = idMap
+    .filter((coin) => coin.coinId === null)
+    .map((coin) => failedCryptoResult(
+      coin.instrument, "unknown", `Unknown CoinGecko coin for ${coin.instrument}`,
+    ));
+  if (validCoins.length === 0) return unknownResults;
 
-  // Filter to known coins
-  const validCoins = idMap.filter((c) => c.coinId !== null);
-  if (validCoins.length === 0) {
-    return idMap.map((c) => ({
-      instrument: c.instrument,
-      coinId: c.coinId ?? "unknown",
-      price: 0,
-      change24h: 0,
-      volume24h: 0,
-      marketCap: 0,
-      timestamp: Date.now(),
-      success: false,
-      error: `Unknown CoinGecko coin for ${c.instrument}`,
-    }));
+  const now = Date.now();
+  const cached = validCoins.map((coin) => coingeckoPriceCache.get(coin.instrument));
+  if (cached.every((result) => result && now - result.timestamp <= COINGECKO_CACHE_TTL_MS)) {
+    return [...cached.filter((result): result is CryptoPriceResult => result !== undefined), ...unknownResults];
   }
 
-  const coinIds = validCoins.map((c) => c.coinId!).join(",");
-  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${coinIds}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true&include_market_cap=true`;
+  if (now < coingeckoRateLimitedUntil) {
+    const fallback = await fetchBinanceSpotFallback(validCoins);
+    const results = validCoins.map((coin) => fallback.get(coin.instrument) ??
+      failedCryptoResult(
+        coin.instrument, coin.coinId,
+        `CoinGecko rate limited; retry after ${new Date(coingeckoRateLimitedUntil).toISOString()} and no valid Binance Spot fallback was available`,
+      ));
+    return [...results, ...unknownResults];
+  }
 
+  const coinIds = [...new Set(validCoins.map((coin) => coin.coinId))].join(",");
+  const url = `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(coinIds)}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true&include_market_cap=true`;
   try {
-    const res = await fetch(url, {
-      headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(10_000),
+    const headers: Record<string, string> = { Accept: "application/json" };
+    const demoApiKey = process.env.COINGECKO_DEMO_API_KEY?.trim();
+    if (demoApiKey) headers["x-cg-demo-api-key"] = demoApiKey;
+
+    const response = await fetch(url, {
+      headers,
+      signal: AbortSignal.timeout(8_000),
     });
 
-    if (!res.ok) {
-      const errorText = await res.text().catch(() => "unknown");
-      return validCoins.map((c) => ({
-        instrument: c.instrument,
-        coinId: c.coinId!,
-        price: 0,
-        change24h: 0,
-        volume24h: 0,
-        marketCap: 0,
-        timestamp: Date.now(),
-        success: false,
-        error: `CoinGecko HTTP ${res.status}: ${errorText.slice(0, 100)}`,
-      }));
+    if (response.status === 429) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(retryAfter * 1_000, 5 * 60_000)
+        : COINGECKO_BACKOFF_DEFAULT_MS;
+      coingeckoRateLimitedUntil = Date.now() + retryDelay;
+      const fallback = await fetchBinanceSpotFallback(validCoins);
+      const results = validCoins.map((coin) => fallback.get(coin.instrument) ??
+        failedCryptoResult(
+          coin.instrument, coin.coinId,
+          `CoinGecko HTTP 429; provider backoff until ${new Date(coingeckoRateLimitedUntil).toISOString()}; Binance Spot fallback unavailable`,
+        ));
+      return [...results, ...unknownResults];
     }
 
-    const data = await res.json();
-    const now = Date.now();
+    if (!response.ok) {
+      const detail = (await response.text().catch(() => "")).slice(0, 120);
+      const fallback = await fetchBinanceSpotFallback(validCoins);
+      const results = validCoins.map((coin) => fallback.get(coin.instrument) ??
+        failedCryptoResult(coin.instrument, coin.coinId, `CoinGecko HTTP ${response.status}: ${detail || "provider error"}`));
+      return [...results, ...unknownResults];
+    }
 
-    return validCoins.map((c) => {
-      const coinData = data[c.coinId!];
-      if (!coinData || typeof coinData.usd !== "number") {
-        return {
-          instrument: c.instrument,
-          coinId: c.coinId!,
-          price: 0,
-          change24h: 0,
-          volume24h: 0,
-          marketCap: 0,
-          timestamp: now,
-          success: false,
-          error: `No price data for ${c.coinId}`,
-        };
+    const payload: unknown = await response.json();
+    if (!isRecord(payload)) {
+      return [...validCoins.map((coin) =>
+        failedCryptoResult(coin.instrument, coin.coinId, "CoinGecko returned a malformed response")), ...unknownResults];
+    }
+
+    const fetchedAt = Date.now();
+    const results = validCoins.map((coin): CryptoPriceResult => {
+      const quote = payload[coin.coinId];
+      if (!isRecord(quote) || typeof quote.usd !== "number" ||
+          !Number.isFinite(quote.usd) || quote.usd <= 0) {
+        return failedCryptoResult(coin.instrument, coin.coinId, `No valid price data for ${coin.coinId}`);
       }
-
-      const price = coinData.usd;
-      if (!Number.isFinite(price) || price <= 0) {
-        return {
-          instrument: c.instrument,
-          coinId: c.coinId!,
-          price: 0,
-          change24h: 0,
-          volume24h: 0,
-          marketCap: 0,
-          timestamp: now,
-          success: false,
-          error: `Invalid price for ${c.coinId}: ${price}`,
-        };
-      }
-
-      return {
-        instrument: c.instrument,
-        coinId: c.coinId!,
-        price,
-        change24h: typeof coinData.usd_24h_change === "number" ? coinData.usd_24h_change : 0,
-        volume24h: typeof coinData.usd_24h_vol === "number" ? coinData.usd_24h_vol : 0,
-        marketCap: typeof coinData.usd_market_cap === "number" ? coinData.usd_market_cap : 0,
-        timestamp: now,
+      const result: CryptoPriceResult = {
+        instrument: coin.instrument,
+        coinId: coin.coinId,
+        price: quote.usd,
+        ...(typeof quote.usd_24h_change === "number" && Number.isFinite(quote.usd_24h_change)
+          ? { change24h: quote.usd_24h_change } : {}),
+        ...(typeof quote.usd_24h_vol === "number" && Number.isFinite(quote.usd_24h_vol)
+          ? { volume24h: quote.usd_24h_vol } : {}),
+        ...(typeof quote.usd_market_cap === "number" && Number.isFinite(quote.usd_market_cap)
+          ? { marketCap: quote.usd_market_cap } : {}),
+        timestamp: fetchedAt,
         success: true,
+        provider: "CoinGecko",
       };
+      coingeckoPriceCache.set(coin.instrument, result);
+      return result;
     });
-  } catch (err: any) {
-    return validCoins.map((c) => ({
-      instrument: c.instrument,
-      coinId: c.coinId!,
-      price: 0,
-      change24h: 0,
-      volume24h: 0,
-      marketCap: 0,
-      timestamp: Date.now(),
-      success: false,
-      error: `CoinGecko request failed: ${err?.message ?? "unknown"}`,
-    }));
+    return [...results, ...unknownResults];
+  } catch (error: unknown) {
+    const fallback = await fetchBinanceSpotFallback(validCoins);
+    const results = validCoins.map((coin) => fallback.get(coin.instrument) ??
+      failedCryptoResult(coin.instrument, coin.coinId, `CoinGecko request failed: ${errorMessage(error)}; Binance Spot fallback unavailable`));
+    return [...results, ...unknownResults];
   }
 }
 
@@ -173,21 +268,29 @@ async function fetchTwelveDataQuote(
 ): Promise<{
   instrument: string;
   price: number;
-  bid: number;
-  ask: number;
+  bid?: number;
+  ask?: number;
   timestamp: number;
   success: boolean;
   error?: string;
 }> {
+  const failure = (error: string) => ({
+    instrument: symbol,
+    price: 0,
+    timestamp: Date.now(),
+    success: false as const,
+    error,
+  });
+
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const res = await fetch(
         `https://api.twelvedata.com/quote?symbol=${encodeURIComponent(symbol)}&apikey=${apiKey}`,
         { signal: AbortSignal.timeout(10_000) },
       );
-      const json = await res.json();
+      const json: unknown = await res.json();
 
-      if (json.code === 429) {
+      if (res.status === 429 || (isRecord(json) && Number(json.code) === 429)) {
         // Rate limited — back off and retry
         if (attempt < retries) {
           await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
@@ -195,65 +298,34 @@ async function fetchTwelveDataQuote(
         }
       }
 
-      if (json.code) {
-        return {
-          instrument: symbol,
-          price: 0,
-          bid: 0,
-          ask: 0,
-          timestamp: Date.now(),
-          success: false,
-          error: `TwelveData [${json.code}]: ${json.message ?? "provider error"}`,
-        };
+      if (!res.ok) {
+        return failure(`TwelveData HTTP ${res.status}`);
       }
 
-      const price = parseFloat(json.close);
-      if (!Number.isFinite(price) || price <= 0) {
-        return {
-          instrument: symbol,
-          price: 0,
-          bid: 0,
-          ask: 0,
-          timestamp: Date.now(),
-          success: false,
-          error: `Invalid price: ${json.close}`,
-        };
+      const normalized = normalizeTwelveDataQuotePayload(json);
+      if (!normalized.success) {
+        return failure(normalized.error);
       }
 
       return {
         instrument: symbol,
-        price,
-        bid: parseFloat(json.bid ?? "0") || price,
-        ask: parseFloat(json.ask ?? "0") || price,
-        timestamp: Date.now(),
+        price: normalized.price,
+        ...(normalized.bid !== undefined ? { bid: normalized.bid } : {}),
+        ...(normalized.ask !== undefined ? { ask: normalized.ask } : {}),
+        timestamp: normalized.timestamp,
         success: true,
       };
-    } catch (err: any) {
+    } catch {
       if (attempt < retries) {
         await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
         continue;
       }
-      return {
-        instrument: symbol,
-        price: 0,
-        bid: 0,
-        ask: 0,
-        timestamp: Date.now(),
-        success: false,
-        error: `TwelveData request failed: ${err?.message ?? "unknown"}`,
-      };
+      // Avoid returning raw fetch errors, which can contain the credentialed URL.
+      return failure("TwelveData request failed");
     }
   }
   // Unreachable but satisfies TS
-  return {
-    instrument: symbol,
-    price: 0,
-    bid: 0,
-    ask: 0,
-    timestamp: Date.now(),
-    success: false,
-    error: "Unexpected retry exhaustion",
-  };
+  return failure("Unexpected retry exhaustion");
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -325,42 +397,31 @@ async function fetchYahooFinanceQuote(
       };
     }
 
-    const data = await res.json();
-    const meta = data?.chart?.result?.[0]?.meta;
-    if (!meta || typeof meta.regularMarketPrice !== "number") {
+    const data: unknown = await res.json();
+    const normalized = normalizeYahooFinanceQuotePayload(data);
+    if (!normalized.success) {
       return {
         instrument: symbol,
         price: 0,
         timestamp: Date.now(),
         success: false,
-        error: "Yahoo Finance: no price data",
-      };
-    }
-
-    const price = meta.regularMarketPrice;
-    if (!Number.isFinite(price) || price <= 0) {
-      return {
-        instrument: symbol,
-        price: 0,
-        timestamp: Date.now(),
-        success: false,
-        error: `Yahoo Finance: invalid price ${price}`,
+        error: normalized.error,
       };
     }
 
     return {
       instrument: symbol,
-      price,
-      timestamp: (meta.regularMarketTime ?? Date.now()) * 1000,
+      price: normalized.price,
+      timestamp: normalized.timestamp,
       success: true,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument: symbol,
       price: 0,
       timestamp: Date.now(),
       success: false,
-      error: `Yahoo Finance request failed: ${err?.message ?? "unknown"}`,
+      error: `Yahoo Finance request failed: ${errorMessage(err)}`,
     };
   }
 }
@@ -369,7 +430,7 @@ async function fetchYahooFinanceQuote(
 function detectAssetClass(instrument: string): string {
   const s = instrument.toUpperCase().trim();
   if (s.endsWith("/USDT") || s.endsWith("/BTC") || s.endsWith("/ETH")) return "crypto";
-  if (/^(BTC|ETH|SOL|DOGE|BNB|XRP|ADA|AVAX|DOT|LINK|MATIC|UNI)[\/\-]/.test(s)) return "crypto";
+  if (/^(BTC|ETH|SOL|DOGE|BNB|XRP|ADA|AVAX|DOT|LINK|MATIC|UNI)[/-]/.test(s)) return "crypto";
   if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER)/.test(s)) return "commodity";
   if (/^(DXY|VIX|US\d+Y|WTI|CL$)/.test(s)) return "macro";
   if (s.includes("/") && s.split("/").every((p) => /^[A-Z]{3}$/.test(p))) return "forex";
@@ -408,19 +469,21 @@ export const fetchLiveProtectionQuote = action({
     if (cryptoInstruments.length > 0) {
       const coingeckoResults = await fetchCoingeckoPrices(cryptoInstruments);
       for (const r of coingeckoResults) {
-        // OKX is the preferred primary provider for crypto,
-        // but CoinGecko is used as fallback (free, no key needed)
+        // The route registry prefers OKX, but this action currently queries CoinGecko
+        // and uses Binance Spot only when CoinGecko fails or is rate-limited.
         results.push({
           instrument: r.instrument,
           assetClass: "crypto",
           price: r.price,
-          change24h: r.change24h,
-          volume24h: r.volume24h,
+          ...(r.change24h !== undefined ? { change24h: r.change24h } : {}),
+          ...(r.volume24h !== undefined ? { volume24h: r.volume24h } : {}),
           timestamp: r.timestamp,
-          provider: "CoinGecko",
+          provider: r.provider,
           primaryProvider: "OKX",
           fallbackUsed: true,
-          fallbackReason: "OKX API key not configured — CoinGecko used as free fallback",
+          fallbackReason: r.provider === "BinanceSpot"
+            ? "OKX quote route is not called by this action; CoinGecko failed or was rate-limited, so Binance public spot fallback was used"
+            : "OKX quote route is not called by this action; CoinGecko supplied the quote",
           sourceMode: r.success ? "LIVE" : "UNAVAILABLE",
           success: r.success,
           error: r.error,
@@ -473,8 +536,8 @@ export const fetchLiveProtectionQuote = action({
             instrument: r.instrument,
             assetClass: detectAssetClass(inst),
             price: r.price,
-            bid: r.bid,
-            ask: r.ask,
+            ...(r.bid !== undefined ? { bid: r.bid } : {}),
+            ...(r.ask !== undefined ? { ask: r.ask } : {}),
             timestamp: r.timestamp,
             provider: "TwelveData",
             primaryProvider: "TwelveData",
@@ -597,9 +660,10 @@ async function fetchTwelveDataOHLCV(
       };
     }
 
-    const data = await res.json() as any;
+    const payload: unknown = await res.json();
+    const data = isRecord(payload) ? payload : null;
 
-    if (data.status === "error" || !data.values) {
+    if (!data || data.status === "error" || !Array.isArray(data.values)) {
       return {
         instrument,
         timeframe,
@@ -607,24 +671,24 @@ async function fetchTwelveDataOHLCV(
         sourceMode: "UNAVAILABLE",
         provider: "TwelveData",
         success: false,
-        error: data.message ?? "No data",
+        error: typeof data?.message === "string" ? data.message : "No data",
       };
     }
 
     const candles: OHLCVCandle[] = [];
-    for (const v of data.values) {
-      const open = parseFloat(v.open);
-      const high = parseFloat(v.high);
-      const low = parseFloat(v.low);
-      const close = parseFloat(v.close);
-      const volume = parseFloat(v.volume ?? "0");
+    for (const v of data.values.filter(isRecord)) {
+      const open = Number.parseFloat(String(v.open ?? ""));
+      const high = Number.parseFloat(String(v.high ?? ""));
+      const low = Number.parseFloat(String(v.low ?? ""));
+      const close = Number.parseFloat(String(v.close ?? ""));
+      const volume = Number.parseFloat(String(v.volume ?? "0"));
 
       // Validate candle
       if (!Number.isFinite(open) || !Number.isFinite(high) || !Number.isFinite(low) || !Number.isFinite(close)) continue;
       if (open <= 0 || high <= 0 || low <= 0 || close <= 0) continue;
 
       candles.push({
-        timestamp: new Date(v.datetime).getTime(),
+        timestamp: new Date(String(v.datetime ?? "")).getTime(),
         open,
         high,
         low,
@@ -644,7 +708,7 @@ async function fetchTwelveDataOHLCV(
       provider: "TwelveData",
       success: candles.length > 0,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument,
       timeframe,
@@ -652,7 +716,7 @@ async function fetchTwelveDataOHLCV(
       sourceMode: "UNAVAILABLE",
       provider: "TwelveData",
       success: false,
-      error: err?.message ?? "Fetch failed",
+      error: errorMessage(err) || "Fetch failed",
     };
   }
 }

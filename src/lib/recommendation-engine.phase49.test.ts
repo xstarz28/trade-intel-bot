@@ -166,20 +166,6 @@ function makeIndexCandidate(overrides?: Partial<CandidateInput>): CandidateInput
   });
 }
 
-function makeMacroCandidate(overrides?: Partial<CandidateInput>): CandidateInput {
-  return makeCandidate({
-    instrument: "DXY",
-    assetClass: "macro",
-    currentPrice: 103.5,
-    dxyTrend: "falling",
-    riskRegime: "risk_on",
-    hasMacro: true,
-    hasDerivatives: false,
-    hasExecutionQuality: false,
-    ...overrides,
-  });
-}
-
 // ═══════════════════════════════════════════════════════════════
 // A. CANDIDATE DISCOVERY
 // ═══════════════════════════════════════════════════════════════
@@ -481,8 +467,6 @@ describe("I — Crypto Support", () => {
   it("BTC and ETH are isolated", () => {
     const btc = makeCandidate({ instrument: "BTC/USD" });
     const eth = makeCandidate({ instrument: "ETH/USD" });
-    const r1 = scoreCandidate(btc, "INTRADAY");
-    const r2 = scoreCandidate(eth, "INTRADAY");
     // Same structure but different instruments — scores may be same but instruments isolated
     expect(btc.instrument).not.toBe(eth.instrument);
   });
@@ -1002,7 +986,7 @@ describe("Z — Adversarial Inputs", () => {
   });
 
   it("unknown asset class still produces a score", () => {
-    const c = makeCandidate({ assetClass: "macro" as any });
+    const c = makeCandidate({ assetClass: "macro" as CandidateInput["assetClass"] });
     const result = scoreCandidate(c, "INTRADAY");
     expect(result.analyticalScore).toBeGreaterThanOrEqual(0);
   });

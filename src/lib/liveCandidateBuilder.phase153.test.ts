@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument } from "./liveCandidateBuilder";
+import type { LiveCandidateSource } from "./liveCandidateBuilder";
 import { buildRadarCandidate, toRadarCandidateSource } from "./market-radar/candidate-builder";
 
 describe("Phase 153 — Live Candidate Builder integrity", () => {
@@ -84,6 +85,29 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     },
   );
 
+  it("normalizes whitespace in timeframe labels before applying freshness limits", () => {
+    const now = Date.UTC(2026, 9, 23, 12);
+    const observedAt = now - 30 * 60 * 60 * 1000;
+    const candidate = buildCandidateFromSource({
+      instrument: "TEST/USD",
+      assetClass: "forex",
+      marketData: {
+        instrument: "TEST/USD",
+        instrumentType: "forex",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 1.1, timestamp: observedAt, source: "fixture" },
+        candles: [],
+        timeframe: "H 1",
+        dataFreshness: "realtime",
+      },
+    }, now);
+
+    // H1 observations remain stale-usable for up to 48 hours; an unnormalized
+    // label incorrectly falls through to the generic 24-hour limit.
+    expect(candidate.freshness).toBe("STALE");
+  });
+
   it("derives technical evidence from provider OHLCV when no precomputed technical payload exists", () => {
     const now = Date.now();
     const candles = Array.from({ length: 210 }, (_, i) => {
@@ -155,8 +179,8 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           swingLows: [99],
           supportLevels: [99],
           resistanceLevels: [101],
-          htfContext: { structure: "HH/HL" } as any,
-          mtf: { htfBias: "long", alignment: "ALIGNED_BULLISH" } as any,
+          htfContext: { timeframe: "D1", structure: "HH/HL", bosDirection: "none", chochDirection: "none", dataPoints: 20 },
+          mtf: { requestedTimeframe: "H1", chainUsed: ["H4", "H1"], unavailable: [], timeframes: [], htfBias: "long", alignment: "ALIGNED_BULLISH", setupTimeframe: "H1" },
           volumeTrend,
           dataPoints: 100,
         },
@@ -245,10 +269,30 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       },
       technicalData: {
         structure: "HH/HL" as const,
-        mtf: { htfBias: "long" as const, alignment: "ALIGNED_BULLISH" as const },
+        htfContext: {
+          timeframe: "D1",
+          structure: "HH/HL" as const,
+          bosDirection: "none" as const,
+          chochDirection: "none" as const,
+          dataPoints: 20,
+        },
+        mtf: {
+          requestedTimeframe: "H1",
+          chainUsed: ["H4", "H1"],
+          unavailable: [],
+          timeframes: [],
+          htfBias: "long" as const,
+          alignment: "ALIGNED_BULLISH" as const,
+          setupTimeframe: "H1",
+        },
         atr14: 250,
         dataPoints: 1,
-      } as any,
+        swingHighs: [101],
+        swingLows: [99],
+        supportLevels: [99],
+        resistanceLevels: [101],
+        volumeTrend: "stable" as const,
+      },
       derivativesData: {
         provider: "fixture",
         symbol: "BTC-USDT-SWAP",
@@ -288,7 +332,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         confidence: 80,
         bias: "Bullish",
         recommendation: "BUY",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
 
     expect(candidate.currentPrice).toBe(0);
@@ -324,6 +368,41 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
 
 
 
+  it("accepts base-symbol derivatives data for the matching canonical instrument", () => {
+    const now = Date.now();
+    const source: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100_000, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 99_900, high: 100_100, low: 99_800, close: 100_000, volume: 1 }],
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      derivativesData: {
+        provider: "fixture",
+        symbol: "BTC",
+        timestamp: now,
+        freshness: "realtime",
+        availability: { openInterest: true, fundingRate: true, longShort: false, liquidations: false },
+        confidence: "high",
+        openInterest: { current: 500_000_000 },
+        fundingRate: { currentRate: 0.0001 },
+      },
+    };
+
+    const candidate = buildCandidateFromSource(source, now);
+    const radarSource = toRadarCandidateSource(source);
+    expect(candidate.hasDerivatives).toBe(true);
+    expect(candidate.fundingRate).toBe(0.0001);
+    expect(radarSource.derivatives?.fundingRate).toBe(0.0001);
+    expect(radarSource.derivatives?.openInterest).toBe(500_000_000);
+  });
+
   it("rejects derivatives and COT context for a different instrument", () => {
     const now = Date.now();
     const cryptoCandidate = buildCandidateFromSource({
@@ -342,7 +421,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         confidence: "high",
         openInterest: { current: 123456 },
         fundingRate: { currentRate: 0.01 },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["derivativesData"]>,
     });
     expect(cryptoCandidate.hasDerivatives).toBe(false);
     expect(cryptoCandidate.openInterest).toBeUndefined();
@@ -365,7 +444,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         fetchedAt: now,
         freshness: "FRESH",
         netNonCommercial: 999,
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["cotData"]>,
     });
     expect(forexCandidate.hasCOT).toBe(false);
     expect(forexCandidate.cotNet).toBeUndefined();
@@ -392,7 +471,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         recommendation: "BUY",
         breakdown: { trend: 1, indicator: 1, fundamental: 1, sentiment: -1 },
         fundamentalData: { available: true },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
       universalIntelligence: {
         instrument: "EUR/USD", assetClass: "forex", assembledAt: now,
         forex: {
@@ -409,7 +488,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     const forexCandidate = buildRadarCandidate(forexSource, now);
     expect(forexCandidate.rateDifferential).toBe(1.25);
@@ -441,7 +520,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     const commodityCandidate = buildRadarCandidate(commoditySource, now);
     expect(commodityCandidate.inventory).toBe(420);
@@ -469,7 +548,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         confidence: 99,
         bias: "Bullish",
         recommendation: "BUY",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
 
     expect(radarSource.universe.instrument).toBe("BTC/USD");
@@ -489,7 +568,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         confidence: 99,
         bias: "Bullish",
         recommendation: "BUY",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     });
 
     expect(candidate.currentPrice).toBe(0);
@@ -555,7 +634,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     expect(candidate.rateDifferential).toBe(-1.25);
     expect(candidate.yieldDifferential).toBe(-0.8);
@@ -578,7 +657,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     expect(candidate.hasFundamentals).toBe(true);
     expect(candidate.fundamentalEvidenceAvailable).toBe(false); // raw fundamentals are not signed directional evidence
@@ -603,7 +682,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], analystSummary: "fixture",
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED", missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
     expect(candidate.inventory).toBe(420);
     expect(candidate.inventoryChange).toBe(-8);
@@ -621,7 +700,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       freshness: "FRESH",
       series: [{ productId: "EPC0", observationDate: "2026-10-07", latestValue: 420, change: -8 }],
       failedLegs: [],
-    } as any;
+    } as unknown as NonNullable<LiveCandidateSource["eiaData"]>;
     const source = {
       instrument: "XAU/USD",
       assetClass: "commodity" as const,
@@ -662,7 +741,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         },
         evidence: [], overallAvailability: "FULL", overallQuality: "VERIFIED",
         missingInformation: [], dataFlags: [], analystSummary: "fixture",
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>,
     });
 
     expect(candidate.hasFundamentals).toBe(false);
@@ -688,7 +767,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         fundamentalData: { available: true, peRatio: 31 },
         macroData: { confidence: "high" },
         calendarData: { events: [{ status: "released", actual: 2, forecast: 1 }] },
-      } as any,
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
     };
     const live = buildCandidateFromSource(source);
     const radar = buildRadarCandidate(toRadarCandidateSource(source), now);
@@ -696,4 +775,76 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(radar.fundamentalEvidenceAvailable).toBe(false);
   });
 
+});
+
+// Regression: HTF bias is context only; it must not be mislabeled as a
+// confirmed setup when the selected timeframe has no structure or BOS.
+describe("HTF bias versus setup confirmation", () => {
+  function buildWithSetupStructure(structure: "unknown" | "HH/HL") {
+    const now = Date.now();
+    const candles = Array.from({ length: 100 }, (_, i) => ({
+      timestamp: now - (100 - i) * 60_000,
+      time: now - (100 - i) * 60_000,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volume: 1000,
+    }));
+
+    return buildCandidateFromSource({
+      instrument: "BTC-USDT-SWAP",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC-USDT-SWAP",
+        instrumentType: "crypto",
+        provider: "okx",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "okx" },
+        candles,
+        timeframe: "H4",
+        higherTimeframe: "D1",
+        dataFreshness: "realtime",
+      },
+      technicalData: {
+        structure,
+        bosDirection: "none",
+        chochDirection: "none",
+        swingHighs: [],
+        swingLows: [],
+        supportLevels: [99],
+        resistanceLevels: [101],
+        volumeTrend: "stable",
+        dataPoints: 100,
+        htfContext: {
+          timeframe: "D1",
+          structure: "HH/HL",
+          bosDirection: "none",
+          chochDirection: "none",
+          dataPoints: 100,
+        },
+        mtf: {
+          requestedTimeframe: "H4",
+          chainUsed: ["D1", "H4"],
+          unavailable: [],
+          timeframes: [],
+          htfBias: "long",
+          alignment: "ALIGNED_BULLISH",
+          setupTimeframe: "H4",
+        },
+      },
+    });
+  }
+
+  it("keeps a bullish HTF bias but marks the setup neutral without setup-timeframe confirmation", () => {
+    const candidate = buildWithSetupStructure("unknown");
+    expect(candidate.htfBias).toBe("long");
+    expect(candidate.setupDirection).toBe("neutral");
+  });
+
+  it("allows a directional setup when the selected timeframe has confirmed structure", () => {
+    const candidate = buildWithSetupStructure("HH/HL");
+    expect(candidate.htfBias).toBe("long");
+    expect(candidate.setupDirection).toBe("long");
+  });
 });

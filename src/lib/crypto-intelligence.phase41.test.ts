@@ -47,7 +47,6 @@ import {
 } from "./data/crypto/evidence";
 import { buildCryptoIntelligenceContext } from "./data/crypto/intelligence";
 import type {
-  CryptoIntelligenceContext,
   DerivativesIntelligence,
   DeFiIntelligence,
   TokenomicsIntelligence,
@@ -518,7 +517,7 @@ describe("Phase 41 — Timeout", () => {
     });
     const result = await adapter.fetch("ETH/USD");
     expect(result?.success).toBe(true);
-    const data = result?.data as Record<string, any>;
+    const data = result?.data as { fees: { dailyFees: number; dailyRevenue?: number } };
     expect(data.fees.dailyFees).toBe(1_000);
     expect(data.fees.dailyRevenue).toBeUndefined();
   });
@@ -542,7 +541,7 @@ describe("Phase 41 — Partial Provider Success", () => {
     }));
     const result = await adapter.fetch("BTC/USD");
     expect(result!.success).toBe(true);
-    const parsed = parseCoinGlassResult(result!.data as Record<string, any>, "BTC/USD", result!.observedAt);
+    const parsed = parseCoinGlassResult(result!.data as Parameters<typeof parseCoinGlassResult>[0], "BTC/USD", result!.observedAt);
     expect(parsed.quality).toBe("DEGRADED");
     expect(parsed.availableDatasets).toBe(1);
   });
@@ -575,8 +574,8 @@ describe("Phase 41 — Cross-Instrument Isolation", () => {
 
   it("non-crypto fetch returns null", async () => {
     const cg = new CoinGlassAdapter(async () => ({ success: true, provider: "CG", observedAt: Date.now(), data: {} }));
-    const dl = new DeFiLlamaAdapter(async () => ({ ok: true, json: async () => ({}) } as any));
-    const tm = new TokenomistAdapter(async () => ({ ok: true, json: async () => ({}) } as any));
+    const dl = new DeFiLlamaAdapter(async () => ({ ok: true, json: async () => ({}) } as unknown as Response));
+    const tm = new TokenomistAdapter(async () => ({ ok: true, json: async () => ({}) } as unknown as Response));
     expect(await cg.fetch("EUR/USD")).toBeNull();
     expect(await dl.fetch("EUR/USD")).toBeNull();
     expect(await tm.fetch("EUR/USD")).toBeNull();
@@ -1183,7 +1182,7 @@ describe("Phase 41 — Tokenomist v4 contract", () => {
     expect(requested.some((url) => url.includes("tokenId=bitcoin"))).toBe(true);
     expect(sentHeaders.every((headers) => headers.get("x-api-key") === "test-tokenomist-key")).toBe(true);
 
-    const normalized = parseTokenomistResult(result?.data as Record<string, any>, "BTC/USD", result!.observedAt);
+    const normalized = parseTokenomistResult(result?.data as Parameters<typeof parseTokenomistResult>[0], "BTC/USD", result!.observedAt);
     expect(normalized.supply?.circulatingSupply).toBe(19_800_000);
     expect(normalized.supply?.maxSupply).toBe(21_000_000);
     expect(normalized.unlocks?.upcomingCount30d).toBe(1);

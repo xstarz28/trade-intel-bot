@@ -255,14 +255,14 @@ async function fetchCandles(
         "&timezone=UTC" +
         "&apikey=" + encodeURIComponent(apiKey);
       const response = await fetch(url, { signal: AbortSignal.timeout(CANDLE_REQUEST_TIMEOUT_MS) });
-      const json = await response.json().catch(() => ({} as Record<string, any>));
+      const json = await response.json().catch(() => ({})) as Record<string, unknown>;
       if (json && json.code) {
-        throw new Error("[" + json.code + "] " + (json.message || "provider error"));
+        throw new Error("[" + String(json.code) + "] " + String(json.message || "provider error"));
       }
       if (!response.ok) {
         throw new Error("[" + response.status + "] " + (response.statusText || "provider HTTP error"));
       }
-      const values: TdCandle[] = Array.isArray(json?.values) ? json.values : [];
+      const values: TdCandle[] = Array.isArray(json.values) ? json.values as TdCandle[] : [];
       if (values.length === 0) throw new Error("no candle data returned");
       const normalized = values.reverse().map((candle) => ({
         timestamp: parseMarketDataTimestamp(candle.datetime),
@@ -383,7 +383,7 @@ export const fetchMarketData = action({
         : /-[0-9]{6}$/.test(symbol) ? OKX_FUTURES_MARKET_PROVIDER : OKX_SPOT_MARKET_PROVIDER;
       const marketProvider = candleProviderCache.get(symbol + "|" + args.timeframe) ??
         (args.instrumentType === "crypto" ? defaultCryptoProvider : "twelve-data");
-      let quoteRes: Record<string, any> = {};
+      let quoteRes: { close?: string; bid?: string; ask?: string; timestamp?: number; datetime?: string } = {};
       if (args.instrumentType === "crypto" && marketProvider === OKX_SPOT_MARKET_PROVIDER) {
         const okxTicker = await okxSpotMarketAdapter.fetchTicker(symbol).catch(() => null);
         if (okxTicker) {
@@ -630,10 +630,10 @@ export const fetchMarketData = action({
         },
         technical,
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false as const,
-        error: `Market data fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Market data fetch failed: ${err instanceof Error ? err.message : "unknown error"}`,
         errorCode: "API_UNAVAILABLE" as const,
       };
     }

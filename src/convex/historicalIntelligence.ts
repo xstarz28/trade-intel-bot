@@ -11,7 +11,8 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -19,6 +20,7 @@ import { mutation, query } from "./_generated/server";
 
 const MAX_SNAPSHOTS = 50;
 const MAX_EVENTS = 100;
+const RETENTION_PRUNE_BATCH = 20;
 
 // ═══════════════════════════════════════════════════════════════
 // AUTH RESOLUTION
@@ -26,33 +28,31 @@ const MAX_EVENTS = 100;
 
 async function resolveUser(ctx: {
   auth: { getUserIdentity: () => Promise<{ email?: string; subject: string } | null> };
-  db: any;
+  db: QueryCtx["db"] | MutationCtx["db"];
 }) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) return null;
   if (identity.email) {
     const byEmail = await ctx.db
       .query("users")
-      .withIndex("email", (q: any) => q.eq("email", identity.email))
+      .withIndex("email", (q) => q.eq("email", identity.email))
       .unique();
     if (byEmail) return byEmail;
   }
-  try {
-    return await ctx.db.get(identity.subject);
-  } catch {
-    return null;
-  }
+  const userId = ctx.db.normalizeId("users", identity.subject) as import("./_generated/dataModel").Id<"users"> | null;
+  if (!userId) return null;
+  return await ctx.db.get(userId);
 }
 
 /** Verify the user owns this position. */
 async function verifyPositionOwnership(
-  ctx: { db: any },
-  userId: string,
+  ctx: { db: QueryCtx["db"] | MutationCtx["db"] },
+  userId: Id<"users">,
   positionId: string,
 ): Promise<boolean> {
   const position = await ctx.db
     .query("monitoredPositions")
-    .withIndex("by_user_position", (q: any) =>
+    .withIndex("by_user_position", (q) =>
       q.eq("userId", userId).eq("positionId", positionId),
     )
     .unique();
@@ -65,44 +65,43 @@ async function verifyPositionOwnership(
 
 /** Enforce retention limits for a position. Server-side only. */
 async function enforceRetention(
-  ctx: { db: any },
-  userId: string,
+  ctx: { db: MutationCtx["db"] },
+  userId: Id<"users">,
   positionId: string,
 ): Promise<number> {
   let pruned = 0;
 
   // Prune snapshots
+  // Read only the retention window plus a bounded overflow batch. Normal writes
+  // prune one row; legacy oversized histories can be reduced faster without an
+  // unbounded scan or delete loop.
   const snapshots = await ctx.db
     .query("historicalSnapshots")
-    .withIndex("by_user_position_ts", (q: any) =>
+    .withIndex("by_user_position_ts", (q) =>
       q.eq("userId", userId).eq("positionId", positionId),
     )
     .order("desc")
-    .collect();
+    .take(MAX_SNAPSHOTS + RETENTION_PRUNE_BATCH);
 
-  if (snapshots.length > MAX_SNAPSHOTS) {
-    const toDelete = snapshots.slice(MAX_SNAPSHOTS);
-    for (const s of toDelete) {
-      await ctx.db.delete(s._id);
-      pruned++;
-    }
+  for (const snapshot of snapshots.slice(MAX_SNAPSHOTS)) {
+    await ctx.db.delete(snapshot._id);
+    pruned++;
   }
 
   // Prune events
+  // Bound reads and deletes per mutation to prevent a large historical
+  // backlog from turning every new event into an expensive full-table scan.
   const events = await ctx.db
     .query("historicalEvents")
-    .withIndex("by_user_position_ts", (q: any) =>
+    .withIndex("by_user_position_ts", (q) =>
       q.eq("userId", userId).eq("positionId", positionId),
     )
     .order("desc")
-    .collect();
+    .take(MAX_EVENTS + RETENTION_PRUNE_BATCH);
 
-  if (events.length > MAX_EVENTS) {
-    const toDelete = events.slice(MAX_EVENTS);
-    for (const e of toDelete) {
-      await ctx.db.delete(e._id);
-      pruned++;
-    }
+  for (const event of events.slice(MAX_EVENTS)) {
+    await ctx.db.delete(event._id);
+    pruned++;
   }
 
   return pruned;
@@ -216,14 +215,14 @@ export const saveEvents = mutation({
     // Fetch existing event identities for dedup
     const existingEvents = await ctx.db
       .query("historicalEvents")
-      .withIndex("by_user_position_ts", (q: any) =>
+      .withIndex("by_user_position_ts", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId),
       )
       .order("desc")
       .take(100);
 
     const existingIds = new Set(
-      existingEvents.map((e: any) => eventIdentity({
+      existingEvents.map((e) => eventIdentity({
         timestamp: e.timestamp,
         eventType: e.eventType,
         description: e.description,
@@ -248,6 +247,9 @@ export const saveEvents = mutation({
         category: event.category,
         strength: event.strength,
       });
+      // Also deduplicate within this incoming batch, not only against rows
+      // that existed before the mutation began.
+      existingIds.add(eventIdentity(event));
       ids.push(id);
     }
 
@@ -274,7 +276,7 @@ export const getLatestSnapshot = query({
 
     const snapshots = await ctx.db
       .query("historicalSnapshots")
-      .withIndex("by_user_position_ts", (q: any) =>
+      .withIndex("by_user_position_ts", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId),
       )
       .order("desc")
@@ -296,7 +298,7 @@ export const getPreviousSnapshot = query({
 
     const snapshots = await ctx.db
       .query("historicalSnapshots")
-      .withIndex("by_user_position_ts", (q: any) =>
+      .withIndex("by_user_position_ts", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId),
       )
       .order("desc")
@@ -319,10 +321,13 @@ export const getEvents = query({
     const owns = await verifyPositionOwnership(ctx, user._id, args.positionId);
     if (!owns) return [];
 
-    const limit = Math.min(args.limit ?? 100, 100);
+    const requestedLimit = args.limit ?? 100;
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(0, Math.min(Math.floor(requestedLimit), 100))
+      : 100;
     return await ctx.db
       .query("historicalEvents")
-      .withIndex("by_user_position_ts", (q: any) =>
+      .withIndex("by_user_position_ts", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId),
       )
       .order("desc")
@@ -343,7 +348,7 @@ export const getHistoricalTimeline = query({
     // Get latest 2 snapshots
     const snapshots = await ctx.db
       .query("historicalSnapshots")
-      .withIndex("by_user_position_ts", (q: any) =>
+      .withIndex("by_user_position_ts", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId),
       )
       .order("desc")
@@ -352,7 +357,7 @@ export const getHistoricalTimeline = query({
     // Get bounded events (newest first)
     const events = await ctx.db
       .query("historicalEvents")
-      .withIndex("by_user_position_ts", (q: any) =>
+      .withIndex("by_user_position_ts", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId),
       )
       .order("desc")
@@ -404,7 +409,7 @@ export const deleteHistoryForPosition = mutation({
     // Delete snapshots
     const snapshots = await ctx.db
       .query("historicalSnapshots")
-      .withIndex("by_user_position", (q: any) =>
+      .withIndex("by_user_position", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId),
       )
       .collect();
@@ -417,7 +422,7 @@ export const deleteHistoryForPosition = mutation({
     // Delete events
     const events = await ctx.db
       .query("historicalEvents")
-      .withIndex("by_user_position", (q: any) =>
+      .withIndex("by_user_position", (q) =>
         q.eq("userId", user._id).eq("positionId", args.positionId),
       )
       .collect();

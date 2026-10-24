@@ -43,4 +43,5 @@ function Badge({
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- Exported styling helper accompanies the component API.
 export { Badge, badgeVariants }

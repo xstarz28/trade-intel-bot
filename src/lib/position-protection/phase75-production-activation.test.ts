@@ -14,7 +14,7 @@
  * - Convex action contract
  */
 
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
 import {
   routeInstrument,
   detectAssetClass,
@@ -22,7 +22,6 @@ import {
 import {
   bridgeQuoteToEvents,
   createBridgeState,
-  type LiveMarketBridgeState,
   type ProviderQuoteData,
 } from "../market-stream/live-market-bridge";
 import {
@@ -33,15 +32,14 @@ import {
   stopController,
   pauseController,
   resumeController,
-  evaluatePosition,
-  type ContinuousControllerState,
-  type PositionControllerState,
 } from "./continuous-protection-controller";
 import type { RealTimeEvent } from "./realtime-types";
 import { removePosition } from "./continuous-protection-controller";
 
 // ═══════════════════════════════════════════════════════════════
-// LIVE DATA GATE — real HTTP requests
+// DETERMINISTIC MARKET DATA FIXTURES
+// Live provider access is verified separately by scripts/verify-coingecko-live.mjs.
+// Unit tests must not depend on shared public API rate limits.
 // ═══════════════════════════════════════════════════════════════
 
 interface LiveInstrument {
@@ -49,90 +47,37 @@ interface LiveInstrument {
   price: number;
   provider: string;
   success: boolean;
-  error?: string;
 }
 
-let liveResults: LiveInstrument[] = [];
+const BTC_FIXTURE_PRICE = 80_000;
+const ETH_FIXTURE_PRICE = 3_000;
+const SOL_FIXTURE_PRICE = 150;
+const DOGE_FIXTURE_PRICE = 0.2;
 
-async function fetchCoingeckoBatch(instruments: string[]): Promise<LiveInstrument[]> {
-  const coinMap: Record<string, string> = {
-    "BTC/USDT": "bitcoin",
-    "ETH/USDT": "ethereum",
-    "SOL/USDT": "solana",
-    "DOGE/USDT": "dogecoin",
-  };
-
-  const ids = instruments
-    .map((i) => coinMap[i.toUpperCase().trim()])
-    .filter(Boolean)
-    .join(",");
-
-  if (!ids) return [];
-
-  const res = await fetch(
-    `https://api.coingecko.com/api/v3/simple/price?ids=${ids}&vs_currencies=usd&include_24hr_vol=true&include_24hr_change=true`,
-    { signal: AbortSignal.timeout(10_000) },
-  );
-
-  // Rate limited — return empty results, don't throw
-  if (res.status === 429) {
-    console.warn("COINGECKO: Rate limited (429) — tests will be skipped");
-    return [];
-  }
-
-  const data = await res.json();
-
-  // CoinGecko error response
-  if (data && typeof data === "object" && "error" in data) {
-    console.warn("COINGECKO: API error —", data.error);
-    return [];
-  }
-
-  return instruments.map((inst) => {
-    const coinId = coinMap[inst.toUpperCase().trim()];
-    const coinData = coinId ? data[coinId] : null;
-    const price = coinData?.usd;
-    return {
-      instrument: inst.toUpperCase().trim(),
-      price: typeof price === "number" ? price : 0,
-      provider: "CoinGecko",
-      success: typeof price === "number" && price > 0,
-    };
-  });
-}
+const marketFixtures: LiveInstrument[] = [
+  { instrument: "BTC/USDT", price: BTC_FIXTURE_PRICE, provider: "CoinGeckoFixture", success: true },
+  { instrument: "ETH/USDT", price: ETH_FIXTURE_PRICE, provider: "CoinGeckoFixture", success: true },
+  { instrument: "SOL/USDT", price: SOL_FIXTURE_PRICE, provider: "CoinGeckoFixture", success: true },
+  { instrument: "DOGE/USDT", price: DOGE_FIXTURE_PRICE, provider: "CoinGeckoFixture", success: true },
+];
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION A: REAL LIVE DATA
+// SECTION A: MARKET DATA FIXTURE INTEGRITY
 // ═══════════════════════════════════════════════════════════════
 
-describe("A. Real Live Market Data", () => {
-  beforeAll(async () => {
-    try {
-      liveResults = await fetchCoingeckoBatch(["BTC/USDT", "ETH/USDT", "SOL/USDT", "DOGE/USDT"]);
-    } catch {
-      liveResults = [];
+describe("A. Market Data Fixture Integrity", () => {
+  it("contains finite positive prices for supported crypto instruments", () => {
+    expect(marketFixtures.length).toBeGreaterThanOrEqual(1);
+    for (const result of marketFixtures) {
+      expect(result.success).toBe(true);
+      expect(result.price).toBeGreaterThan(0);
+      expect(Number.isFinite(result.price)).toBe(true);
     }
   });
 
-  it("fetches at least one real crypto price from CoinGecko", () => {
-    if (liveResults.length === 0) {
-      console.warn("COINGECKO: No results — rate limited, skipping live gate");
-      return; // graceful skip under rate limit
-    }
-    const successes = liveResults.filter((r) => r.success);
-    expect(successes.length).toBeGreaterThanOrEqual(1);
-    for (const r of successes) {
-      expect(r.price).toBeGreaterThan(0);
-      expect(Number.isFinite(r.price)).toBe(true);
-    }
-  });
-
-  it("all successful prices are positive and unique", () => {
-    const successes = liveResults.filter((r) => r.success);
-    if (successes.length === 0) return; // rate limited
-    const prices = successes.map((r) => r.price);
-    const unique = new Set(prices);
-    expect(unique.size).toBe(prices.length);
+  it("contains unique instrument identities", () => {
+    const instruments = marketFixtures.map((result) => result.instrument);
+    expect(new Set(instruments).size).toBe(instruments.length);
   });
 });
 
@@ -167,30 +112,24 @@ describe("B. Provider Routing Consistency", () => {
     expect(detectAssetClass("GBP/USD")).toBe("forex");
   });
 
-  it("CoinGecko is the actual runtime provider for crypto (since OKX key not configured)", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    if (btc?.success) {
-      expect(btc.provider).toBe("CoinGecko");
-    }
+  it("labels test prices as fixtures rather than live provider observations", () => {
+    expect(marketFixtures.every((result) => result.provider === "CoinGeckoFixture")).toBe(true);
   });
 });
 
 // ═══════════════════════════════════════════════════════════════
-// SECTION C: LIVE DATA → PROTECTION PIPELINE
+// SECTION C: QUOTE FIXTURE → PROTECTION PIPELINE
 // ═══════════════════════════════════════════════════════════════
 
-describe("C. Live Data → Protection Pipeline", () => {
-  it("bridges real BTC price into RealTimeEvents", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    if (!btc?.success) {
-      console.warn("LIVE_DATA: BTC not available, using fallback price");
-    }
-    const price = btc?.success ? btc.price : 80_000;
-
+describe("C. Quote Fixture → Protection Pipeline", () => {
+  it("bridges a valid quote fixture into RealTimeEvents", () => {
+    // This is a deterministic pipeline test, not evidence of live-provider access.
+    const price = 80_000;
+    const provider = "TestFixture";
     const bridge = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
-      provider: "CoinGecko",
+      provider,
       price,
       timestamp: Date.now(),
       freshness: "FRESH",
@@ -204,12 +143,11 @@ describe("C. Live Data → Protection Pipeline", () => {
     expect(priceEvent!.instrument).toBe("BTC/USDT");
     expect(typeof priceEvent!.payload.price).toBe("number");
     expect(priceEvent!.payload.price).toBe(price);
-    expect(priceEvent!.source).toBe("CoinGecko");
+    expect(priceEvent!.source).toBe(provider);
   });
 
-  it("processes live events through protection controller", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    const price = btc?.success ? btc.price : 80_000;
+  it("processes a quote fixture through the protection controller", () => {
+    const price = BTC_FIXTURE_PRICE;
 
     let controller = createControllerState();
     controller = registerPosition(controller, {
@@ -246,8 +184,7 @@ describe("C. Live Data → Protection Pipeline", () => {
   });
 
   it("LONG and SHORT on same instrument have independent state", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    const price = btc?.success ? btc.price : 80_000;
+    const price = BTC_FIXTURE_PRICE;
 
     let controller = createControllerState();
     controller = registerPosition(controller, {
@@ -300,10 +237,8 @@ describe("C. Live Data → Protection Pipeline", () => {
   });
 
   it("BTC and ETH are isolated from each other", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    const eth = liveResults.find((r) => r.instrument === "ETH/USDT");
-    const btcPrice = btc?.success ? btc.price : 80_000;
-    const ethPrice = eth?.success ? eth.price : 3_000;
+    const btcPrice = BTC_FIXTURE_PRICE;
+    const ethPrice = ETH_FIXTURE_PRICE;
 
     let controller = createControllerState();
     controller = registerPosition(controller, {
@@ -359,19 +294,6 @@ describe("D. Provider Failure / Recovery", () => {
   it("provider failure does NOT become directional evidence", () => {
     const bridge = createBridgeState();
 
-    // Simulate provider degraded event
-    const degradedEvent: RealTimeEvent = {
-      eventId: "degraded-1",
-      eventType: "PROVIDER_DEGRADED",
-      instrument: "BTC/USDT",
-      source: "CoinGecko",
-      timestamp: Date.now(),
-      freshness: "STALE",
-      payload: { reason: "Connection timeout" },
-      priority: "HIGH",
-      dependencyGroup: "coingecko-btc",
-    };
-
     const result = bridgeQuoteToEvents(bridge, {
       instrument: "BTC/USDT",
       provider: "CoinGecko",
@@ -385,7 +307,7 @@ describe("D. Provider Failure / Recovery", () => {
     expect(result.state.eventsDropped).toBe(1);
   });
 
-  it("stale data cannot create false protection alert", () => {
+  it("stale data cannot update a protected position", () => {
     let controller = createControllerState();
     controller = registerPosition(controller, {
       positionId: "stale-test",
@@ -398,8 +320,9 @@ describe("D. Provider Failure / Recovery", () => {
       openedAt: Date.now(),
     }, Date.now());
     controller = startController(controller);
+    expect(controller.globalLifecycle).toBe("RUNNING");
 
-    // Send stale quote — should not update position
+    // Send stale quote — it must not become a PRICE_UPDATE.
     const bridge = createBridgeState();
     const staleQuote: ProviderQuoteData = {
       instrument: "BTC/USDT",
@@ -410,8 +333,13 @@ describe("D. Provider Failure / Recovery", () => {
     };
 
     const result = bridgeQuoteToEvents(bridge, staleQuote);
-    // Bridge drops stale events
-    expect(result.events.filter((e) => e.eventType === "PRICE_UPDATE").length).toBe(0);
+    expect(result.events.some((event) => event.eventType === "PRICE_UPDATE")).toBe(false);
+
+    // Process any diagnostic events and prove the position price stays unchanged.
+    for (const event of result.events) {
+      controller = processEventForController(controller, event, Date.now()).state;
+    }
+    expect(controller.positions.get("stale-test")?.currentPrice).toBe(85_000);
   });
 });
 
@@ -420,7 +348,7 @@ describe("D. Provider Failure / Recovery", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("E. Source Mode Integrity", () => {
-  it("live data is labeled as FRESH in bridge events", () => {
+  it("freshness metadata is preserved in bridge events", () => {
     const bridge = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
@@ -580,8 +508,7 @@ describe("F. Polling Lifecycle", () => {
 
 describe("G. No Auto-Execution Safety", () => {
   it("protection engine never produces order actions", () => {
-    const btc = liveResults.find((r) => r.instrument === "BTC/USDT");
-    const price = btc?.success ? btc.price : 80_000;
+    const price = BTC_FIXTURE_PRICE;
 
     let controller = createControllerState();
     controller = registerPosition(controller, {

@@ -14,7 +14,6 @@ import { type Candle, normalizeCandles } from "./technical-indicators";
 import {
   type TimeframeKey,
   createTimeframeData,
-  type TimeframeData,
   analyzeMTFConfluence,
   type MTFConfluence,
 } from "./multi-timeframe-engine";
@@ -80,11 +79,15 @@ export function useOHLCVData(
     fetchCount: 0,
     errorCount: 0,
     lastError: undefined,
-  });  const stateRef = useRef(state);
-  stateRef.current = state;
-
+  });
+  const stateRef = useRef(state);
   const optionsRef = useRef(options);
-  optionsRef.current = options;
+
+  // Keep mutable refs synchronized after commit, not during render.
+  useEffect(() => {
+    stateRef.current = state;
+    optionsRef.current = options;
+  }, [state, options]);
 
   const fetchOHLCV = useCallback(async () => {
     if (!enabled || instruments.length === 0) return;
@@ -125,10 +128,11 @@ export function useOHLCVData(
         instruments: batch,
         timeframes,
         outputsize: MAX_CANDLES_PER_TIMEFRAME,
-      });      const now = Date.now();
+      });
+      const now = Date.now();
       const fetchDuration = now - fetchStart;
-      const fetchErrors = results.filter((r: any) => !r.success);
-      const fetchSuccesses = results.filter((r: any) => r.success);
+      const fetchErrors = results.filter((r) => !r.success);
+      const fetchSuccesses = results.filter((r) => r.success);
 
       setState((prev) => {
         const newData = new Map(prev.data);
@@ -138,7 +142,7 @@ export function useOHLCVData(
           if (!result.success || result.candles.length === 0) continue;
 
           // Normalize candles
-          const rawCandles: Candle[] = result.candles.map((c: any) => ({
+          const rawCandles: Candle[] = result.candles.map((c) => ({
             timestamp: c.timestamp,
             open: c.open,
             high: c.high,
@@ -198,12 +202,12 @@ export function useOHLCVData(
             : `${fetchErrors.length} instruments failed`,
         });
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setState((prev) => ({
         ...prev,
         isFetching: false,
         errorCount: prev.errorCount + 1,
-        lastError: err?.message ?? "Fetch failed",
+        lastError: err instanceof Error ? err.message : "Fetch failed",
       }));
 
       // Phase 102: Record OHLCV fetch failure
@@ -214,22 +218,23 @@ export function useOHLCVData(
           source: "TwelveData",
           operation: `OHLCV fetch: ${batch.join(", ")}`,
           durationMs: Date.now() - fetchStart,
-          error: err?.message ?? "Fetch failed",
+          error: err instanceof Error ? err.message : "Fetch failed",
           message: "OHLCV fetch failed",
         });
       }
     }
-  }, [instruments.join(","), timeframes.join(","), enabled, fetchCandles]);
+  }, [instruments, timeframes, enabled, fetchCandles]);
 
   // Initial fetch + periodic refresh
+  const instrumentCount = instruments.length;
   useEffect(() => {
-    if (!enabled || instruments.length === 0) return;
+    if (!enabled || instrumentCount === 0) return;
 
     fetchOHLCV();
     const interval = setInterval(fetchOHLCV, refreshMs);
 
     return () => clearInterval(interval);
-  }, [fetchOHLCV, enabled, refreshMs]);
+  }, [fetchOHLCV, enabled, refreshMs, instrumentCount]);
 
   return {
     ...state,

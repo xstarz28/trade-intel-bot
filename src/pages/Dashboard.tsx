@@ -8,17 +8,17 @@ import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
-import type { AnalysisResult } from "@/types/analysis";
+import type { AnalysisResult, BiasBreakdown, ConvictionLevel, DirectionalBias, FactorScore, InstrumentType, Timeframe } from "@/types/analysis";
 import { buildHistoricalContextSummaries, buildPersistedContextSummaries, resolveHistoricalDecision } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
 import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
-import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
+import { resolveStyle, adaptSetupTimeframe, type TradingStyle } from "@/lib/trading-style";
 import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
 import { MarketOpportunities } from "@/components/MarketOpportunities";
-import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
 import { ALL_SCAN_HORIZONS, normalizeScanTimeframe, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { buildEquityFundamentalEvidence } from "@/lib/data/universal/equity-evidence";
@@ -33,7 +33,7 @@ import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
-import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
+import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS } from "@/lib/i18n";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -43,29 +43,81 @@ import {
 import { BarChart3, Briefcase } from "lucide-react";
 
 /** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
-function fromDbRecord(record: any): AnalysisResult {
+type StoredAnalysisRecord = import("convex/server").FunctionReturnType<typeof api.analyses.list>[number];
+
+const STORED_INSTRUMENT_TYPES: readonly InstrumentType[] = ["forex", "crypto", "stock", "commodity", "indices"];
+const STORED_TIMEFRAMES: readonly Timeframe[] = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"];
+const STORED_BIASES: readonly DirectionalBias[] = ["Bullish", "Bearish", "Neutral"];
+const STORED_CONVICTIONS: readonly ConvictionLevel[] = ["High", "Medium", "Low"];
+const STORED_TRADING_STYLES: readonly TradingStyle[] = ["scalping", "intraday", "swing"];
+const FACTOR_SCORES: readonly FactorScore[] = [-2, -1, 0, 1, 2];
+
+function isStoredValue<T extends string>(value: string | undefined, allowed: readonly T[]): value is T {
+  return value !== undefined && allowed.some((candidate) => candidate === value);
+}
+
+function normalizeFactorScore(value: number): FactorScore {
+  return FACTOR_SCORES.some((candidate) => candidate === value) ? value as FactorScore : 0;
+}
+
+/** Convert persisted records defensively: Convex stores legacy enum-like fields as strings. */
+function fromDbRecord(record: StoredAnalysisRecord): AnalysisResult {
   const historicalContextSummaries = buildHistoricalContextSummaries(record);
-  const historicalDecision = resolveHistoricalDecision(record.recommendation, record.noTradeReasons);
+  const validInstrumentType = isStoredValue(record.instrumentType, STORED_INSTRUMENT_TYPES);
+  const validTimeframe = isStoredValue(record.timeframe, STORED_TIMEFRAMES);
+  const validBias = isStoredValue(record.bias, STORED_BIASES);
+  const validTradingStyle = isStoredValue(record.tradingStyle, STORED_TRADING_STYLES);
+  const validConviction = isStoredValue(record.conviction, STORED_CONVICTIONS);
+  const validCompleteness = record.dataCompleteness === "full" || record.dataCompleteness === "partial" || record.dataCompleteness === "limited";
+  const validBreakdown = Object.values(record.breakdown).every((score) => FACTOR_SCORES.some((candidate) => candidate === score));
+  const dataFlags = [...record.dataFlags];
+
+  if (!validInstrumentType) dataFlags.push("Invalid stored instrument type; historical result is non-actionable.");
+  if (!validTimeframe) dataFlags.push("Invalid stored timeframe; historical result is non-actionable.");
+  if (!validBias) dataFlags.push("Invalid stored directional bias; displayed as Neutral.");
+  if (!validTradingStyle && record.tradingStyle !== undefined) dataFlags.push("Invalid stored trading style; displayed as intraday.");
+  if (!validConviction && record.conviction !== undefined) dataFlags.push("Invalid stored conviction; omitted.");
+  if (!validCompleteness) dataFlags.push("Invalid stored data completeness; displayed as limited.");
+  if (!validBreakdown) dataFlags.push("Invalid stored factor score; affected score displayed as zero.");
+
+  const historicalDecision = resolveHistoricalDecision(
+    validInstrumentType && validTimeframe ? record.recommendation : "NO_TRADE",
+    record.noTradeReasons,
+  );
+  const breakdown: BiasBreakdown = {
+    trend: normalizeFactorScore(record.breakdown.trend),
+    indicator: normalizeFactorScore(record.breakdown.indicator),
+    fundamental: normalizeFactorScore(record.breakdown.fundamental),
+    sentiment: normalizeFactorScore(record.breakdown.sentiment),
+  };
+
   return {
     id: record._id,
     instrument: record.instrument,
-    instrumentType: record.instrumentType,
-    timeframe: record.timeframe,
-    bias: record.bias,
-    confidence: record.confidence,
+    instrumentType: validInstrumentType ? record.instrumentType as InstrumentType : "crypto",
+    timeframe: validTimeframe ? record.timeframe as Timeframe : "H1",
+    bias: validBias ? record.bias as DirectionalBias : "Neutral",
+    confidence: Number.isFinite(record.confidence) ? Math.max(0, Math.min(100, record.confidence)) : 0,
     recommendation: historicalDecision.recommendation,
-    tradingStyle: record.tradingStyle ?? "intraday",
-    conviction: record.conviction ?? undefined,
-    noTradeReasons: historicalDecision.noTradeReasons,
+    tradingStyle: validTradingStyle ? record.tradingStyle as TradingStyle : "intraday",
+    conviction: validConviction ? record.conviction as ConvictionLevel : undefined,
+    noTradeReasons: [
+      ...historicalDecision.noTradeReasons,
+      ...(!validInstrumentType || !validTimeframe
+        ? ["Stored instrument type or timeframe is invalid; do not use this historical record as a trade signal."]
+        : []),
+    ],
     technicalSummary: record.technicalSummary,
     fundamentalSummary: record.fundamentalSummary,
-    breakdown: record.breakdown,
+    breakdown,
     keyLevels: record.keyLevels,
     riskNote: record.riskNote,
-    dataCompleteness: record.dataCompleteness,
-    dataFlags: record.dataFlags,
+    dataCompleteness: validCompleteness ? record.dataCompleteness as AnalysisResult["dataCompleteness"] : "limited",
+    dataFlags,
     timestamp: record.timestamp,
-    ...(record.price != null ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } } : {}),
+    ...(record.price != null && Number.isFinite(record.price) && record.price > 0
+      ? { priceSnapshot: { price: record.price, timestamp: record.timestamp, source: record.dataSource || "unknown" } }
+      : {}),
     ...(record.dataSource ? { dataSource: record.dataSource } : {}),
     ...(historicalContextSummaries ? { historicalContextSummaries } : {}),
   };
@@ -207,12 +259,18 @@ export default function Dashboard() {
     try {
       const saved = localStorage.getItem("workspaceMode");
       if (saved === "trader" || saved === "investor") return saved;
-    } catch {}
+    } catch {
+      // Storage may be disabled in privacy-restricted browser contexts.
+    }
     return "trader";
   });
   const handleWorkspaceChange = useCallback((mode: WorkspaceMode) => {
     setWorkspaceMode(mode);
-    try { localStorage.setItem("workspaceMode", mode); } catch {}
+    try {
+      localStorage.setItem("workspaceMode", mode);
+    } catch {
+      // Workspace selection still works for the current session without storage.
+    }
     // Reset tab to default for the target workspace
     if (mode === "trader") setActiveTab("analysis");
     if (mode === "investor") setInvestorTab("portfolio");
@@ -235,7 +293,7 @@ export default function Dashboard() {
   const crossAssetScanLastAtRef = useRef(0);
   const initialScanStartedRef = useRef(false);
   const liveRecommendationSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
+  const [liveSources, setLiveSources] = useState<LiveCandidateSource[]>([]);
   const [discoveredCryptoInstruments, setDiscoveredCryptoInstruments] = useState<DiscoveredCryptoInstrument[]>([]);
   const [marketDiscoveryMessage, setMarketDiscoveryMessage] = useState<string | null>(null);
 
@@ -323,13 +381,13 @@ export default function Dashboard() {
         // Step 2: Fetching market data + intelligence + derivatives in parallel
         updateStep(1, "active");
         let marketDataResult: MarketDataResult;
-        let intelligenceResult: any = null;
-        let derivativesResult: any = null;
-        let defiFundamentalsResult: any = null;
-        let calendarResult: any = null;
+        let intelligenceResult: Awaited<ReturnType<typeof fetchIntelligence>> | null = null;
+        let derivativesResult: Awaited<ReturnType<typeof fetchDerivatives>> | null = null;
+        let defiFundamentalsResult: Awaited<ReturnType<typeof fetchDeFiLlamaFundamentals>> | null = null;
+        let calendarResult: Awaited<ReturnType<typeof fetchCalendar>> | null = null;
         try {
           // Build fetch promises
-          const fetchPromises: Promise<any>[] = [
+          const fetchPromises: Promise<unknown>[] = [
             withActionTimeout(
               fetchMarketData({
                 instrument: input.instrument,
@@ -377,7 +435,7 @@ export default function Dashboard() {
           const results = await Promise.allSettled(fetchPromises);
           const marketResult = results[0];
           const intelResult = results[1];
-          calendarResult = results[2];
+          const calendarResultSettled = results[2];
           const derivResult = input.instrumentType === "crypto" ? results[3] : undefined;
           const defiFundamentalsResultSettled = input.instrumentType === "crypto" ? results[4] : undefined;
 
@@ -494,24 +552,25 @@ export default function Dashboard() {
 
           // Intelligence is non-critical
           if (intelResult.status === "fulfilled") {
-            intelligenceResult = intelResult.value;
+            intelligenceResult = intelResult.value as Awaited<ReturnType<typeof fetchIntelligence>>;
           }
           // Calendar is non-critical
-          if (calendarResult && calendarResult.status === "fulfilled") {
-            calendarResult = calendarResult.value;
+          if (calendarResultSettled.status === "fulfilled") {
+            calendarResult = calendarResultSettled.value as Awaited<ReturnType<typeof fetchCalendar>>;
           }
           // Derivatives is non-critical
           if (derivResult && derivResult.status === "fulfilled") {
-            derivativesResult = derivResult.value;
+            derivativesResult = derivResult.value as Awaited<ReturnType<typeof fetchDerivatives>>;
           }
           // DeFiLlama is independent and non-critical: analysis continues with
           // explicit missing-context state when this provider is unavailable.
           if (defiFundamentalsResultSettled && defiFundamentalsResultSettled.status === "fulfilled") {
-            defiFundamentalsResult = defiFundamentalsResultSettled.value;
+            defiFundamentalsResult = defiFundamentalsResultSettled.value as Awaited<ReturnType<typeof fetchDeFiLlamaFundamentals>>;
           }
-        } catch (err: any) {
+        } catch (err: unknown) {
           updateStep(1, "error");
-          setFetchError(`${t.dashboard.dataFetchFailed}: ${err?.message || t.dashboard.providerNotConfigured}`);
+          const errorMessage = err instanceof Error ? err.message : t.dashboard.providerNotConfigured;
+          setFetchError(`${t.dashboard.dataFetchFailed}: ${errorMessage}`);
           setIsAnalyzing(false);
           return;
         }
@@ -611,7 +670,7 @@ export default function Dashboard() {
 
         if (input.instrumentType === "crypto") {
           const derivativesContext = derivativesResult?.data
-            ? parseCoinGlassResult(derivativesResult.data, input.instrument, derivativesResult.data.timestamp ?? Date.now())
+            ? parseCoinGlassResult({ ...derivativesResult.data }, input.instrument, derivativesResult.data.timestamp ?? Date.now())
             : derivativesResult?.error
               ? {
                   provider: "CoinGlass",
@@ -626,7 +685,7 @@ export default function Dashboard() {
               : undefined;
           const defiContext = defiFundamentalsResult?.success && defiFundamentalsResult?.data
             ? parseDeFiLlamaResult(
-                defiFundamentalsResult.data as Record<string, any>,
+                defiFundamentalsResult.data as Record<string, unknown>,
                 input.instrument,
                 defiFundamentalsResult.observedAt ?? Date.now(),
               )
@@ -692,7 +751,7 @@ export default function Dashboard() {
                   quality: "VERIFIED",
                   availableDatasets: 1,
                   totalDatasets: 1,
-                  upcomingEvents: calendarResult.data.events?.filter((e: any) => e.status === "upcoming").slice(0, 5).map((e: any) => ({
+                  upcomingEvents: calendarResult.data.events?.filter((e) => e.status === "upcoming").slice(0, 5).map((e) => ({
                     name: e.event,
                     date: new Date(e.datetime).toISOString().slice(0, 10),
                     impact: e.importance === 3 ? "high" : e.importance === 2 ? "medium" : "low",
@@ -989,6 +1048,10 @@ export default function Dashboard() {
           eiaData,
           universalIntelligence: enrichedInput.universalIntelligenceContext,
         });
+        setLiveSources(mergeLiveSourcesByTimeframe(
+          liveSourceRef.current.values(),
+          liveRecommendationSourceRef.current.values(),
+        ));
 
         await new Promise((r) => setTimeout(r, 150));
         updateStep(4, "done");
@@ -1025,9 +1088,10 @@ export default function Dashboard() {
         } catch {
           // Save failed (guest user) — analysis still shows in session
         }
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!isStaleRun()) {
-          setFetchError(`${t.dashboard.dataFetchFailed}: ${err?.message || t.dashboard.providerNotConfigured}`);
+          const errorMessage = err instanceof Error ? err.message : t.dashboard.providerNotConfigured;
+          setFetchError(`${t.dashboard.dataFetchFailed}: ${errorMessage}`);
         }
       } finally {
         clearTimeout(watchdog);
@@ -1080,16 +1144,15 @@ export default function Dashboard() {
     );
   }, [discoveredCryptoInstruments]);
 
-  const liveSources: LiveCandidateSource[] = useMemo(
-    () => mergeLiveSourcesByTimeframe(
-      liveSourceRef.current.values(),
-      liveRecommendationSourceRef.current.values(),
-    ),
-    [currentResult, liveSourcesVersion],
+  // Render from React state rather than reading mutable refs during render.
+  // Refs remain the acquisition cache; snapshots are published after updates.
+  const scanResult: ScanResult | null = useMemo(
+    () => liveSources.length > 0
+      ? scanInstruments(liveSources, { horizons: ALL_SCAN_HORIZONS, maxResults: 100 })
+      : null,
+    [liveSources],
   );
 
-  // Phase 50 — Live scan result from available sources
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
 
   const handleScanRefresh = useCallback(async () => {
@@ -1129,19 +1192,66 @@ export default function Dashboard() {
               );
               discoveryCursorRef.current = nextCursor;
 
-              // Acquire distinct real candles for scalping, intraday, and swing.
+              // Acquire real candles for scalp/intraday/swing plus daily/weekly
+              // context so longer radar horizons do not fall back to M5 data.
               const nativeInputs = batch.flatMap((item) =>
-                (["M5", "H1", "H4"] as const).map((timeframe) => ({
+                (["M5", "H1", "H4", "D1", "W1"] as const).map((timeframe) => ({
                   instrument: item.instId,
                   providerInstrumentId: item.instId,
                   assetClass: "crypto" as const,
                   timeframe,
                 })),
               );
+              // Enrich a small rotating subset with real derivatives context.
+              // The action uses provider-side caching and public fallbacks; it is
+              // kept parallel to candle acquisition and never blocks on one failure.
+              const derivativeTargets = batch.filter((item, index) => {
+                const base = item.instId.trim().toUpperCase().split(/[/-]/)[0];
+                return batch.findIndex((candidate) =>
+                  candidate.instId.trim().toUpperCase().split(/[/-]/)[0] === base
+                ) === index;
+              }).slice(0, 3);
+              const derivativesPromise = Promise.allSettled(
+                derivativeTargets.map(async (item) => {
+                  const key = `${item.instId}|H1`;
+                  const existing =
+                    liveRecommendationSourceRef.current.get(key)?.derivativesData ??
+                    liveSourceRef.current.get(item.instId)?.derivativesData;
+                  if (
+                    existing &&
+                    (existing.freshness === "realtime" || existing.freshness === "delayed") &&
+                    Date.now() - existing.timestamp < 10 * 60_000
+                  ) {
+                    return { instrument: item.instId, data: existing };
+                  }
+
+                  const base = item.instId.trim().toUpperCase().split(/[/-]/)[0];
+                  if (!base) return null;
+                  const result = await withActionTimeout(
+                    fetchDerivatives({ instrument: `${base}/USD`, includeTokenomics: false }),
+                    ACTION_TIMEOUTS_MS.derivatives,
+                    `Background derivatives ${base}`,
+                  );
+                  return result.success && result.data
+                    ? { instrument: item.instId, data: result.data }
+                    : null;
+                }),
+              );
+
               const acquired = await acquireOkxNativeLiveDataBatch({
                 instruments: nativeInputs,
                 concurrency: 5,
               });
+              const derivativeSettled = await derivativesPromise;
+              const derivativesByBase = new Map<
+                string,
+                NonNullable<LiveCandidateSource["derivativesData"]>
+              >();
+              for (const settled of derivativeSettled) {
+                if (settled.status !== "fulfilled" || !settled.value) continue;
+                const base = settled.value.instrument.trim().toUpperCase().split(/[/-]/)[0];
+                if (base) derivativesByBase.set(base, settled.value.data);
+              }
               const { providerNativeAcquisitionToMarketData } =
                 await import("@/lib/market-radar/provider-registry");
 
@@ -1163,12 +1273,14 @@ export default function Dashboard() {
                 };
                 const key = `${result.instrument}|${timeframe}`;
                 const previousRecommendationSource = liveRecommendationSourceRef.current.get(key);
+                const base = result.instrument.trim().toUpperCase().split(/[/-]/)[0];
+                const derivativeData = base ? derivativesByBase.get(base) : undefined;
                 liveRecommendationSourceRef.current.set(key, {
                   ...previousRecommendationSource,
                   ...source,
                   analysisResult: previousRecommendationSource?.analysisResult,
                   universalIntelligence: previousRecommendationSource?.universalIntelligence,
-                  derivativesData: previousRecommendationSource?.derivativesData,
+                  derivativesData: derivativeData ?? previousRecommendationSource?.derivativesData,
                   calendarData: previousRecommendationSource?.calendarData,
                   treasuryData: previousRecommendationSource?.treasuryData,
                   cotData: previousRecommendationSource?.cotData,
@@ -1183,7 +1295,7 @@ export default function Dashboard() {
                     ...source,
                     analysisResult: existing?.analysisResult,
                     universalIntelligence: existing?.universalIntelligence,
-                    derivativesData: existing?.derivativesData,
+                    derivativesData: derivativeData ?? existing?.derivativesData,
                     calendarData: existing?.calendarData,
                     treasuryData: existing?.treasuryData,
                     cotData: existing?.cotData,
@@ -1299,14 +1411,11 @@ export default function Dashboard() {
         liveSourceRef.current.values(),
         liveRecommendationSourceRef.current.values(),
       );
-      setLiveSourcesVersion((version) => version + 1);
-      setScanResult(
-        scanInstruments(sources, { horizons: ALL_SCAN_HORIZONS, maxResults: 100 }),
-      );
+      setLiveSources(sources);
     } finally {
       setIsScanning(false);
     }
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchMarketData]);
+  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchMarketData, fetchDerivatives]);
 
   useEffect(() => {
     if (initialScanStartedRef.current) return;
@@ -1318,24 +1427,21 @@ export default function Dashboard() {
   const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
   const radarStateRef = useRef<RadarState | null>(null);
 
-  // Auto-scan after live sources change. State updates belong in effects,
-  // never in render-time memoization.
-  useEffect(() => {
-    if (liveSources.length > 0) {
-      const config = { horizons: ALL_SCAN_HORIZONS, maxResults: 100 };
-      const result = scanInstruments(liveSources, config);
-      setScanResult(result);
-    }
-  }, [liveSources]);
-
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
   useEffect(() => {
     if (liveSources.length === 0) return;
-    // Map the verified runtime snapshots and all independently acquired context.
-    // Keep actual structure authoritative; never infer it from the final analysis bias.
-    const latestPerInstrument = new Map<string, LiveCandidateSource>();
-    for (const source of liveSources) latestPerInstrument.set(source.instrument, source);
-    const radarSources = Array.from(latestPerInstrument.values()).map(toRadarCandidateSource);
+    // Preserve each instrument/timeframe snapshot and pass sibling intervals
+    // only as higher-timeframe context. The radar selects the appropriate source
+    // separately for each horizon instead of reusing the last inserted interval.
+    const sourcesByInstrument = new Map<string, LiveCandidateSource[]>();
+    for (const source of liveSources) {
+      const group = sourcesByInstrument.get(source.instrument) ?? [];
+      group.push(source);
+      sourcesByInstrument.set(source.instrument, group);
+    }
+    const radarSources = liveSources.map((source) =>
+      toRadarCandidateSource(source, sourcesByInstrument.get(source.instrument) ?? []),
+    );
 
     const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
     const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);

@@ -15,7 +15,8 @@
  * For keyed providers (Twelve Data, Alpha Vantage, CoinGlass, EIA, TickAtlas),
  * we test graceful-failure behavior and pure normalization logic.
  */
-import { describe, it, expect, beforeAll } from "vitest";
+import { describe, it, expect } from "vitest";
+import { createTwelveDataProvider } from "./data/providers/twelve-data";
 
 // ─── Pure modules (directly testable) ──────────────────────────────
 import {
@@ -23,13 +24,10 @@ import {
   buildCotContext,
   classifyCotFreshness,
   deriveCotEvidence,
-  COT_FRESH_DAYS,
-  COT_DELAYED_DAYS,
 } from "./data/cot";
 import {
   mapInstrumentToOkx,
   parseOkxResponse,
-  resolveWithOkx,
 } from "./risk/okx-spec";
 import {
   toCoinGeckoId,
@@ -41,13 +39,9 @@ import {
 import {
   parseTreasuryXml,
   buildTreasuryContext,
-  classifyMacroFreshness,
   deriveMacroYieldEvidence,
-  TREASURY_FRESH_DAYS,
-  TREASURY_DELAYED_DAYS,
 } from "./data/treasury";
-import type { InstrumentSpec } from "./risk";
-import { buildExecutionData, parseOkxOrderBook, type ExecutionData } from "./execution-quality";
+import { parseOkxOrderBook, buildExecutionData } from "./execution-quality";
 
 // ─── HTTP helpers for live public endpoints ─────────────────────────
 
@@ -688,18 +682,8 @@ describe("Phase 39 — OKX Order Book (Live)", () => {
 
 describe("Phase 39 — Provider Failure Behavior", () => {
   describe("Twelve Data (keyed provider)", () => {
-    it("returns explicit error when API key is missing", () => {
-      // We verify the constructor validates key presence
-      // In production, Convex action checks process.env.TWELVE_DATA_API_KEY
-      // The pure module throws if no key
-      try {
-        const { createTwelveDataProvider } = require("./data/providers/twelve-data");
-        // This should either throw or require a key
-        // We just verify the module exists and the factory exists
-        expect(typeof createTwelveDataProvider).toBe("function");
-      } catch {
-        // Module import issue — still validates the module path is correct
-      }
+    it("throws explicitly when the API key is missing", () => {
+      expect(() => createTwelveDataProvider("")).toThrow(/TWELVE_DATA_API_KEY/);
     });
   });
 

@@ -362,14 +362,12 @@ function auditActionabilityConsistency(
 function auditTradePlanConsistency(
   result: AnalysisResult,
   violations: IntegrityViolation[],
-  warnings: IntegrityWarning[],
 ): boolean {
   let consistent = true;
   const tp = result.tradePlan;
   if (!tp) return true;
 
   // I84 — Trade plan must be structurally consistent with direction
-  const dir = dirBias(result);
   const rec = result.recommendation;
 
   if (rec === "LONG" && tp.direction !== "long") {
@@ -467,10 +465,7 @@ function auditTradePlanConsistency(
   return consistent;
 }
 
-function auditJournalCompatibility(
-  _result: AnalysisResult,
-  _warnings: IntegrityWarning[],
-): boolean {
+function auditJournalCompatibility(): boolean {
   // Journal compatibility is structural: all optional fields are safe for snapshot
   // Phase 31 verified this. Report compatible.
   return true;
@@ -551,8 +546,8 @@ export function auditDecisionIntegrity(result: AnalysisResult): DecisionIntegrit
   const fundamentalOk = auditFundamentalConsistency(result, violations, warnings);
   const forwardPathOk = auditForwardPathConsistency(result, violations, warnings);
   const actionabilityOk = auditActionabilityConsistency(result, violations);
-  const tradePlanOk = auditTradePlanConsistency(result, violations, warnings);
-  const journalOk = auditJournalCompatibility(result, warnings);
+  const tradePlanOk = auditTradePlanConsistency(result, violations);
+  const journalOk = auditJournalCompatibility();
 
   const allOk =
     structuralOk &&

@@ -3,8 +3,14 @@ import type { OhlcvCandle } from "../market-types";
 export const OKX_SPOT_MARKET_PROVIDER = "okx-spot-public";
 const BASE_URL = "https://www.okx.com";
 
+type JsonRecord = Record<string, unknown>;
+
+function isRecord(value: unknown): value is JsonRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 export function toOkxSpotInstrument(symbol: string): string | null {
-  const parts = symbol.trim().toUpperCase().replace(/\s/g, "").split(/[\/-]/);
+  const parts = symbol.trim().toUpperCase().replace(/\s/g, "").split(/[/-]/);
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
   const base = parts[0];
   const quote = parts[1] === "USD" ? "USDT" : parts[1];
@@ -38,12 +44,13 @@ export class OkxSpotMarketAdapter {
   private fetchFn: typeof fetch;
   constructor(fetchFn?: typeof fetch) { this.fetchFn = fetchFn ?? fetch; }
 
-  private async getJson(path: string): Promise<any> {
+  private async getJson(path: string): Promise<JsonRecord> {
     const response = await this.fetchFn(BASE_URL + path, {
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(4_000),
     });
-    const json = await response.json().catch(() => null);
+    const payload: unknown = await response.json().catch(() => null);
+    const json = isRecord(payload) ? payload : undefined;
     if (!response.ok) throw new Error("OKX Spot HTTP " + response.status + ": " + String(json?.msg ?? response.statusText));
     if (!json || (json.code !== undefined && String(json.code) !== "0")) {
       throw new Error("OKX Spot API " + String(json?.code ?? "NO_RESPONSE") + ": " + String(json?.msg ?? "invalid response"));
@@ -66,7 +73,7 @@ export class OkxSpotMarketAdapter {
     const instId = toOkxSpotInstrument(symbol);
     if (!instId) throw new Error("Unsupported OKX Spot symbol: " + symbol);
     const json = await this.getJson("/api/v5/market/ticker?instId=" + encodeURIComponent(instId));
-    const row = Array.isArray(json?.data) ? json.data[0] : undefined;
+    const row: JsonRecord | undefined = Array.isArray(json.data) && isRecord(json.data[0]) ? json.data[0] : undefined;
     const price = Number(row?.last);
     const bid = Number(row?.bidPx), ask = Number(row?.askPx);
     const timestamp = Number(row?.ts);

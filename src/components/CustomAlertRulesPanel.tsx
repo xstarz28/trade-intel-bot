@@ -376,6 +376,10 @@ function RuleRow({
 // MAIN PANEL
 // ═══════════════════════════════════════════════════════════════
 
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export function CustomAlertRulesPanel() {
   const { t } = useI18n();
   const [showForm, setShowForm] = useState(false);
@@ -420,8 +424,8 @@ export function CustomAlertRulesPanel() {
           cooldownMs: opts.cooldownMs,
         });
         toast.success(`Rule "${opts.name}" created`);
-      } catch (err: any) {
-        toast.error(err?.message ?? "Failed to create rule");
+      } catch (err: unknown) {
+        toast.error(getErrorMessage(err, "Failed to create rule"));
       }
     },
     [createRule],
@@ -431,8 +435,8 @@ export function CustomAlertRulesPanel() {
     async (ruleId: string, enabled: boolean) => {
       try {
         await updateRule({ ruleId, enabled });
-      } catch (err: any) {
-        toast.error(err?.message ?? "Failed to update rule");
+      } catch (err: unknown) {
+        toast.error(getErrorMessage(err, "Failed to update rule"));
       }
     },
     [updateRule],
@@ -443,8 +447,8 @@ export function CustomAlertRulesPanel() {
       try {
         await deleteRule({ ruleId });
         toast.success("Rule deleted");
-      } catch (err: any) {
-        toast.error(err?.message ?? "Failed to delete rule");
+      } catch (err: unknown) {
+        toast.error(getErrorMessage(err, "Failed to delete rule"));
       }
     },
     [deleteRule],

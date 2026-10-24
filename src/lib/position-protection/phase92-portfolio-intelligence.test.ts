@@ -7,10 +7,23 @@ import {
   generatePortfolioIntelligence,
 } from "./portfolio-intelligence";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
+import type { TimeframeAnalysis } from "./multi-timeframe-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
+
+function makeTimeframeAnalysis(
+  timeframe: TimeframeAnalysis["timeframe"] = "H1",
+  trend: TimeframeAnalysis["trend"] = "BULLISH",
+): TimeframeAnalysis {
+  return {
+    timeframe, trend, momentum: "NEUTRAL", rsiValue: undefined, volatility: "NORMAL",
+    atrValue: undefined, atrPct: undefined, structure: "HIGHER_HIGHS_HIGHER_LOWS",
+    structureBroken: false, lastSwingHigh: undefined, lastSwingLow: undefined,
+    priceVsMA: "ABOVE", dataQuality: "SUFFICIENT", candleCount: 20,
+  };
+}
 
 function makePosition(overrides: Partial<PositionIntelligence> = {}): PositionIntelligence {
   return {
@@ -26,9 +39,9 @@ function makePosition(overrides: Partial<PositionIntelligence> = {}): PositionIn
     volatilityContext: "Normal",
     mtfConfluence: undefined,
     ohlcvRegime: "TRENDING_UP",
-    h1Analysis: { trend: "BULLISH", momentum: "NORMAL", volatility: "NORMAL", structure: "HIGHER_HIGHS_HIGHER_LOWS", priceVsMA: "ABOVE" } as any,
-    m15Analysis: { trend: "BULLISH", momentum: "NORMAL", volatility: "NORMAL", structure: "HIGHER_HIGHS_HIGHER_LOWS", priceVsMA: "ABOVE" } as any,
-    m5Analysis: { trend: "BULLISH", momentum: "NORMAL", volatility: "NORMAL", structure: "HIGHER_HIGHS_HIGHER_LOWS", priceVsMA: "ABOVE" } as any,
+    h1Analysis: makeTimeframeAnalysis("H1"),
+    m15Analysis: makeTimeframeAnalysis("M15"),
+    m5Analysis: makeTimeframeAnalysis("M5"),
     pnlPct: 8.33,
     thesisHealth: "HEALTHY",
     thesisHealthScore: 80,
@@ -38,7 +51,7 @@ function makePosition(overrides: Partial<PositionIntelligence> = {}): PositionIn
     independentSignalCount: 3,
     confidence: "MODERATE_EVIDENCE",
     pullbackClassification: "INSUFFICIENT_DATA",
-    invalidationConditions: [{ description: "H1 structure breaks", distancePct: 2.5, isClose: false } as any],
+    invalidationConditions: [{ description: "H1 structure breaks", distancePct: 2.5, approaching: false }],
     nextMonitor: ["M5 momentum"],
     dataQuality: "SUFFICIENT",
     observationCount: 10,
@@ -163,8 +176,8 @@ describe("Phase 92 — Dominant State", () => {
 describe("Phase 92 — Alignment Detection", () => {
   it("should detect regime alignment between same-side positions", () => {
     const intel = generatePortfolioIntelligence([
-      makePosition({ instrument: "BTC/USDT", side: "LONG", ohlcvRegime: "TRENDING_UP", h1Analysis: { trend: "BULLISH" } as any }),
-      makePosition({ instrument: "ETH/USDT", side: "LONG", ohlcvRegime: "TRENDING_UP", h1Analysis: { trend: "BULLISH" } as any }),
+      makePosition({ instrument: "BTC/USDT", side: "LONG", ohlcvRegime: "TRENDING_UP", h1Analysis: makeTimeframeAnalysis("H1", "BULLISH") }),
+      makePosition({ instrument: "ETH/USDT", side: "LONG", ohlcvRegime: "TRENDING_UP", h1Analysis: makeTimeframeAnalysis("H1", "BULLISH") }),
     ]);
     expect(intel.alignments.length).toBeGreaterThanOrEqual(1);
     expect(intel.alignments.some(a => a.alignmentType === "REGIME_MATCH")).toBe(true);
@@ -172,8 +185,8 @@ describe("Phase 92 — Alignment Detection", () => {
 
   it("should detect H1 trend alignment even without regime match", () => {
     const intel = generatePortfolioIntelligence([
-      makePosition({ instrument: "BTC/USDT", side: "LONG", ohlcvRegime: "TRENDING_UP", h1Analysis: { trend: "BULLISH" } as any }),
-      makePosition({ instrument: "ETH/USDT", side: "LONG", ohlcvRegime: "PULLBACK", h1Analysis: { trend: "BULLISH" } as any }),
+      makePosition({ instrument: "BTC/USDT", side: "LONG", ohlcvRegime: "TRENDING_UP", h1Analysis: makeTimeframeAnalysis("H1", "BULLISH") }),
+      makePosition({ instrument: "ETH/USDT", side: "LONG", ohlcvRegime: "PULLBACK", h1Analysis: makeTimeframeAnalysis("H1", "BULLISH") }),
     ]);
     expect(intel.alignments.some(a => a.alignmentType === "HTF_ALIGNMENT")).toBe(true);
   });
@@ -367,7 +380,7 @@ describe("Phase 92 — LONG/SHORT Symmetry", () => {
 describe("Phase 92 — Data Availability", () => {
   it("should detect AVAILABLE technical when OHLCV exists", () => {
     const intel = generatePortfolioIntelligence([
-      makePosition({ h1Analysis: { trend: "BULLISH" } as any }),
+      makePosition({ h1Analysis: makeTimeframeAnalysis("H1", "BULLISH") }),
     ]);
     expect(intel.dataAvailability.technical).toBe("AVAILABLE");
   });

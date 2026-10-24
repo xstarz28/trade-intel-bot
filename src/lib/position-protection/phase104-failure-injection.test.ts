@@ -19,17 +19,14 @@ import {
   buildInitialStateStore,
   removePositionFromState,
   removePositionTriggerRecords,
-  cleanStaleInstrumentState,
   cleanStaleRuleTriggerRecords,
   type PreviousStateStore,
-  type RuntimeBridgeInput,
 } from "./alert-runtime-bridge";
 import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
-import { alertIdentity } from "./alert-rule-engine";
+
 import {
   buildNotification,
   notificationIdentity,
-  filterNotifications,
   applyRetention,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
@@ -37,24 +34,20 @@ import {
 import {
   filterNotificationsByPreferences,
   DEFAULT_PREFERENCES,
-  type NotificationPreferences,
 } from "./notification-preferences";
 import {
   buildRuntimeHealthSnapshot,
   calculateOverallHealth,
   classifyFreshness,
   normalizeRuntimeHealthEvent,
-  classifyError,
   errorCategoryToStatus,
   aggregateRuntimeHealth,
   shouldPersistRuntimeHealth,
   detectHealthTransitions,
   FRESH_THRESHOLD_MS,
   AGING_THRESHOLD_MS,
-  UNAVAILABLE_FAILURE_THRESHOLD,
   MAX_RUNTIME_HEALTH_EVENTS,
   type RuntimeHealthEvent,
-  type RuntimeHealthSnapshot,
   type RuntimeHealthComponent,
   type RuntimeComponent,
 } from "./runtime-health";
@@ -67,7 +60,6 @@ import {
   getLatestEventForComponent,
   getEventCount,
   buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
 
@@ -90,9 +82,9 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     entryPrice: 60000, currentPrice: 65000, thesisHealth: "HEALTHY", thesisHealthScore: 80,
     confidence: "STRONG_EVIDENCE", ohlcvRegime: "TRENDING_UP", shortTermContext: "BULLISH",
     volatilityContext: "NORMAL",
-    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as any,
-    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as any,
-    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as any,
+    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as unknown as PositionIntelligence["h1Analysis"],
+    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as unknown as PositionIntelligence["m15Analysis"],
+    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as unknown as PositionIntelligence["m5Analysis"],
     evidence: [], dataQuality: "HIGH", dataSource: "TwelveData", ...overrides,
   } as PositionIntelligence;
 }
@@ -531,7 +523,6 @@ describe("Phase 104 — Runtime Health Invariants", () => {
   });
 
   it("overall health classification deterministic", () => {
-    const now = Date.now();
     const components: RuntimeHealthComponent[] = [
       { component: "MARKET_DATA", status: "HEALTHY", consecutiveFailures: 0, message: "ok", freshness: "FRESH" },
       { component: "OHLCV", status: "HEALTHY", consecutiveFailures: 0, message: "ok", freshness: "FRESH" },
@@ -606,7 +597,7 @@ describe("Phase 104 — Lifecycle Race Scenarios", () => {
 
   it("stale state cleanup on position removal", () => {
     const state: PreviousStateStore = {
-      snapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "HIGH", supportingCount: 2, conflictingCount: 0 } as any]]),
+      snapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "HIGH", supportingCount: 2, conflictingCount: 0 } as unknown as PreviousStateStore["snapshots"] extends Map<string, infer T> ? T : never]]),
       newsStance: new Map([["BTC/USDT", "SUPPORTING"]]),
       dataAvailability: new Map([["BTC/USDT", "HIGH"]]),
     };

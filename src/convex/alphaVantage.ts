@@ -18,7 +18,7 @@ import { mapAlphaVantageFundamentalMetrics } from "../lib/data/alpha-vantage-fun
 
 // ── Simple in-memory cache (resets per Convex action instance) ──
 // For production, use Convex scheduled functions or a database cache.
-const cache = new Map<string, { data: any; expiresAt: number }>();
+const cache = new Map<string, { data: unknown; expiresAt: number }>();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 function getCached<T>(key: string): T | null {
@@ -28,7 +28,7 @@ function getCached<T>(key: string): T | null {
   return null;
 }
 
-function setCache(key: string, data: any): void {
+function setCache(key: string, data: unknown): void {
   cache.set(key, { data, expiresAt: Date.now() + CACHE_TTL });
 }
 
@@ -36,18 +36,19 @@ function setCache(key: string, data: any): void {
 
 const AV_BASE = "https://www.alphavantage.co/query";
 
-async function avFetch(params: Record<string, string>, apiKey: string): Promise<any> {
+async function avFetch(params: Record<string, string>, apiKey: string): Promise<Record<string, unknown>> {
   const qs = new URLSearchParams({ ...params, apikey: apiKey }).toString();
   const res = await fetch(`${AV_BASE}?${qs}`);
   if (!res.ok) {
     throw new Error(`Alpha Vantage HTTP ${res.status}: ${res.statusText}`);
   }
-  const json = await res.json();
-  // AV returns "Note" or "Information" on rate limits
-  if (json.Note || json.Information) {
-    throw new Error("RATE_LIMIT:" + (json.Note || json.Information));
+  const payload: unknown = await res.json();
+  if (!isRecord(payload)) throw new Error("Alpha Vantage returned a non-object response.");
+  // AV returns "Note" or "Information" on rate limits.
+  if (payload.Note || payload.Information) {
+    throw new Error("RATE_LIMIT:" + String(payload.Note || payload.Information));
   }
-  return json;
+  return payload;
 }
 
 // ── Symbol Mapping for Alpha Vantage ────────────────────────────
@@ -129,8 +130,8 @@ export const fetchIntelligence = action({
           articles = normalizeNewsFromAV(newsJson, ticker);
           setCache(newsCacheKey, articles);
           sentiment = aggregateFromArticles(articles, "alpha-vantage");
-        } catch (err: any) {
-          if (String(err?.message).startsWith("RATE_LIMIT")) {
+        } catch (err: unknown) {
+          if (errorMessage(err).startsWith("RATE_LIMIT")) {
             return {
               success: false,
               dataAvailable: { news: false, fundamentals: false, macro: false },
@@ -173,8 +174,8 @@ export const fetchIntelligence = action({
               ticker,
             );
             setCache(fundCacheKey, fundamentals);
-          } catch (err: any) {
-            if (String(err?.message).startsWith("RATE_LIMIT")) {
+          } catch (err: unknown) {
+            if (errorMessage(err).startsWith("RATE_LIMIT")) {
               return {
                 success: false,
                 dataAvailable: { news: !!articles.length, fundamentals: false, macro: false },
@@ -215,11 +216,11 @@ export const fetchIntelligence = action({
           macro: macro.confidence !== "unavailable",
         },
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       return {
         success: false,
         dataAvailable: { news: false, fundamentals: false, macro: false },
-        error: `Intelligence fetch failed: ${err?.message ?? "unknown error"}`,
+        error: `Intelligence fetch failed: ${errorMessage(err)}`,
         errorCode: "API_UNAVAILABLE",
       };
     }
@@ -228,55 +229,62 @@ export const fetchIntelligence = action({
 
 // ── Normalization (duplicated from client-side for Convex compat) ─
 
-function normalizeNewsFromAV(json: any, relatedTicker: string): NewsArticle[] {
-  const feed = json?.feed;
-  if (!feed || !Array.isArray(feed)) return [];
+function normalizeNewsFromAV(json: unknown, relatedTicker: string): NewsArticle[] {
+  const feedValue = isRecord(json) ? json.feed : undefined;
+  const feed = Array.isArray(feedValue) ? feedValue.filter(isRecord) : [];
+  const ticker = relatedTicker.toUpperCase();
 
   return feed
-    .filter((item: any) => item.title && item.url)
-    .map((item: any) => {
-      const tickerSentiment = item.ticker_sentiment?.find(
-        (ts: any) =>
-          ts.ticker?.toUpperCase() === relatedTicker.toUpperCase() ||
-          ts.ticker?.toUpperCase().startsWith(relatedTicker.toUpperCase()),
+    .filter((item) => typeof item.title === "string" && typeof item.url === "string")
+    .map((item): NewsArticle => {
+      const tickerSentiments = Array.isArray(item.ticker_sentiment)
+        ? item.ticker_sentiment.filter(isRecord)
+        : [];
+      const tickerSentiment = tickerSentiments.find((entry) => {
+        const value = stringValue(entry.ticker)?.toUpperCase();
+        return value === ticker || value?.startsWith(ticker) === true;
+      });
+      const sentimentScore =
+        finiteNumber(tickerSentiment?.ticker_sentiment_score) ??
+        finiteNumber(item.overall_sentiment_score);
+      const relevanceScore = finiteNumber(tickerSentiment?.relevance_score);
+      const topics = Array.isArray(item.topics) ? item.topics.filter(isRecord) : [];
+      const published = stringValue(item.time_published);
+      const summary = stringValue(item.summary);
+      const relatedTickers = tickerSentiments
+        .map((entry) => stringValue(entry.ticker) ?? "")
+        .filter(Boolean);
+      const sentimentLabel = mapSentimentLabel(
+        stringValue(tickerSentiment?.ticker_sentiment_label) ??
+        stringValue(item.overall_sentiment_label),
       );
       return {
-        title: item.title,
-        source: item.source || "Unknown",
-        url: item.url,
-        publishedAt: item.time_published
-          ? parseAVTime(item.time_published)
-          : Date.now(),
-        summary: item.summary,
-        sentimentScore: tickerSentiment?.ticker_sentiment_score
-          ? parseFloat(tickerSentiment.ticker_sentiment_score)
-          : item.overall_sentiment_score
-            ? parseFloat(item.overall_sentiment_score)
-            : undefined,
-        sentimentLabel: mapSentimentLabel(
-          tickerSentiment?.ticker_sentiment_label || item.overall_sentiment_label,
-        ),
-        relevanceScore: tickerSentiment?.relevance_score
-          ? parseFloat(tickerSentiment.relevance_score)
-          : undefined,
-        relatedTickers: item.ticker_sentiment?.map((ts: any) => ts.ticker || "").filter(Boolean),
-        category: item.category_within_source || item.topics?.[0]?.topic,
+        title: String(item.title),
+        source: stringValue(item.source) || "Unknown",
+        url: String(item.url),
+        publishedAt: published ? parseAVTime(published) : Date.now(),
+        ...(summary !== undefined ? { summary } : {}),
+        ...(sentimentScore !== undefined ? { sentimentScore } : {}),
+        ...(sentimentLabel !== undefined ? { sentimentLabel } : {}),
+        ...(relevanceScore !== undefined ? { relevanceScore } : {}),
+        ...(relatedTickers.length ? { relatedTickers } : {}),
+        ...(stringValue(item.category_within_source) ?? stringValue(topics[0]?.topic)
+          ? { category: stringValue(item.category_within_source) ?? stringValue(topics[0]?.topic) }
+          : {}),
       };
     })
-    .sort((a: NewsArticle, b: NewsArticle) => {
-      const scoreA = (a.relevanceScore ?? 0.5);
-      const scoreB = (b.relevanceScore ?? 0.5);
-      return scoreB - scoreA;
-    })
+    .sort((a, b) => (b.relevanceScore ?? 0.5) - (a.relevanceScore ?? 0.5))
     .slice(0, 10);
 }
 
 function normalizeFundamentalsFromAV(
-  overview: any,
-  earnings: any,
+  overviewValue: unknown,
+  earningsValue: unknown,
   instrumentType: string,
   symbol: string,
 ): FundamentalData {
+  const overview = isRecord(overviewValue) ? overviewValue : undefined;
+  const earnings = isRecord(earningsValue) ? earningsValue : undefined;
   const base: FundamentalData = {
     provider: "alpha-vantage",
     timestamp: Date.now(),
@@ -290,22 +298,20 @@ function normalizeFundamentalsFromAV(
     return base;
   }
 
-  if (!overview || !overview.Symbol) {
+  const providerSymbol = stringValue(overview?.Symbol);
+  if (!overview || !providerSymbol) {
     base.unavailableReason = "No fundamental data available for this symbol.";
     return base;
   }
 
-  // Preserve the provider-returned symbol, not the requested ticker. The
-  // downstream evidence layer must be able to reject a mismatched provider
-  // response instead of accidentally relabeling it as the requested company.
-  base.symbol = String(overview.Symbol).trim().toUpperCase();
+  // Preserve the provider-returned symbol so downstream validation can reject
+  // mismatched fundamentals instead of relabeling them as the requested asset.
+  base.symbol = providerSymbol.trim().toUpperCase();
   base.available = true;
-  base.name = overview.Name;
-  base.sector = overview.Sector;
-  base.industry = overview.Industry;
+  base.name = stringValue(overview.Name);
+  base.sector = stringValue(overview.Sector);
+  base.industry = stringValue(overview.Industry);
   base.marketCap = safeNum(overview.MarketCapitalization);
-  // Preserve the provider's actual analyst target so the universal evidence
-  // layer can compare it with the observed quote; never synthesize a target.
   base.analystTargetPrice = safeNum(overview.AnalystTargetPrice);
   base.peRatio = safeNum(overview.PERatio);
   Object.assign(base, mapAlphaVantageFundamentalMetrics(overview));
@@ -321,10 +327,13 @@ function normalizeFundamentalsFromAV(
   base.fiftyTwoWeekHigh = safeNum(overview.FiftyTwoWeekHigh);
   base.fiftyTwoWeekLow = safeNum(overview.FiftyTwoWeekLow);
 
-  if (earnings?.quarterlyEarnings?.length) {
-    const latest = earnings.quarterlyEarnings[0];
+  const quarterly = Array.isArray(earnings?.quarterlyEarnings)
+    ? earnings.quarterlyEarnings.filter(isRecord)
+    : [];
+  const latest = quarterly[0];
+  if (latest) {
     base.latestEarnings = {
-      date: latest.fiscalDateEnding,
+      ...(stringValue(latest.fiscalDateEnding) ? { date: stringValue(latest.fiscalDateEnding) } : {}),
       eps: safeNum(latest.reportedEPS),
       revenue: safeNum(latest.reportedRevenue),
     };
@@ -485,8 +494,25 @@ function parseAVTime(timeStr: string): number {
   }
 }
 
-function safeNum(val: string | undefined): number | undefined {
-  if (val === undefined || val === null || val === "" || val === "-") return undefined;
-  const n = parseFloat(val);
-  return isNaN(n) ? undefined : n;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function finiteNumber(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  if (typeof value === "string" && (value.trim() === "" || value.trim() === "-")) return undefined;
+  const parsed = typeof value === "number" ? value : Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function safeNum(val: unknown): number | undefined {
+  return finiteNumber(val);
 }

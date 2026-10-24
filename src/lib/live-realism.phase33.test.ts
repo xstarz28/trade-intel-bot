@@ -15,16 +15,10 @@
  */
 import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
-import { buildForwardMarketPath } from "./forward-market-path";
-import { buildProfessionalThesis } from "./professional-thesis";
-import { buildMarketRegime } from "./market-regime";
-import { buildFundamentalThesis } from "./fundamental-thesis";
 import {
   createAnalysisSnapshot,
   journalFromAnalysis,
   createObservationEntry,
-  transitionEntry,
-  isValidTransition,
 } from "./journal";
 import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
 import type { MarketData, OhlcvCandle } from "@/lib/data/market-types";
@@ -62,10 +56,10 @@ function flatCandles(base: number, n = 200): OhlcvCandle[] {
   }));
 }
 
-function mixedCandles(n = 200): OhlcvCandle[] {
+function mixedCandles(n = 200, basePrice = 50000): OhlcvCandle[] {
   return Array.from({ length: n }, (_, i) => {
     const up = i % 2 === 0;
-    const base = 50000 + Math.sin(i * 0.1) * 2000;
+    const base = basePrice + Math.sin(i * 0.1) * 2000;
     return {
       timestamp: ts(i),
       open: base + (up ? -10 : 10),
@@ -119,7 +113,7 @@ function runFlat(symbol: string, type: AnalysisInput["instrumentType"], base: nu
 }
 
 function runMixed(symbol: string, type: AnalysisInput["instrumentType"], base: number): AnalysisResult {
-  return runAnalysis(buildInput(symbol, type, mixedCandles()));
+  return runAnalysis(buildInput(symbol, type, mixedCandles(200, base)));
 }
 
 /** Assert complete pipeline coherence for a result. */
@@ -629,6 +623,9 @@ describe("Phase 33 — Cross-layer contradiction audit", () => {
     const r = run("BTC/USD", "crypto", 50000);
     const fp = r.forwardMarketPath!;
     const regime = r.marketRegimeContext!;
+    const currentState = fp.currentState.toLowerCase();
+    if (regime.marketPhase) expect(currentState).toContain(regime.marketPhase.replace(/_/g, " ").toLowerCase());
+    if (regime.regime) expect(currentState).toContain(regime.regime.replace(/_/g, " ").toLowerCase());
 
     // If keyLevels.invalidation exists, it should appear in invalidation conditions
     if (r.keyLevels?.invalidation && r.keyLevels.invalidation !== "N/A") {
@@ -685,7 +682,7 @@ describe("Phase 33 — Rapid-run / race audit", () => {
     const results = symbols.map((s) => {
       const type = s.includes("BTC") || s.includes("ETH") ? "crypto" : s.includes("XAU") ? "commodity" : "forex";
       const base = s === "BTC/USD" ? 50000 : s === "ETH/USD" ? 3000 : s === "XAU/USD" ? 2000 : 1.1;
-      return run(s, type as any, base);
+      return run(s, type as Parameters<typeof run>[1], base);
     });
 
     // Each result has its own instrument

@@ -10,10 +10,7 @@ import { describe, it, expect } from "vitest";
 import type {
   RealTimeEvent,
   PositionSnapshot,
-  InstrumentState,
   EventType,
-  Timeframe,
-  MonitoringStatus,
 } from "@/lib/position-protection/realtime-types";
 import {
   TIMEFRAME_ORDER,
@@ -97,21 +94,6 @@ function longBtc(overrides?: Partial<PositionContext>): PositionContext {
   };
 }
 
-function shortEur(overrides?: Partial<PositionContext>): PositionContext {
-  return {
-    instrument: "EUR/USD",
-    assetClass: "forex",
-    side: "SHORT",
-    entryPrice: 1.1,
-    currentPrice: 1.09,
-    stopLoss: 1.12,
-    takeProfit: 1.06,
-    openedAt: NOW - 86400_000,
-    horizon: "INTRADAY",
-    ...overrides,
-  };
-}
-
 function cleanEvidence(price?: number): MarketEvidence {
   return { price: price ?? 84000 };
 }
@@ -146,7 +128,7 @@ describe("A. Event model", () => {
   it("A2 — payload is a plain object", () => {
     const e = makeEvent({ instrument: "X", payload: { price: 123, foo: "bar" } });
     expect(typeof e.payload).toBe("object");
-    expect((e.payload as any).price).toBe(123);
+    expect(e.payload).toMatchObject({ price: 123 });
   });
 
   it("A3 — positionId is optional", () => {
@@ -982,9 +964,9 @@ describe("AE. No probability fabrication", () => {
       position: longBtc({ currentPrice: 84000 }),
       evidence: cleanEvidence(84000),
     });
-    expect((alert as any).probability).toBeUndefined();
-    expect((alert as any).winProbability).toBeUndefined();
-    expect((alert as any).profitProbability).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(alert, "probability")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "winProbability")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "profitProbability")).toBe(false);
   });
 });
 
@@ -1014,10 +996,10 @@ describe("AG. Decision immutability", () => {
       position: longBtc(),
       evidence: cleanEvidence(84000),
     });
-    expect((alert as any).recommendation).toBeUndefined();
-    expect((alert as any).bias).toBeUndefined();
-    expect((alert as any).conviction).toBeUndefined();
-    expect((alert as any).tradePlan).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(alert, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "conviction")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(alert, "tradePlan")).toBe(false);
   });
 });
 
@@ -1097,7 +1079,7 @@ describe("AJ. Empty input", () => {
   });
 
   it("AJ3 — processEvent with no matching position returns empty alerts", () => {
-    let state = createMonitorState();
+    const state = createMonitorState();
     const result = processEvent(state, makePosEvent("p_none", "BTC/USD", 100), NOW);
     expect(result.alerts.length).toBe(0);
   });
@@ -1237,7 +1219,7 @@ describe("AP. Cleanup", () => {
   });
 
   it("AP2 — cleanup bounds seen fingerprints", () => {
-    let dsp = createDispatcherState();
+    const dsp = createDispatcherState();
     for (let i = 0; i < 10; i++) {
       dsp.seenFingerprints.add(`fp-${i}`);
     }

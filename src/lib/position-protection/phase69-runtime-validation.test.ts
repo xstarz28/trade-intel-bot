@@ -27,14 +27,13 @@ import { describe, it, expect } from "vitest";
 import type {
   PositionContext,
   AlertSeverity,
-  MonitoringState,
   ProtectionAlert,
 } from "../position-protection/types";
-import { alertSeverityRank, urgencyRank } from "../position-protection/types";
+import { alertSeverityRank } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
 
 // Core engines
-import { evaluateProtection, type ProtectionEngineInput } from "../position-protection/protection-engine";
+import { evaluateProtection } from "../position-protection/protection-engine";
 import {
   createMonitoringState,
   shouldAlert,
@@ -62,7 +61,6 @@ import {
   detectOutOfOrderEvent,
   verifyMemoryBounds,
   runRuntimeValidation,
-  type GuardResult,
 } from "../position-protection/phase69-runtime-hardening";
 
 // Controller
@@ -77,7 +75,6 @@ import {
   pausePosition,
   resumePosition,
   processEventForController,
-  evaluatePosition,
   shouldEvaluatePosition,
   getDashboard,
 } from "../position-protection/continuous-protection-controller";
@@ -105,10 +102,6 @@ import {
   registerInstrumentForPolling,
   processPollSuccess,
   processPollFailure,
-  shouldPollInstrument,
-  stopPollingService,
-  pausePollingService,
-  resumePollingService,
   getPollingDashboard,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
@@ -124,14 +117,14 @@ import {
 } from "../position-protection/phase66-scenarios";
 
 // Position priority
-import { computePositionPriority, sortByPriority } from "../position-protection/position-priority";
+
 
 // Giveback
-import { calculateGiveback, classifyGivebackSeverity } from "../position-protection/giveback-monitor";
+import { calculateGiveback, classifyGivebackSeverity, type GivebackState } from "../position-protection/giveback-monitor";
 
 // Early protection
-import { classifyEarlyProtection } from "../position-protection/early-protection";
-import { aggregateTimeframeEvidence } from "../position-protection/multi-timeframe-engine";
+
+
 
 // Acceleration
 import {
@@ -155,9 +148,7 @@ import {
 import {
   createMonitorState,
   processEvent,
-  processEvents,
   addPosition,
-  removePosition,
   cleanup,
 } from "../position-protection/realtime-monitor";
 
@@ -416,10 +407,6 @@ describe("B. Live Polling Runtime Validation", () => {
   });
 
   it("Duplicate polling prevention: same instrument cannot be polled twice", () => {
-    let state = createPollingServiceState();
-    state = startPollingService(state, NOW);
-    state = registerInstrumentForPolling(state, "BTC/USDT", NOW);
-
     const guard = guardAgainstDuplicatePolling(
       new Map([["BTC/USDT", { startedAt: NOW, provider: "OKX" }]]),
       "BTC/USDT",
@@ -643,7 +630,7 @@ describe("E. Event Processing Hardening", () => {
 
   it("Event with invalid freshness fails", () => {
     const event = createPriceEvent("BTC/USDT", 105000, "OKX");
-    const guard = validateEvent({ ...event, freshness: "INVALID" as any });
+    const guard = validateEvent({ ...event, freshness: "INVALID" as unknown as typeof event.freshness });
     expect(guard.passed).toBe(false);
   });
 
@@ -1716,13 +1703,22 @@ describe("X. Giveback Monitoring Runtime", () => {
   });
 
   it("Giveback classified correctly at boundaries", () => {
-    expect(classifyGivebackSeverity({ givebackPct: 0 } as any, "SWING")).toBe("NONE");
-    expect(classifyGivebackSeverity({ givebackPct: 100 } as any, "SWING")).toBe("PROTECT_NOW");
+    expect(classifyGivebackSeverity({
+      peakPrice: 110, currentPrice: 105, peakProfit: 10, currentProfit: 5,
+      givebackAbsolute: 5, givebackPct: 0, pullbackType: "NORMAL_PULLBACK", accelerating: false,
+    } satisfies GivebackState, "SWING")).toBe("NONE");
+    expect(classifyGivebackSeverity({
+      peakPrice: 110, currentPrice: 105, peakProfit: 10, currentProfit: 5,
+      givebackAbsolute: 5, givebackPct: 100, pullbackType: "NORMAL_PULLBACK", accelerating: false,
+    } satisfies GivebackState, "SWING")).toBe("PROTECT_NOW");
   });
 
   it("SCALPING is more sensitive than INVESTING", () => {
-    const scalpResult = classifyGivebackSeverity({ givebackPct: 30 } as any, "SCALPING");
-    const investResult = classifyGivebackSeverity({ givebackPct: 30 } as any, "INVESTING");
+    const scalpResult = classifyGivebackSeverity({
+      peakPrice: 110, currentPrice: 105, peakProfit: 10, currentProfit: 5,
+      givebackAbsolute: 5, givebackPct: 30, pullbackType: "NORMAL_PULLBACK", accelerating: false,
+    } satisfies GivebackState, "SCALPING");
+    const investResult = classifyGivebackSeverity({ givebackPct: 30 } as unknown as GivebackState, "INVESTING");
     const order = { NONE: 0, WATCH: 1, PARTIAL_TP: 2, MANUAL_TP: 3, PROTECT_NOW: 4 };
     expect(order[scalpResult] ?? -1).toBeGreaterThanOrEqual(order[investResult] ?? -1);
   });

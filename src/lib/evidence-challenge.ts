@@ -176,7 +176,7 @@ function collectStructureEvidence(result: AnalysisResult, dir: "bullish" | "bear
 
   // Key levels
   if (result.keyLevels) {
-    const { support, resistance, invalidation } = result.keyLevels;
+    const { support, resistance } = result.keyLevels;
     if (support && support !== "N/A") {
       evidence.push({
         source: "Key support level",

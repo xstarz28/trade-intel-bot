@@ -12,26 +12,19 @@ import type {
   PositionContext,
   ProtectionAlert,
   AlertSeverity,
-  ProfitMetrics,
-  ShockAssessment,
   MonitoringState,
   ProfitProtectionUrgency,
-  WhyTpNowExplanation,
 } from "./types";
 import type { MarketEvidence } from "./thesis-health";
 import type {
   RealTimeEvent,
-  ProtectionEvent,
-  MonitoringStatus,
 } from "./realtime-types";
-import type { GivebackState } from "./giveback-monitor";
-import type { AccelerationResult } from "./acceleration-monitor";
-import { evaluateProtection, type ProtectionEngineInput } from "./protection-engine";
+import { evaluateProtection } from "./protection-engine";
 import { createMonitoringState } from "./alert-lifecycle";
 import { classifyEarlyProtection, type EarlyProtectionInput } from "./early-protection";
-import { aggregateTimeframeEvidence, type TimeframeEvidence } from "./multi-timeframe-engine";
+import { aggregateTimeframeEvidence } from "./multi-timeframe-engine";
 import { detectShock } from "./shock-detector";
-import { calculateGiveback, classifyGivebackSeverity } from "./giveback-monitor";
+import { calculateGiveback } from "./giveback-monitor";
 import {
   createAccelerationState,
   recordPriceObservation,
@@ -46,7 +39,6 @@ import { computePositionPriority, type PositionPriorityRank } from "./position-p
 import {
   getCadenceForHorizon,
   shouldEvaluateNow,
-  type MonitoringCadenceProfile,
 } from "./monitoring-cadence";
 
 // ═══════════════════════════════════════════════════════════════
@@ -122,6 +114,9 @@ export function registerPosition(
   },
   now: number,
 ): ContinuousControllerState {
+  // Keep this argument for call-site compatibility; first event evaluation
+  // remains immediately eligible because lastEvaluationAt starts at zero.
+  void now;
   const updated = new Map(state.positions);
   updated.set(position.positionId, {
     positionId: position.positionId,
@@ -258,6 +253,7 @@ export interface EvaluationResult {
   earlyProtectionLevel: string;
   fusedSignals: FusedSignal[];
   positionPriority: PositionPriorityRank;
+  accelerationState: AccelerationState;
 }
 
 export function evaluatePosition(
@@ -309,7 +305,24 @@ export function evaluatePosition(
     protectionResult.alert.profit.profitState === "STRONGLY_PROFITABLE";
 
   const shock = detectShock(evidence);
+  // Multi-timeframe evidence is intentionally empty until per-timeframe
+  // observations are actually supplied; never infer missing timeframes.
   const mtResult = aggregateTimeframeEvidence([]);
+
+  let accelerationState = recordPriceObservation(
+    pos.accelerationState,
+    now,
+    pos.currentPrice,
+    "position-controller",
+  );
+  const priceAcceleration = detectPriceAcceleration(accelerationState, pos.side, now);
+  accelerationState = recordGivebackObservation(
+    accelerationState,
+    now,
+    Number.isFinite(givebackState.givebackPct) ? givebackState.givebackPct : 0,
+    "position-controller",
+  );
+  const givebackAcceleration = detectGivebackAcceleration(accelerationState, now);
 
   const earlyInput: EarlyProtectionInput = {
     side: pos.side,
@@ -320,8 +333,8 @@ export function evaluatePosition(
     deteriorationCount: protectionResult.alert.deteriorationSignals.length,
     thesisHealthScore: protectionResult.alert.thesisHealthScore,
     shockState: shock.state,
-    priceRoc: 0,
-    givebackRoc: givebackState.givebackRate ?? 0,
+    priceRoc: priceAcceleration.rate,
+    givebackRoc: givebackAcceleration.rate,
     eventApproaching: evidence.eventApproaching ?? false,
     crossAssetDivergence: evidence.correlatedDivergence ?? false,
   };
@@ -333,7 +346,7 @@ export function evaluatePosition(
     severity: protectionResult.alert.severity,
     urgency: protectionResult.alert.urgency,
     givebackPct: givebackState.givebackPct,
-    accelerationLevel: "NORMAL",
+    accelerationLevel: priceAcceleration.level,
     profitState: protectionResult.alert.profit.profitState,
   });
 
@@ -342,6 +355,7 @@ export function evaluatePosition(
     earlyProtectionLevel: earlyResult.level,
     fusedSignals: fused,
     positionPriority: priority,
+    accelerationState,
   };
 }
 
@@ -378,17 +392,32 @@ export function processEventForController(
     const evalDecision = shouldEvaluatePosition(pos, eventPriority, now);
     if (!evalDecision.shouldEvaluate) continue;
 
-    // Build evidence from event
-    const evidence = buildEvidenceFromEvent(event, pos);
+    const eventPrice = event.payload.price;
+    const hasValidEventPrice = typeof eventPrice === "number" &&
+      Number.isFinite(eventPrice) && eventPrice > 0;
+    const currentPrice = hasValidEventPrice ? eventPrice : pos.currentPrice;
+    const peakPrice = pos.peakPrice === undefined
+      ? currentPrice
+      : pos.side === "LONG"
+        ? Math.max(pos.peakPrice, currentPrice)
+        : Math.min(pos.peakPrice, currentPrice);
+    const evaluationPosition: PositionControllerState = {
+      ...pos,
+      currentPrice,
+      peakPrice,
+    };
 
-    // Evaluate
-    const result = evaluatePosition(pos, evidence, now);
+    // Build evidence and evaluate using the same validated event price.
+    const evidence = buildEvidenceFromEvent(event, evaluationPosition);
+    const result = evaluatePosition(evaluationPosition, evidence, now);
 
     // Update position state
     const updatedPositions = new Map(updatedState.positions);
     updatedPositions.set(posId, {
-      ...pos,
-      currentPrice: typeof event.payload.price === "number" ? event.payload.price : pos.currentPrice,
+      ...evaluationPosition,
+      currentPrice,
+      peakPrice,
+      accelerationState: result.accelerationState,
       lastEvaluationAt: now,
       lastAlertSeverity: result.alert.severity,
       alertCount: result.alert.severity !== "NONE" ? pos.alertCount + 1 : pos.alertCount,
@@ -433,8 +462,11 @@ export function processEventForController(
 // ═══════════════════════════════════════════════════════════════
 
 function buildEvidenceFromEvent(event: RealTimeEvent, pos: PositionControllerState): MarketEvidence {
+  const payloadPrice = event.payload.price;
   const ev: MarketEvidence = {
-    price: typeof event.payload.price === "number" ? event.payload.price : pos.currentPrice,
+    price: typeof payloadPrice === "number" && Number.isFinite(payloadPrice) && payloadPrice > 0
+      ? payloadPrice
+      : pos.currentPrice,
   };
 
   switch (event.eventType) {
@@ -457,10 +489,14 @@ function buildEvidenceFromEvent(event: RealTimeEvent, pos: PositionControllerSta
     case "LIQUIDATION_CHANGE":
       ev.liquidationSpike = event.payload.spike === true;
       break;
-    case "MACRO_CHANGE":
+    case "MACRO_CHANGE": {
       ev.riskRegimeChanged = true;
-      if (typeof event.payload.regime === "string") ev.riskRegime = event.payload.regime as any;
+      const regime = event.payload.regime;
+      if (regime === "risk_on" || regime === "risk_off" || regime === "transition" || regime === "unknown") {
+        ev.riskRegime = regime;
+      }
       break;
+    }
     case "CROSS_ASSET_CHANGE":
       ev.correlatedDivergence = event.payload.divergence === true;
       break;

@@ -29,7 +29,6 @@ import {
   SEVERITY_ORDER,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
-  type NotificationFilter,
   type NotificationCategory,
 } from "./notification-engine";
 
@@ -57,7 +56,7 @@ function makeAlert(overrides: Partial<RuleAlert> = {}): RuleAlert {
 }
 
 function makeNotification(overrides: Partial<Notification> = {}): Notification {
-  return buildNotification(makeAlert(), "LONG", 2000);
+  return buildNotification(makeAlert(overrides), "LONG", 2000);
 }
 
 // ═══════════════════════════════════════════════════════════════

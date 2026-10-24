@@ -21,8 +21,6 @@ import {
   removePositionTriggerRecords,
   cleanStaleInstrumentState,
   cleanStaleRuleTriggerRecords,
-  extractSnapshot,
-  extractPortfolioSnapshot,
   type PreviousStateStore,
 } from "./alert-runtime-bridge";
 import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
@@ -30,7 +28,6 @@ import { alertIdentity } from "./alert-rule-engine";
 import {
   buildNotification,
   notificationIdentity,
-  filterNotifications,
   applyRetention,
   MAX_NOTIFICATIONS_PER_USER,
   type Notification,
@@ -38,22 +35,17 @@ import {
 import {
   filterNotificationsByPreferences,
   DEFAULT_PREFERENCES,
-  validatePreferences,
   sanitizePreferences,
   type NotificationPreferences,
 } from "./notification-preferences";
 import {
   buildRuntimeHealthSnapshot,
-  calculateOverallHealth,
   classifyFreshness,
   normalizeRuntimeHealthEvent,
   aggregateRuntimeHealth,
-  shouldPersistRuntimeHealth,
-  detectHealthTransitions,
   FRESH_THRESHOLD_MS,
   AGING_THRESHOLD_MS,
   type RuntimeHealthEvent,
-  type RuntimeHealthSnapshot,
 } from "./runtime-health";
 import {
   createHealthEventBuffer,
@@ -63,11 +55,9 @@ import {
   markPersisted,
   getLatestEventForComponent,
   getEventCount,
-  buildSnapshotFromBuffer,
-  type HealthEventBuffer,
 } from "./health-event-buffer";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
-import type { PortfolioIntelligence } from "./portfolio-intelligence";
+
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
@@ -105,9 +95,9 @@ function makeIntel(overrides: Partial<PositionIntelligence> = {}): PositionIntel
     ohlcvRegime: "TRENDING_UP",
     shortTermContext: "BULLISH",
     volatilityContext: "NORMAL",
-    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as any,
-    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as any,
-    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as any,
+    h1Analysis: { trend: "UP", momentum: "STRONG", structure: "BULLISH", volatility: "NORMAL", confidence: "HIGH" } as unknown as PositionIntelligence["h1Analysis"],
+    m15Analysis: { trend: "UP", momentum: "MODERATE", structure: "BULLISH", volatility: "NORMAL", confidence: "MEDIUM" } as unknown as PositionIntelligence["m15Analysis"],
+    m5Analysis: { trend: "SIDEWAYS", momentum: "WEAK", structure: "NEUTRAL", volatility: "LOW", confidence: "LOW" } as unknown as PositionIntelligence["m5Analysis"],
     evidence: [],
     dataQuality: "HIGH",
     dataSource: "TwelveData",

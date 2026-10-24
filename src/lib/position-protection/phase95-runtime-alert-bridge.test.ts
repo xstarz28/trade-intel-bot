@@ -6,34 +6,16 @@
  */
 
 import { describe, it, expect } from "vitest";
-import type { AlertRule, RuleTriggerRecord } from "./alert-rule-engine";
+import type { AlertRule } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
+import type { TimeframeAnalysis } from "./multi-timeframe-engine";
 import {
   evaluateAlertRuntimeBridge,
   extractSnapshot,
   buildInitialStateStore,
   removePositionFromState,
-  type RuntimeBridgeInput,
   type PreviousStateStore,
 } from "./alert-runtime-bridge";
-
-type TimeframeAnalysis = {
-  timeframe: "M5" | "M15" | "H1" | "H4" | "D1" | "W1" | "MN";
-  trend: string;
-  momentum: string;
-  rsiValue: number | undefined;
-  volatility: string;
-  atrValue: number | undefined;
-  atrPct: number | undefined;
-  structure: string;
-  structureBroken: boolean;
-  lastSwingHigh: number | undefined;
-  lastSwingLow: number | undefined;
-  swingCount: number;
-  priceVsMA: string;
-  dataQuality: string;
-  candleCount: number;
-};
 
 function makeTF(overrides: Partial<TimeframeAnalysis> = {}): TimeframeAnalysis {
   return {
@@ -48,9 +30,8 @@ function makeTF(overrides: Partial<TimeframeAnalysis> = {}): TimeframeAnalysis {
     structureBroken: false,
     lastSwingHigh: 66000,
     lastSwingLow: 63000,
-    swingCount: 5,
     priceVsMA: "ABOVE",
-    dataQuality: "AVAILABLE",
+    dataQuality: "SUFFICIENT",
     candleCount: 100,
     ...overrides,
   };
@@ -81,9 +62,9 @@ function makeIntel(overrides: Record<string, unknown> = {}): PositionIntelligenc
     severity: "NONE",
     actionRecommendation: "Hold and monitor.",
     evidence: [],
-    h1Analysis: makeTF({ timeframe: "H1" }) as any,
-    m15Analysis: makeTF({ timeframe: "M15" }) as any,
-    m5Analysis: makeTF({ timeframe: "M5" }) as any,
+    h1Analysis: makeTF({ timeframe: "H1" }),
+    m15Analysis: makeTF({ timeframe: "M15" }),
+    m5Analysis: makeTF({ timeframe: "M5" }),
     invalidationConditions: [],
     nextMonitor: [],
   };
@@ -361,7 +342,7 @@ describe("Phase 95 — Transition Detection", () => {
   it("detects H1 trend transition", () => {
     const rules = [makeRule({ condition: "H1_TREND_CHANGED" })];
     const intelMap = new Map([["pos-1", makeIntel({
-      h1Analysis: makeTF({ trend: "BEARISH", momentum: "NEGATIVE", structure: "LOWER_HIGHS_LOWER_LOWS" }) as any,
+      h1Analysis: makeTF({ trend: "BEARISH", momentum: "NEGATIVE", structure: "LOWER_HIGHS_LOWER_LOWS" }),
     })]]);
     const prevState = makeEmptyState();
     prevState.snapshots.set("pos-1", {
@@ -477,9 +458,9 @@ describe("Phase 95 — Dedup", () => {
       r1.updatedTriggerRecords,
       5001,
     );
-    // With cooldown=0 and new timestamp, re-trigger is allowed, but Phase 93 handles this
-    // The key is no duplicate notifications from same identity
+    // The same trigger identity must not create a duplicate notification.
     expect(r1.notifications.length).toBe(1);
+    expect(r2.notifications).toHaveLength(0);
   });
 });
 

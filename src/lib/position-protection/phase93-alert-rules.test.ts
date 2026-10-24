@@ -18,12 +18,11 @@ import {
   MAX_RULES_PER_USER,
   MAX_ALERTS_PER_EVALUATION,
   type AlertRule,
-  type RuleAlert,
   type RuleEvaluationContext,
   type RuleTriggerRecord,
-  type RuleSnapshot,
 } from "./alert-rule-engine";
 import type { PositionIntelligence } from "./market-intelligence-analyzer";
+import type { TimeframeAnalysis } from "./multi-timeframe-engine";
 import type { PortfolioIntelligence } from "./portfolio-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
@@ -44,6 +43,18 @@ function makeRule(overrides: Partial<AlertRule> = {}): AlertRule {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     ...overrides,
+  };
+}
+
+function makeTimeframeAnalysis(
+  timeframe: TimeframeAnalysis["timeframe"],
+  trend: TimeframeAnalysis["trend"],
+): TimeframeAnalysis {
+  return {
+    timeframe, trend, momentum: "NEUTRAL", rsiValue: undefined, volatility: "NORMAL",
+    atrValue: undefined, atrPct: undefined, structure: "INSUFFICIENT_DATA",
+    structureBroken: false, lastSwingHigh: undefined, lastSwingLow: undefined,
+    priceVsMA: "UNKNOWN", dataQuality: "LIMITED", candleCount: 5,
   };
 }
 
@@ -409,7 +420,7 @@ describe("Regime transitions", () => {
 describe("Timeframe trend transitions", () => {
   it("H1_TREND_CHANGED triggers when H1 trend changes", () => {
     const rule = makeRule({ condition: "H1_TREND_CHANGED" });
-    const ctx = makeCtx([makeIntel({ h1Analysis: { trend: "BEARISH" } as any })], undefined, {
+    const ctx = makeCtx([makeIntel({ h1Analysis: makeTimeframeAnalysis("H1", "BEARISH") })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", h1Trend: "BULLISH", supportingCount: 3, conflictingCount: 1 }]]),
     }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
@@ -418,7 +429,7 @@ describe("Timeframe trend transitions", () => {
 
   it("M15_TREND_CHANGED triggers when M15 trend changes", () => {
     const rule = makeRule({ condition: "M15_TREND_CHANGED" });
-    const ctx = makeCtx([makeIntel({ m15Analysis: { trend: "BEARISH" } as any })], undefined, {
+    const ctx = makeCtx([makeIntel({ m15Analysis: makeTimeframeAnalysis("M15", "BEARISH") })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", m15Trend: "BULLISH", supportingCount: 3, conflictingCount: 1 }]]),
     }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);
@@ -427,7 +438,7 @@ describe("Timeframe trend transitions", () => {
 
   it("M5_TREND_CHANGED triggers when M5 trend changes", () => {
     const rule = makeRule({ condition: "M5_TREND_CHANGED" });
-    const ctx = makeCtx([makeIntel({ m5Analysis: { trend: "BULLISH" } as any })], undefined, {
+    const ctx = makeCtx([makeIntel({ m5Analysis: makeTimeframeAnalysis("M5", "BULLISH") })], undefined, {
       previousSnapshots: new Map([["pos-1", { thesisState: "HEALTHY", marketRegime: "TRENDING_UP", evidenceQuality: "MODERATE_EVIDENCE", m5Trend: "BEARISH", supportingCount: 3, conflictingCount: 1 }]]),
     }, ["pos-1"]);
     const results = evaluateRule(rule, ctx);

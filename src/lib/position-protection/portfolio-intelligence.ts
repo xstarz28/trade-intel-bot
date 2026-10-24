@@ -108,17 +108,6 @@ const THESIS_SEVERITY: Record<string, number> = {
   UNKNOWN: 0,
 };
 
-const THESIS_STATES_ORDER: ThesisState[] = [
-  "INVALIDATED",
-  "SEVERELY_DETERIORATING",
-  "DETERIORATING",
-  "CAUTION",
-  "STABLE",
-  "HEALTHY",
-  "INSUFFICIENT_DATA",
-  "UNKNOWN",
-];
-
 // ═══════════════════════════════════════════════════════════════
 // MAX BOUNDS
 // ═══════════════════════════════════════════════════════════════

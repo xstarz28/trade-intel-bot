@@ -104,7 +104,7 @@ export const list = query({
 
     return await ctx.db
       .query("analyses")
-      .withIndex("by_user", (q: any) => q.eq("userId", userId))
+      .withIndex("by_user", (q) => q.eq("userId", userId))
       .order("desc")
       .take(20);
   },

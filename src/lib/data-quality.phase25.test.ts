@@ -14,7 +14,7 @@ import { describe, it, expect } from "vitest";
 import { runAnalysis } from "./analysis-engine";
 import { assessDataQuality, overallQualityLabel } from "./data-quality";
 import type { AnalysisInput } from "@/types/analysis";
-import type { MarketData, TechnicalData, OhlcvCandle } from "@/lib/data/market-types";
+import type { MarketData, OhlcvCandle } from "@/lib/data/market-types";
 import { calculateTechnical } from "./data/technical";
 import { computeSmcContext } from "./data/smc";
 
@@ -100,6 +100,21 @@ describe("Phase 25 — primary data quality assessment", () => {
     const dq = assessDataQuality(input);
     expect(dq.primaryData.status).toBe("INVALID");
   });
+
+  it("realtime quote older than its timeframe window → STALE", () => {
+    const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
+    if (input.marketData) {
+      input.marketData.dataFreshness = "realtime";
+      input.marketData.price = {
+        ...input.marketData.price,
+        timestamp: Date.now() - 4 * 24 * 60 * 60_000,
+        source: "twelve-data",
+      };
+    }
+    const dq = assessDataQuality(input);
+    expect(dq.primaryData.status).toBe("STALE");
+    expect(dq.primaryData.reason).toContain("Realtime price snapshot is older");
+  });
 });
 
 // ── INDICATOR QUALITY ────────────────────────────────────────────
@@ -170,7 +185,7 @@ describe("Phase 25 — provider quality assessment", () => {
         latest: { nominal: { observationDate: "2026-08-01", nominal: { "2Y": 4.5, "10Y": 4.2 } }, real: undefined },
         fetchedAt: Date.now(),
         source: "test",
-      } as any,
+      } as unknown as NonNullable<AnalysisInput["treasuryData"]>,
     });
     const dq = assessDataQuality(input);
     expect(dq.providers.treasury?.status).toBe("GOOD");
@@ -178,7 +193,7 @@ describe("Phase 25 — provider quality assessment", () => {
 
   it("unavailable treasury → UNAVAILABLE", () => {
     const input = buildInput("EUR/USD", "forex", bullCandles(0, 1.1, 200), {
-      treasuryData: { available: false, reason: "test failure" } as any,
+      treasuryData: { available: false, reason: "test failure" } as unknown as NonNullable<AnalysisInput["treasuryData"]>,
     });
     const dq = assessDataQuality(input);
     expect(dq.providers.treasury?.status).toBe("UNAVAILABLE");

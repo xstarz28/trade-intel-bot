@@ -31,21 +31,19 @@ import {
   onProviderConnected,
   onProviderDisconnected as streamOnProviderDisconnected,
   reconcileProvider,
-  cleanupOrchestrator,
 } from "../market-stream/stream-orchestrator";
-import type { MonitorState, ProcessResult } from "./realtime-monitor";
+import type { MonitorState } from "./realtime-monitor";
 import {
   createMonitorState,
-  addPosition,
   removePosition,
 } from "./realtime-monitor";
-import type { RealTimeEvent, PositionSnapshot, ProtectionEvent, AlertHistoryEntry, MonitoringStatus } from "./realtime-types";
-import type { ProtectionAlert, AlertSeverity } from "./types";
-import { evaluateProtection, type ProtectionEngineInput } from "./protection-engine";
-import { calculateGiveback, classifyGivebackSeverity, type GivebackState } from "./giveback-monitor";
+import type { RealTimeEvent, ProtectionEvent, AlertHistoryEntry, MonitoringStatus } from "./realtime-types";
+import type { ProtectionAlert } from "./types";
+import { evaluateProtection } from "./protection-engine";
+import type { GivebackState } from "./giveback-monitor";
+
 import {
   createAccelerationState,
-  recordPriceObservation,
   detectPriceAcceleration,
   detectGivebackAcceleration,
   type AccelerationResult,
@@ -134,21 +132,32 @@ export function usePositionProtection(): UsePositionProtectionResult {
   const [monitor, setMonitor] = useState<MonitorState>(createMonitorState);
   const [protectionAlerts, setProtectionAlerts] = useState<Map<string, ProtectionAlert>>(new Map());
   const [positionAlerts, setPositionAlerts] = useState<Map<string, ProtectionEvent[]>>(new Map());
+  const [, setAlertHistoryMap] = useState<Map<string, AlertHistoryEntry[]>>(new Map());
   const [accelerationStates, setAccelerationStates] = useState<Map<string, ReturnType<typeof createAccelerationState>>>(new Map());
-  const [alertHistoryMap, setAlertHistoryMap] = useState<Map<string, AlertHistoryEntry[]>>(new Map());
   const [persistenceDegraded, setPersistenceDegraded] = useState(false);
+  const [clockNow, setClockNow] = useState(Date.now);
+
+  useEffect(() => {
+    const timer = setInterval(() => setClockNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Refs for stable access in callbacks
   const orchestratorRef = useRef(orchestrator);
-  orchestratorRef.current = orchestrator;
   const monitorRef = useRef(monitor);
-  monitorRef.current = monitor;
+
+  // Refs are read by callbacks; synchronize them after React commits state.
+  useEffect(() => {
+    orchestratorRef.current = orchestrator;
+    monitorRef.current = monitor;
+  }, [orchestrator, monitor]);
 
   // ─── Recovery from Convex ──────────────────────────────
   useEffect(() => {
     if (!convexPositions || convexPositions.length === 0) return;
 
     // Recover positions into the orchestrator
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Hydrate the orchestrator from persisted positions when the external query resolves.
     setOrchestrator((prev) => {
       let state = prev;
       for (const pos of convexPositions) {
@@ -420,7 +429,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
   // ─── Build Position States ─────────────────────────────
   const positions: MonitoredPositionState[] = useMemo(() => {
     const result: MonitoredPositionState[] = [];
-    const now = Date.now();
+    const now = clockNow;
 
     for (const [posId, registered] of orchestrator.positions) {
       const snapshot = monitor.positions.get(posId);
@@ -453,7 +462,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
     }
 
     return result;
-  }, [orchestrator.positions, monitor.positions, monitor.giveback, protectionAlerts, positionAlerts, accelerationStates]);
+  }, [orchestrator.positions, monitor.positions, monitor.giveback, protectionAlerts, positionAlerts, accelerationStates, clockNow]);
 
   // ─── Alert History ─────────────────────────────────────
   const alertHistory: AlertHistoryEntry[] = useMemo(() => {

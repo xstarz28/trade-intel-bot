@@ -16,7 +16,6 @@ import {
   ChevronDown,
   ChevronRight,
   TrendingDown,
-  TrendingUp,
   Activity,
   XCircle,
   Clock,
@@ -125,12 +124,6 @@ const STATUS_CONFIG: Record<
 // ═══════════════════════════════════════════════════════════════
 // ACCELERATION LEVEL STYLES
 // ═══════════════════════════════════════════════════════════════
-
-const ACCEL_CONFIG: Record<string, { color: string; icon: React.ReactNode }> = {
-  NORMAL: { color: "text-emerald-400", icon: <Gauge className="size-3" /> },
-  ELEVATED: { color: "text-amber-400", icon: <Gauge className="size-3" /> },
-  HIGH: { color: "text-red-400", icon: <Gauge className="size-3" /> },
-};
 
 function accelLabel(level: string, t: ReturnType<typeof useI18n>["t"]): string {
   switch (level) {
@@ -444,7 +437,6 @@ export function PositionProtectionPanel({
   monitoringStatus = "LIVE",
   giveback,
   alertHistory = [],
-  protectionEvent,
   lastUpdateAt,
   streamHealth,
   monitoringGapMs,

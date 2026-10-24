@@ -12,7 +12,6 @@ import type {
   InstrumentState,
   ProtectionEvent,
   MonitoringStatus,
-  Timeframe,
   EventType,
 } from "./realtime-types";
 import type { PositionContext, AlertSeverity } from "./types";
@@ -170,7 +169,12 @@ function buildEvidenceFromState(
         break;
       case "REGIME_CHANGE":
         ev.riskRegimeChanged = true;
-        if (typeof evt.payload.regime === "string") ev.riskRegime = evt.payload.regime as any;
+        if (typeof evt.payload.regime === "string") {
+          const regime = evt.payload.regime;
+          ev.riskRegime = regime === "risk_on" || regime === "risk_off" || regime === "transition"
+            ? regime
+            : "unknown";
+        }
         break;
       case "CROSS_ASSET_CHANGE":
         ev.correlatedDivergence = evt.payload.divergence === true;
@@ -237,7 +241,7 @@ export function processEvent(
 
   // 1. Update instrument state
   const instKey = event.instrument;
-  let inst = updatedState.instruments.get(instKey) ?? {
+  const inst = updatedState.instruments.get(instKey) ?? {
     instrument: instKey,
     lastPrice: 0,
     lastUpdateAt: 0,
@@ -259,7 +263,12 @@ export function processEvent(
   if (typeof event.payload.fundingRate === "number") inst.fundingRate = event.payload.fundingRate as number;
   if (typeof event.payload.oiChange === "number") inst.oiChange = event.payload.oiChange as number;
   if (typeof event.payload.vix === "number") inst.vix = event.payload.vix as number;
-  if (typeof event.payload.riskRegime === "string") inst.riskRegime = event.payload.riskRegime as any;
+  if (typeof event.payload.riskRegime === "string") {
+    const regime = event.payload.riskRegime;
+    inst.riskRegime = regime === "risk_on" || regime === "risk_off" || regime === "transition"
+      ? regime
+      : "unknown";
+  }
 
   if (event.eventType === "PROVIDER_DEGRADED") inst.providerStatus = "DEGRADED";
   if (event.eventType === "PROVIDER_RECOVERED") inst.providerStatus = "HEALTHY";

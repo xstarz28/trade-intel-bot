@@ -13,7 +13,7 @@
 
 import type {
   AssetClass,
-  CanonicalInstrument,
+  CapabilityQuality,
   DataCapability,
 } from "./types";
 import type {
@@ -27,6 +27,15 @@ import { resolveInstrument } from "./instruments";
 // ═══════════════════════════════════════════════════════════════
 // PROVIDER HEALTH STORE (in-memory, module-level)
 // ═══════════════════════════════════════════════════════════════
+
+function toCapabilityQuality(quality: string): CapabilityQuality {
+  switch (quality) {
+    case "FULL": return "FULL";
+    case "PARTIAL": return "PARTIAL";
+    case "DEGRADED": return "DEGRADED";
+    default: return "UNAVAILABLE";
+  }
+}
 
 const healthStore: Map<string, ProviderHealthRecord> = new Map();
 
@@ -307,7 +316,7 @@ export function routeProviderRequest(
       providerId: spec.id,
       providerName: spec.name,
       capability,
-      quality: quality as any,
+      quality: toCapabilityQuality(quality),
       credentialsAvailable: spec.authRequired ? spec.credentialsAvailable : true,
       maxFreshnessMs: undefined,
       healthStatus: status,
@@ -383,7 +392,7 @@ export function routeProviderNativeRequest(
     providerId: spec.id,
     providerName: spec.name,
     capability,
-    quality: quality as any,
+    quality: toCapabilityQuality(quality),
     credentialsAvailable: spec.authRequired
       ? spec.credentialsAvailable
       : true,

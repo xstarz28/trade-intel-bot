@@ -33,9 +33,11 @@
 
 import { describe, it, expect, beforeAll } from "vitest";
 import React from "react";
+import { ConvexHttpClient } from "convex/browser";
+import type { FunctionReference } from "convex/server";
 import * as RTL from "@testing-library/react";
-const { render, act } = RTL;
-const screen = (RTL as any).screen;
+const { render } = RTL;
+const screen = RTL.screen;
 
 import type { PositionContext, ProtectionAlert } from "../position-protection/types";
 import type { MarketEvidence } from "../position-protection/thesis-health";
@@ -52,7 +54,6 @@ import {
   guardProviderFailureNeutrality,
   guardNoFabrication,
   validateIntegrationPipeline,
-  validateEvent,
   verifyMemoryBounds,
   runSecurityAudit,
 } from "../position-protection/phase69-runtime-hardening";
@@ -63,7 +64,6 @@ import {
   registerPosition as ctrlRegister,
   removePosition as ctrlRemove,
   startController,
-  stopController,
   processEventForController,
   getDashboard,
 } from "../position-protection/continuous-protection-controller";
@@ -71,10 +71,8 @@ import {
 // Event bridge
 import {
   createPriceEvent,
-  createProviderDegradedEvent,
-  createProviderRecoveredEvent,
 } from "../position-protection/market-event-bridge";
-import { computeEventPriority } from "../position-protection/event-priority";
+
 
 // Source labeling
 import {
@@ -103,9 +101,7 @@ import {
   stopPollingService,
   pausePollingService,
   resumePollingService,
-  unregisterInstrumentForPolling,
   getPollingDashboard,
-  getInstrumentsNeedingPoll,
 } from "../market-stream/live-polling-service";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 
@@ -113,13 +109,8 @@ import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 import {
   routeInstrument,
   detectAssetClass,
-  getFallbackRoute,
-  getActiveInstruments,
 } from "../market-stream/provider-routing";
-import {
-  getProviderProfile,
-  getAllProviders,
-} from "../market-stream/provider-adapters";
+
 
 // Persistence
 import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
@@ -127,18 +118,11 @@ import { InMemoryRepository } from "../position-protection/persistence";
 import type { PersistedAlert } from "../position-protection/persistence";
 
 // Dispatch
-import {
-  createDispatcherState,
-  dispatch,
-  acknowledgeAlert,
-} from "../position-protection/alert-dispatcher";
+
 
 // Diagnostics
 import {
   createDiagnosticsState,
-  recordEventReceived,
-  recordProviderFailure,
-  recordProviderRecovery,
   recordAlertEmitted,
   snapshot,
 } from "../position-protection/diagnostics";
@@ -147,21 +131,14 @@ import {
 import { guardAgainstFalsePositive } from "../position-protection/false-positive-guard";
 
 // Scenarios
-import { runScenario, healthyProfitableLong, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
+import { runScenario, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
 
 // ═══════════════════════════════════════════════════════════════
 // CONVEX HTTP CLIENT — REAL RUNTIME
 // ═══════════════════════════════════════════════════════════════
 
-let ConvexHttpClient: typeof import("convex/browser").ConvexHttpClient | undefined;
-try {
-  ({ ConvexHttpClient } = require("convex/browser"));
-} catch {
-  // Not available
-}
-
 const CONVEX_URL = "https://enduring-turtle-81.convex.cloud";
-const convexClient = ConvexHttpClient ? new ConvexHttpClient(CONVEX_URL) : null;
+const convexClient = new ConvexHttpClient(CONVEX_URL);
 
 const NOW = Date.now();
 
@@ -457,22 +434,22 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
   it("Convex deployment is reachable via HTTP", async () => {
     expect(convexClient).not.toBeNull();
     // A query to an empty table should succeed (return [])
-    const result = await convexClient!.query("positionProtection:listActivePositions" as any, {});
+    const result = await convexClient!.query("positionProtection:listActivePositions" as unknown as FunctionReference<"query">, {});
     expect(Array.isArray(result)).toBe(true);
   });
 
   it("User-scoped queries return empty without auth (correctly isolated)", async () => {
-    const positions = await convexClient!.query("positionProtection:listActivePositions" as any, {});
+    const positions = await convexClient!.query("positionProtection:listActivePositions" as unknown as FunctionReference<"query">, {});
     expect(positions).toEqual([]);
 
-    const alerts = await convexClient!.query("positionProtection:listAlerts" as any, {
+    const alerts = await convexClient!.query("positionProtection:listAlerts" as unknown as FunctionReference<"query">, {
       positionId: "any-position",
     });
     expect(alerts).toEqual([]);
   });
 
   it("getPosition returns null without auth", async () => {
-    const pos = await convexClient!.query("positionProtection:getPosition" as any, {
+    const pos = await convexClient!.query("positionProtection:getPosition" as unknown as FunctionReference<"query">, {
       positionId: "nonexistent",
     });
     expect(pos).toBeNull();
@@ -480,7 +457,7 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
 
   it("Mutations require authentication — savePosition rejected", async () => {
     await expect(
-      convexClient!.mutation("positionProtection:savePosition" as any, {
+      convexClient!.mutation("positionProtection:savePosition" as unknown as FunctionReference<"mutation">, {
         positionId: "test-74",
         instrument: "BTC/USDT",
         side: "LONG",
@@ -499,7 +476,7 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
 
   it("Mutations require authentication — saveAlert rejected", async () => {
     await expect(
-      convexClient!.mutation("positionProtection:saveAlert" as any, {
+      convexClient!.mutation("positionProtection:saveAlert" as unknown as FunctionReference<"mutation">, {
         alertId: "test-alert-74",
         positionId: "test-74",
         instrument: "BTC/USDT",
@@ -515,7 +492,7 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
 
   it("Mutations require authentication — deletePosition rejected", async () => {
     await expect(
-      convexClient!.mutation("positionProtection:deletePosition" as any, {
+      convexClient!.mutation("positionProtection:deletePosition" as unknown as FunctionReference<"mutation">, {
         positionId: "test-74",
       }),
     ).rejects.toThrow();
@@ -523,7 +500,7 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
 
   it("Mutations require authentication — acknowledgeAlert rejected", async () => {
     await expect(
-      convexClient!.mutation("positionProtection:acknowledgeAlert" as any, {
+      convexClient!.mutation("positionProtection:acknowledgeAlert" as unknown as FunctionReference<"mutation">, {
         alertId: "test-alert-74",
       }),
     ).rejects.toThrow();
@@ -531,7 +508,7 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
 
   it("Mutations require authentication — saveCursor rejected", async () => {
     await expect(
-      convexClient!.mutation("positionProtection:saveCursor" as any, {
+      convexClient!.mutation("positionProtection:saveCursor" as unknown as FunctionReference<"mutation">, {
         provider: "CoinGecko",
         instrument: "BTC/USDT",
         lastEventId: "evt-1",
@@ -543,9 +520,9 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
   it("User-scoped access prevents cross-user data exposure", async () => {
     // Without auth, queries return empty arrays or null
     // This proves user isolation at the server level
-    const pos = await convexClient!.query("positionProtection:getPosition" as any, { positionId: "any" });
-    const alerts = await convexClient!.query("positionProtection:listAlerts" as any, { positionId: "any" });
-    const positions = await convexClient!.query("positionProtection:listActivePositions" as any, {});
+    const pos = await convexClient!.query("positionProtection:getPosition" as unknown as FunctionReference<"query">, { positionId: "any" });
+    const alerts = await convexClient!.query("positionProtection:listAlerts" as unknown as FunctionReference<"query">, { positionId: "any" });
+    const positions = await convexClient!.query("positionProtection:listActivePositions" as unknown as FunctionReference<"query">, {});
 
     expect(pos).toBeNull();
     expect(alerts).toEqual([]);
@@ -553,7 +530,7 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
   });
 
   it("getCursor returns null for nonexistent cursor", async () => {
-    const cursor = await convexClient!.query("positionProtection:getCursor" as any, {
+    const cursor = await convexClient!.query("positionProtection:getCursor" as unknown as FunctionReference<"query">, {
       provider: "Nonexistent",
       instrument: "FAKE/USDT",
     });
@@ -561,7 +538,7 @@ describe("B. Convex HTTP Runtime — Real Deployment", () => {
   });
 
   it("Convex deployment has no secrets in response", async () => {
-    const result = await convexClient!.query("positionProtection:listActivePositions" as any, {});
+    const result = await convexClient!.query("positionProtection:listActivePositions" as unknown as FunctionReference<"query">, {});
     const json = JSON.stringify(result);
     expect(json).not.toMatch(/AKIA/);
     expect(json).not.toMatch(/sk_live_/);
@@ -604,8 +581,7 @@ describe("C. Live Data → Complete Protection Pipeline", () => {
     const alertDecision = shouldAlert(monState, result.alert.severity, NOW);
     expect(typeof alertDecision.shouldFire).toBe("boolean");
 
-    // 5. Persistence
-    const bridge = new ConvexPersistenceBridge(null);
+    // 5. Serialization boundary
     const serialized = JSON.stringify(result.alert);
     const parsed = JSON.parse(serialized);
     expect(parsed.instrument).toBe("BTC/USDT");
@@ -689,7 +665,6 @@ describe("D. Source Mode Integrity", () => {
   });
 
   it("Freshness transitions are time-based and deterministic", () => {
-    const label = createLiveLabel("CoinGecko", NOW);
     expect(calculateFreshness(NOW, NOW + 30_000)).toBe("FRESH");
     expect(calculateFreshness(NOW, NOW + 90_000)).toBe("DELAYED");
     expect(calculateFreshness(NOW, NOW + 600_000)).toBe("STALE");
@@ -1176,13 +1151,13 @@ describe("L. Acceptance Gates", () => {
   });
 
   it("GATE: Convex deployment reachable and user-scoped", async () => {
-    const result = await convexClient!.query("positionProtection:listActivePositions" as any, {});
+    const result = await convexClient!.query("positionProtection:listActivePositions" as unknown as FunctionReference<"query">, {});
     expect(Array.isArray(result)).toBe(true);
   });
 
   it("GATE: Mutations require auth", async () => {
     await expect(
-      convexClient!.mutation("positionProtection:savePosition" as any, {
+      convexClient!.mutation("positionProtection:savePosition" as unknown as FunctionReference<"mutation">, {
         positionId: "gate-test", instrument: "BTC/USDT", side: "LONG",
         entryPrice: 79000, horizon: "SWING", openedAt: NOW,
         currentSeverity: "NONE", lifecycleState: "MONITORING",
@@ -1235,7 +1210,6 @@ describe("L. Acceptance Gates", () => {
   });
 
   it("GATE: No secrets in any client-visible data", () => {
-    const bridge = new ConvexPersistenceBridge(null);
     const snap = snapshot(createDiagnosticsState());
     expect(JSON.stringify(snap)).not.toMatch(/AKIA|sk_live|sk_test|ghp_|Bearer|process\.env/);
   });

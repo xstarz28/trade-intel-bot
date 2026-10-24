@@ -1,10 +1,28 @@
-import React, { createContext, useContext, useEffect, useMemo, useState, useCallback } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import { ConvexProviderWithAuth, ConvexReactClient } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 // @ts-expect-error aliased internal export
 import { ConvexAuthActionsContext } from "@convex-dev/auth-internal/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "@/lib/data/universal/okx-discovery";
+import { isActiveConvexUrl, resolveAuthProviderMode } from "@/lib/auth-provider-mode";
+import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
+import type { AssetClass } from "@/lib/data/universal/types";
+
+type MockRecord = Record<string, unknown> & { positionId?: string };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function asArgs(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function isAssetClass(value: unknown): value is AssetClass {
+  return value === "crypto" || value === "forex" || value === "equity" ||
+    value === "commodity" || value === "indices" || value === "macro";
+}
 
 const STORAGE_KEY_ANALYSES = "xstarz_mock_analyses";
 const STORAGE_KEY_POSITIONS = "xstarz_mock_positions";
@@ -38,7 +56,9 @@ function readStorage<T>(key: string, fallback: T): T {
 function writeStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+    // Storage may be unavailable in privacy-restricted or server-rendered contexts.
+  }
 }
 
 const listeners = new Set<() => void>();
@@ -58,18 +78,18 @@ function resolveMockQuery(functionName: string, args?: Record<string, unknown>):
       return readStorage<MockAuthUser | null>(STORAGE_KEY_AUTH, DEFAULT_USER);
     }
     case "analyses:list": {
-      const all = readStorage<any[]>(STORAGE_KEY_ANALYSES, []);
+      const all = readStorage<MockRecord[]>(STORAGE_KEY_ANALYSES, []);
       const limit = typeof args?.limit === "number" ? args.limit : 50;
       return all.slice(0, limit);
     }
     case "positionProtection:listActivePositions": {
-      return readStorage<any[]>(STORAGE_KEY_POSITIONS, []);
+      return readStorage<MockRecord[]>(STORAGE_KEY_POSITIONS, []);
     }
     case "notificationPreferences:getPreferences": {
       return { inApp: true, email: false, sound: true, minSeverity: "WATCH" };
     }
     case "notifications:list": {
-      return readStorage<any[]>(STORAGE_KEY_ALERTS, []);
+      return readStorage<MockRecord[]>(STORAGE_KEY_ALERTS, []);
     }
     case "alertRules:listRules": {
       return [];
@@ -91,7 +111,7 @@ async function resolveMockMutation(
 
   switch (functionName) {
     case "analyses:save": {
-      const current = readStorage<any[]>(STORAGE_KEY_ANALYSES, []);
+      const current = readStorage<MockRecord[]>(STORAGE_KEY_ANALYSES, []);
       const newRecord = {
         _id: id,
         _creationTime: Date.now(),
@@ -109,7 +129,7 @@ async function resolveMockMutation(
       return { success: true };
     }
     case "positionProtection:savePosition": {
-      const positions = readStorage<any[]>(STORAGE_KEY_POSITIONS, []);
+      const positions = readStorage<MockRecord[]>(STORAGE_KEY_POSITIONS, []);
       const existingIdx = positions.findIndex((p) => p.positionId === args?.positionId);
       const newPos = { _id: id, ...args, updatedAt: Date.now() };
       if (existingIdx >= 0) {
@@ -122,7 +142,7 @@ async function resolveMockMutation(
       return id;
     }
     case "positionProtection:deletePosition": {
-      const positions = readStorage<any[]>(STORAGE_KEY_POSITIONS, []);
+      const positions = readStorage<MockRecord[]>(STORAGE_KEY_POSITIONS, []);
       const updated = positions.filter((p) => p.positionId !== args?.positionId);
       writeStorage(STORAGE_KEY_POSITIONS, updated);
       notifyListeners();
@@ -130,7 +150,7 @@ async function resolveMockMutation(
     }
     case "positionProtection:saveAlert":
     case "positionProtection:acknowledgeAlert": {
-      const alerts = readStorage<any[]>(STORAGE_KEY_ALERTS, []);
+      const alerts = readStorage<MockRecord[]>(STORAGE_KEY_ALERTS, []);
       alerts.push({ _id: id, ...args, timestamp: Date.now() });
       writeStorage(STORAGE_KEY_ALERTS, alerts.slice(0, 50));
       notifyListeners();
@@ -178,11 +198,19 @@ async function resolveMockAction(
         const { acquireBatchProviderNativeLiveData } = await import(
           "@/lib/market-radar/provider-registry"
         );
-        const instruments = ((args?.instruments as any[]) || []).map((input) => ({
-          ...input,
-          provider: "okx",
-          assetClass: input.assetClass ?? "crypto",
-        }));
+        const instruments = (Array.isArray(args?.instruments) ? args.instruments.filter(isRecord) : [])
+          .flatMap((input) => {
+            if (typeof input.instrument !== "string" || typeof input.providerInstrumentId !== "string") {
+              return [];
+            }
+            return [{
+              instrument: input.instrument,
+              providerInstrumentId: input.providerInstrumentId,
+              provider: "okx",
+              assetClass: isAssetClass(input.assetClass) ? input.assetClass : "crypto",
+              ...(typeof input.timeframe === "string" ? { timeframe: input.timeframe } : {}),
+            }];
+          });
         const concurrency = typeof args?.concurrency === "number" ? args.concurrency : 5;
         return await acquireBatchProviderNativeLiveData(instruments, undefined, concurrency);
       } catch {
@@ -199,8 +227,8 @@ function createMockConvexClient() {
   return {
     address: "https://mock.xstarz.local",
     options: { verbose: false },
-    watchQuery(query: FunctionReference<any> | string, ...argsAndOptions: any[]) {
-      const args = argsAndOptions[0];
+    watchQuery(query: FunctionReference<"query"> | string, ...argsAndOptions: unknown[]) {
+      const args = asArgs(argsAndOptions[0]);
       const fnName = typeof query === "string" ? query : getFunctionName(query);
       return {
         onUpdate(callback: () => void) {
@@ -217,19 +245,19 @@ function createMockConvexClient() {
         },
       };
     },
-    async mutation(mutationReference: FunctionReference<any> | string, ...args: any[]) {
+    async mutation(mutationReference: FunctionReference<"mutation"> | string, ...args: unknown[]) {
       const fnName =
         typeof mutationReference === "string"
           ? mutationReference
           : getFunctionName(mutationReference);
-      return resolveMockMutation(fnName, args[0]);
+      return resolveMockMutation(fnName, asArgs(args[0]));
     },
-    async action(actionReference: FunctionReference<any> | string, ...args: any[]) {
+    async action(actionReference: FunctionReference<"action"> | string, ...args: unknown[]) {
       const fnName =
         typeof actionReference === "string"
           ? actionReference
           : getFunctionName(actionReference);
-      return resolveMockAction(fnName, args[0]);
+      return resolveMockAction(fnName, asArgs(args[0]));
     },
     connectionState() {
       return {
@@ -300,28 +328,40 @@ function MockConvexAuthProvider({ children }: { children: React.ReactNode }) {
 
 export function AppAuthProvider({ children }: { children: React.ReactNode }) {
   const rawUrl = import.meta.env.VITE_CONVEX_URL;
-  const isConvexConfigured = Boolean(
-    rawUrl &&
-      typeof rawUrl === "string" &&
-      rawUrl.trim().length > 0 &&
-      rawUrl.trim().startsWith("http") &&
-      !rawUrl.includes("placeholder") &&
-      !rawUrl.includes("dummy"),
-  );
+  const convexUrl = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  const isConvexConfigured = isActiveConvexUrl(convexUrl) && isAllowedConvexCloudUrl(convexUrl);
 
   const realConvex = useMemo(() => {
     if (!isConvexConfigured) return null;
     try {
-      return new ConvexReactClient(rawUrl!);
-    } catch (e) {
-      console.warn("[AppAuthProvider] Could not connect to configured Convex URL:", e);
+      return new ConvexReactClient(convexUrl);
+    } catch {
+      console.warn("[AppAuthProvider] Could not construct the configured Convex client.");
       return null;
     }
-  }, [isConvexConfigured, rawUrl]);
+  }, [isConvexConfigured, convexUrl]);
 
-  if (realConvex) {
+  const mode = resolveAuthProviderMode({
+    isDevelopment: import.meta.env.DEV,
+    hasConvexClient: Boolean(realConvex),
+  });
+
+  if (mode === "convex" && realConvex) {
     return <ConvexAuthProvider client={realConvex}>{children}</ConvexAuthProvider>;
   }
 
-  return <MockConvexAuthProvider>{children}</MockConvexAuthProvider>;
+  if (mode === "mock") {
+    return <MockConvexAuthProvider>{children}</MockConvexAuthProvider>;
+  }
+
+  return (
+    <div role="alert" className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
+      <div className="max-w-lg text-center">
+        <p className="text-sm font-semibold">Autentikasi belum dikonfigurasi.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Login dinonaktifkan karena layanan autentikasi tidak tersedia. Tidak ada sesi tiruan yang akan dibuat di lingkungan produksi.
+        </p>
+      </div>
+    </div>
+  );
 }

@@ -23,7 +23,6 @@ import type { AnalysisInput, AnalysisResult } from "@/types/analysis";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 import { calculateTechnical } from "./data/technical";
 import { computeSmcContext } from "./data/smc";
-import { buildChain, buildMtfContext } from "./data/mtf";
 
 // ── Fixture builders ─────────────────────────────────────────────
 
@@ -83,17 +82,6 @@ function buildInput(
 ): AnalysisInput {
   const tech = calculateTechnical(candles);
   tech.smc = computeSmcContext(candles, "D1");
-  const slots = buildChain("D1");
-  const mtfInputs = [
-    { timeframe: "D1", role: "setup" as const, candles },
-    ...slots.map((s) => ({
-      timeframe: s.timeframe,
-      role: (s.role === "setup" || s.role === "trigger" ? s.role : "setup") as "setup" | "trigger",
-      candles: candles.slice(-120),
-    })),
-  ];
-  const mtf = buildMtfContext("D1", mtfInputs);
-
   return {
     instrument,
     instrumentType: type,
@@ -409,12 +397,9 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
     it("different instruments produce different theses", () => {
       const btc = buildLongHorizonThesis(runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000))));
       const eth = buildLongHorizonThesis(runAndGet(buildInput("ETH/USD", "crypto", bearCandles(0, 3000))));
-      // At least one field should differ
-      // 
-        // ignore ||
-        // ignore ||
-        // ignore;
+      // Both instrument-specific theses must be populated.
       expect(btc.primaryThesis.length).toBeGreaterThan(0);
+      expect(eth.primaryThesis.length).toBeGreaterThan(0);
     });
   });
 
@@ -583,7 +568,6 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
     it("bearish structure produces counter-thesis about bullish development", () => {
       const r = runAndGet(buildInput("ETH/USD", "crypto", bearCandles(0, 3000)));
       const lh = buildLongHorizonThesis(r);
-      const counterLower = lh.counterThesis.toLowerCase();
       // Counter thesis should mention opposite direction
       expect(lh.counterThesis.length).toBeGreaterThan(0);
     });
@@ -591,7 +575,6 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
     it("bullish structure produces counter-thesis about bearish development", () => {
       const r = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
       const lh = buildLongHorizonThesis(r);
-      const counterLower = lh.counterThesis.toLowerCase();
       expect(lh.counterThesis.length).toBeGreaterThan(0);
     });
   });
@@ -610,12 +593,12 @@ describe("Phase 35 — Long-Horizon Thesis", () => {
 
     it("no optional providers does not crash", () => {
       const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
-      delete (input as any).sentimentData;
-      delete (input as any).fundamentalData;
-      delete (input as any).macroData;
-      delete (input as any).derivativesData;
-      delete (input as any).treasuryData;
-      delete (input as any).cotData;
+      delete input.sentimentData;
+      delete input.fundamentalData;
+      delete input.macroData;
+      delete input.derivativesData;
+      delete input.treasuryData;
+      delete input.cotData;
       const r = runAndGet(input);
       const lh = buildLongHorizonThesis(r);
       expect(lh).toBeDefined();
@@ -661,10 +644,10 @@ describe("Phase 35 — Invariants I95-I114", () => {
 
   it("I98 — Missing data remains neutral", () => {
     const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
-    delete (input as any).fundamentalData;
-    delete (input as any).macroData;
-    delete (input as any).treasuryData;
-    delete (input as any).cotData;
+    delete input.fundamentalData;
+    delete input.macroData;
+    delete input.treasuryData;
+    delete input.cotData;
     const r = runAndGet(input);
     const lh = buildLongHorizonThesis(r);
     // Should NOT claim fundamental support when data is missing
@@ -725,7 +708,6 @@ describe("Phase 35 — Invariants I95-I114", () => {
     const r = runAndGet(buildInput("BTC/USD", "crypto", bullCandles(0, 50000)));
     const lh = buildLongHorizonThesis(r);
     // Both should reference the same structural bias
-    const dir = r.bias.toLowerCase();
     // At least one of them should mention the structural direction
     const invLower = lh.investorImplication.toLowerCase();
     const traderLower = lh.traderImplication.toLowerCase();
@@ -811,8 +793,8 @@ describe("Phase 35 — Invariants I95-I114", () => {
 
   it("I113 — Thesis status without valuation data is honest", () => {
     const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
-    delete (input as any).fundamentalData;
-    delete (input as any).macroData;
+    delete input.fundamentalData;
+    delete input.macroData;
     const r = runAndGet(input);
     const lh = buildLongHorizonThesis(r);
     // When fundamental data is missing, thesis status should reflect this

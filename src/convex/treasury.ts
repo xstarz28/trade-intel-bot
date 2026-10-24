@@ -16,7 +16,6 @@
 "use node";
 
 import { action } from "./_generated/server";
-import { v } from "convex/values";
 import { applyFredYieldFallback, buildTreasuryContext } from "../lib/data/treasury";
 
 const BASE = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml";
@@ -40,7 +39,7 @@ async function fetchFeed(data: string, yyyymm: string): Promise<string | undefin
 
 export const fetchTreasuryYields = action({
   args: {},
-  handler: async (_ctx) => {
+  handler: async () => {
     const now = new Date();
     const thisMonth = monthKey(now);
     const lastMonthDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));

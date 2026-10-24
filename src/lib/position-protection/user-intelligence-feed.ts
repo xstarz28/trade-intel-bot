@@ -9,8 +9,8 @@
  */
 
 import type { PositionSide } from "./types";
-import type { NewsItem, NewsRelevance, RelevanceLevel } from "./news-intelligence";
-import { classifyNewsRelevance, classifyNewsFreshness, deduplicateNews } from "./news-intelligence";
+import type { NewsItem, RelevanceLevel } from "./news-intelligence";
+import { classifyNewsRelevance, deduplicateNews } from "./news-intelligence";
 
 // ═══════════════════════════════════════════════════════════════
 // USER POSITION
@@ -106,6 +106,9 @@ export function buildUserIntelligenceFeed(
   positions: UserPosition[],
   now: number = Date.now(),
 ): UserIntelligenceFeed {
+  // Keep the optional parameter for caller compatibility; freshness is provider-derived.
+  void now;
+
   if (positions.length === 0) {
     return {
       items: [],

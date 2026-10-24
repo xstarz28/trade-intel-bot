@@ -1,6 +1,7 @@
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
+import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
 import { defineConfig, type Plugin } from "vite";
 import {
@@ -81,9 +82,37 @@ function gitInfo() {
 
   // An uncommitted tree does not correspond to the commit it names, so the
   // artifact says so rather than implying reproducibility it does not have.
-  const status = read("git status --porcelain");
+  const status = read("git status --porcelain --untracked-files=all");
+  // Vercel normalises vercel.json to compact JSON before the build. Treat that
+  // platform-only formatting rewrite as clean only when the parsed config is
+  // semantically identical to the committed file; any real config change and
+  // every other tracked/untracked path still make provenance dirty.
+  let committedVercelConfigMatches = false;
+  try {
+    const committedConfig = read("git show HEAD:vercel.json");
+    const workingConfig = readFileSync("vercel.json", "utf8");
+    committedVercelConfigMatches =
+      JSON.stringify(JSON.parse(committedConfig)) ===
+      JSON.stringify(JSON.parse(workingConfig));
+  } catch {
+    committedVercelConfigMatches = false;
+  }
+  const effectiveStatus = status
+    .split("\n")
+    .filter((line) => {
+      const path = line.slice(2).trimStart();
+      return !(committedVercelConfigMatches && path === "vercel.json");
+    })
+    .join("\n");
+  // Temporary Vercel-only diagnostic: preserve the raw status for verification.
+  if (process.env.VERCEL === "1" && status.trim()) {
+    console.warn(`[build-provenance] raw dirty paths:\n${status}`);
+    if (committedVercelConfigMatches) {
+      console.warn("[build-provenance] ignored vercel.json whitespace-only normalisation (parsed JSON matches HEAD)");
+    }
+  }
   const worktreeDirty =
-    gitCommit.length === 0 ? null : status.trim().length > 0;
+    gitCommit.length === 0 ? null : effectiveStatus.trim().length > 0;
 
   return buildProvenance({ commit, branch, builtAt: time, source, worktreeDirty });
 }

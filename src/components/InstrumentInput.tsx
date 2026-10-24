@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useI18n } from "@/lib/i18n";
 import { TRADING_STYLES, resolveStyle, type TradingStyle } from "@/lib/trading-style";
 import { Button } from "@/components/ui/button";
@@ -55,6 +55,7 @@ interface InstrumentInputProps {
 }
 
 const STORAGE_KEY = "xstarzg-analysis-form";
+const EMPTY_AVAILABLE_INSTRUMENTS: AvailableInstrument[] = [];
 
 interface PersistedForm {
   instrument: string;
@@ -93,7 +94,7 @@ function loadPersistedForm(): PersistedForm {
 export function InstrumentInput({
   onAnalyze,
   isAnalyzing,
-  availableInstruments = [],
+  availableInstruments = EMPTY_AVAILABLE_INSTRUMENTS,
   marketDiscoveryMessage,
 }: InstrumentInputProps) {
   const { t, locale } = useI18n();
@@ -108,7 +109,11 @@ export function InstrumentInput({
   const [manualSearch, setManualSearch] = useState(false);
   const [manualSearchQuery, setManualSearchQuery] = useState("");
   const [manualSearchError, setManualSearchError] = useState<string | null>(null);
-  const [cryptoMarketType, setCryptoMarketType] = useState<CryptoMarketType>("spot");
+  const [cryptoMarketType, setCryptoMarketType] = useState<CryptoMarketType>(() => {
+    if (form.instrumentType !== "crypto") return "spot";
+    const selected = availableInstruments.find((item) => item.symbol === form.instrument);
+    return selected ? inferCryptoMarketType(selected) : inferCryptoMarketType({ symbol: form.instrument });
+  });
   const manualInputRef = useRef<HTMLInputElement | null>(null);
   const submitLockRef = useRef(false);
   useEffect(() => {
@@ -138,15 +143,12 @@ export function InstrumentInput({
     if (manualSearch) manualInputRef.current?.focus();
   }, [manualSearch]);
 
-  const universeOptions = dedupeInstrumentCatalog<AvailableInstrument>(
-    availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS,
+  const universeOptions = useMemo(
+    () => dedupeInstrumentCatalog<AvailableInstrument>(
+      availableInstruments.length > 0 ? availableInstruments : POPULAR_INSTRUMENTS,
+    ),
+    [availableInstruments],
   );
-
-  useEffect(() => {
-    if (form.instrumentType !== "crypto") return;
-    const selected = universeOptions.find((item) => item.symbol === form.instrument);
-    if (selected) setCryptoMarketType(inferCryptoMarketType(selected));
-  }, [form.instrument, form.instrumentType, universeOptions]);
 
   // Keep the selected horizon and setup timeframe coherent, including when
   // restoring an older saved form. Read the latest synchronous formRef inside
@@ -243,10 +245,6 @@ export function InstrumentInput({
     value: PersistedForm[K],
   ) => {
     commitForm((prev) => ({ ...prev, [key]: value }));
-  }, [commitForm]);
-
-  const handleQuickSelect = useCallback((symbol: string, type: InstrumentType) => {
-    commitForm((prev) => ({ ...prev, instrument: symbol, instrumentType: type }));
   }, [commitForm]);
 
   const submitAnalysis = useCallback(() => {
