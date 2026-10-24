@@ -450,6 +450,23 @@ describe("D — Multi-Asset Scanning", () => {
     const opps = result.results.get("SWING")!;
     expect(opps.every(o => o.assetClass === "crypto")).toBe(true);
   });
+
+  it("uses verified directional setup evidence to differentiate radar scores", () => {
+    const config: RadarScanConfig = { horizons: ["INTRADAY"], maxResults: 5 };
+    const baseline = scanRadar([makeSource()], config, undefined, NOW)
+      .results.get("INTRADAY")!.find(o => o.instrument === "BTC/USD");
+    const evidenced = scanRadar([makeSource({
+      setupDirection: "short",
+      setupStrength: 80,
+      confluenceCount: 4,
+    })], config, undefined, NOW)
+      .results.get("INTRADAY")!.find(o => o.instrument === "BTC/USD");
+
+    expect(baseline).toBeDefined();
+    expect(evidenced).toBeDefined();
+    expect(evidenced!.score).toBeGreaterThan(baseline!.score);
+    expect(evidenced!.supportingEvidence.some(e => e.includes("verified short setup evidence"))).toBe(true);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
