@@ -100,11 +100,36 @@ function isPetroleumInstrument(instrument: string): boolean {
   return /(?:WTI|CRUDE|USOIL|UKOIL|BRENT|XTIUSD|XBRUSD|CL=F|BZ=F)/i.test(instrument);
 }
 
+function normalizeRadarSourceTimeframe(value?: string): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase().replace(/\\s+/g, "");
+  const aliases: Record<string, string> = {
+    "1M": "M1", "1MIN": "M1", "5M": "M5", "5MIN": "M5",
+    "15M": "M15", "15MIN": "M15", "1H": "H1", "1HR": "H1",
+    "4H": "H4", "4HR": "H4", "1D": "D1", "1DAY": "D1",
+    "1W": "W1", "1WEEK": "W1",
+  };
+  return aliases[normalized] ?? normalized;
+}
+
 export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandidateSource {
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
-  const matchingAnalysis = source.analysisResult?.instrument === source.instrument
+  const marketTimeframe = normalizeRadarSourceTimeframe(market?.timeframe);
+  const analysisTimeframe = normalizeRadarSourceTimeframe(source.analysisResult?.timeframe);
+  const analysisPrice = source.analysisResult?.priceSnapshot;
+  const marketPrice = market?.price;
+  const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
+    analysisPrice.price === marketPrice.price &&
+    analysisPrice.timestamp === marketPrice.timestamp;
+  // A technical analysis is only reusable for the exact market observation
+  // and timeframe that produced it. Same-ticker but different-timeframe data
+  // must not leak into the current horizon's setup evidence.
+  const matchingAnalysis = source.analysisResult?.instrument === source.instrument &&
+    !!marketTimeframe &&
+    analysisTimeframe === marketTimeframe &&
+    sameObservedPriceSnapshot
     ? source.analysisResult
     : undefined;
   const candleSeries = market?.candles?.slice().sort((a, b) => a.timestamp - b.timestamp);
