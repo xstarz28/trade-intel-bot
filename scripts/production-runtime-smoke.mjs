@@ -499,6 +499,19 @@ try {
   if (!evidence.productSurfaces.riskSizing) {
     throw new Error("Risk-sizing surface did not render all three user-owned account inputs after dashboard navigation.");
   }
+
+  // A guest CTA alone can pass under the local mock-auth fallback. Require
+  // observable traffic to the intended real Convex deployment before treating
+  // this production runtime as usable.
+  await page.waitForTimeout(1500);
+  const activeConvexHost = "hushed-seal-237";
+  const realConvexConnected =
+    convexTraffic.some((item) => item.url?.includes(activeConvexHost)) ||
+    socketTraffic.some((item) => item.url?.includes(activeConvexHost));
+  if (!realConvexConnected) {
+    throw new Error("Production dashboard did not connect to the configured Hushed Convex backend; refusing to accept a mock-auth runtime.");
+  }
+
   // Only count the storage-state run as authenticated after the dashboard and
   // its key controls are visibly usable. A guest run remains explicitly guest.
   if (storageStatePath) evidence.authenticated = true;
