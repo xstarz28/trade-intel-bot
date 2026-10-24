@@ -585,7 +585,7 @@ export function scanRadar(
   return {
     results,
     diffs,
-    totalScanned: filteredSources.length,
+    totalScanned: sourcesByInstrument.size,
     totalWithLiveData,
     totalInsufficient,
     freshCount: fs.fresh,
