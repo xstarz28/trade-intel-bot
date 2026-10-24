@@ -26,7 +26,7 @@ type YahooChartResponse = {
 
 async function loadYahooIntradayCandles(interval: "15m" | "60m"): Promise<OhlcvCandle[]> {
   const period2 = Math.floor(Date.now() / 1000);
-  // Yahoo's intraday retention is limited. A common 60-day window keeps both
+  // Yahoo's intraday retention is limited. A 59-day window stays inside the provider cutoff and keeps both
   // intervals comparable and makes the evidence reproducible within provider limits.
   const period1 = period2 - 59 * 24 * 60 * 60;
   const endpoint = new URL("https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD");
