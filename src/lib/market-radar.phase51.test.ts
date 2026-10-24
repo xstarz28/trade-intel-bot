@@ -518,6 +518,30 @@ describe("D — Multi-Asset Scanning", () => {
     expect(evidenced!.score).toBeGreaterThan(baseline!.score);
     expect(evidenced!.supportingEvidence.some(e => e.includes("verified short setup evidence"))).toBe(true);
   });
+
+  it("keeps the final radar score within 0–100 after all evidence bonuses", () => {
+    const source = makeSource({
+      setupDirection: "long",
+      setupStrength: 100,
+      confluenceCount: 6,
+      derivatives: { fundingRate: 0.001, openInterest: 2_000_000 },
+      analyticalDepth: {
+        regime: "TRENDING",
+        dimensionsAvailable: 6,
+        dimensionsTotal: 6,
+        relativeValue: "strong",
+      },
+    });
+    const result = scanRadar(
+      [source],
+      { horizons: ["INTRADAY"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    const opportunity = result.results.get("INTRADAY")![0];
+    expect(opportunity.score).toBeLessThanOrEqual(100);
+    expect(opportunity.score).toBeGreaterThanOrEqual(0);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════
