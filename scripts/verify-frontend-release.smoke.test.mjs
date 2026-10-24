@@ -16,7 +16,7 @@ test('published verification checks auth labels in a lazy-loaded same-origin chu
     }
     if (path === '/assets/index-main.js') {
       res.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
-      res.end('console.log("XSTARZG"); const loadAuth = () => import("./Auth-lazy.js");');
+      res.end('console.log("XSTARZG"); const backend = "https://hushed-seal-237.convex.cloud"; const loadAuth = () => import("./Auth-lazy.js");');
       return;
     }
     if (path === '/assets/Auth-lazy.js') {
@@ -80,5 +80,6 @@ test('published verification checks auth labels in a lazy-loaded same-origin chu
   assert.equal(check('published JavaScript asset graph loaded')?.ok, true, stdout);
   assert.equal(check('Google auth surface')?.ok, true, stdout);
   assert.equal(check('guest auth surface')?.ok, true, stdout);
+  assert.equal(check('active Convex backend configured')?.ok, true, stdout);
   assert.equal(check('published CSS assets loaded')?.ok, true, stdout);
 });
