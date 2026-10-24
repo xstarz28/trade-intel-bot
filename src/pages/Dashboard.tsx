@@ -1227,7 +1227,7 @@ export default function Dashboard() {
                   const base = item.instId.trim().toUpperCase().split(/[/-]/)[0];
                   if (!base) return null;
                   const result = await withActionTimeout(
-                    fetchDerivatives({ instrument: `${base}/USD` }),
+                    fetchDerivatives({ instrument: `${base}/USD`, includeTokenomics: false }),
                     ACTION_TIMEOUTS_MS.derivatives,
                     `Background derivatives ${base}`,
                   );
