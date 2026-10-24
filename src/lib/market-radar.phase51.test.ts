@@ -216,7 +216,7 @@ describe("A — Empty Analysis History", () => {
 
   it("does not count an OHLCV availability flag without a usable observed candle sample", () => {
     const noRows = makeSource({
-      snapshot: makeSnapshot({ dataPoints: 0 }),
+      snapshot: makeSnapshot({ dataPoints: 0, htfBias: "unknown", mtfAlignment: "INSUFFICIENT_DATA", marketRegime: "UNKNOWN" }),
       derivatives: undefined,
       fundamentals: undefined,
       cot: undefined,
@@ -227,7 +227,7 @@ describe("A — Empty Analysis History", () => {
     expect(buildRadarCandidate(noRows, NOW).dataCompleteness).toBe("MINIMAL");
 
     const shortSample = makeSource({
-      snapshot: makeSnapshot({ dataPoints: 19 }),
+      snapshot: makeSnapshot({ dataPoints: 19, htfBias: "unknown", mtfAlignment: "INSUFFICIENT_DATA", marketRegime: "UNKNOWN" }),
       derivatives: undefined,
       fundamentals: undefined,
       cot: undefined,
