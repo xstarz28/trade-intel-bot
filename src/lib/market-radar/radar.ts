@@ -90,9 +90,9 @@ const RADAR_TIMEFRAME_MS: Record<string, number> = {
   W1: 7 * 24 * 60 * 60_000,
 };
 
-function normalizeRadarTimeframe(value?: string): string | undefined {
+export function normalizeRadarTimeframe(value?: string): string | undefined {
   if (!value) return undefined;
-  const normalized = value.trim().toUpperCase().replace(/\\s+/g, "");
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
   const aliases: Record<string, string> = {
     "1M": "M1", "1MIN": "M1", "5M": "M5", "5MIN": "M5",
     "15M": "M15", "15MIN": "M15", "1H": "H1", "1HR": "H1",
