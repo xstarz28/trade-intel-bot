@@ -13,7 +13,8 @@
     "frontend:prebuilt": "node scripts/prepare-vercel-output.mjs",
     "frontend:publish:rest": "node scripts/deploy-frontend-rest.mjs",
     "verify:frontend:release": "node scripts/verify-frontend-release.mjs",
-    "verify:coingecko:live": "node scripts/verify-coingecko-live.mjs"
+    "verify:coingecko:live": "node scripts/verify-coingecko-live.mjs",
+    "auth:verify": "node scripts/verify-google-auth-config.mjs"
   },
   "dependencies": {
     "@convex-dev/auth": "^0.0.95",
