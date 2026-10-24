@@ -122,7 +122,8 @@ async function cgFetch(path: string, apiKey: string): Promise<unknown> {
 function mapSymbolForCG(instrument: string): string {
   // CoinGlass aggregates derivatives by base asset, while callers may supply
   // canonical pairs (BTC/USD) or exchange-native IDs (BTC-USDT-SWAP).
-  return toCoinGlassSymbol(instrument) ?? normalizeDerivativeSymbol(instrument) ?? instrument.trim().toUpperCase();
+  const normalized = toCoinGlassSymbol(instrument) ?? normalizeDerivativeSymbol(instrument);
+  return normalized || instrument.trim().toUpperCase();
 }
 
 // ── Main Action ─────────────────────────────────────────────────
