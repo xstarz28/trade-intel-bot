@@ -5,6 +5,7 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexAuthActionsContext } from "@convex-dev/auth-internal/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "@/lib/data/universal/okx-discovery";
+import { resolveAuthProviderMode } from "@/lib/auth-provider-mode";
 import type { AssetClass } from "@/lib/data/universal/types";
 
 type MockRecord = Record<string, unknown> & { positionId?: string };
@@ -324,30 +325,65 @@ function MockConvexAuthProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
+const RETIRED_CONVEX_HOSTS = new Set([
+  "tough-goose-455.convex.cloud",
+  "pleasant-curlew-264.convex.cloud",
+  "calculating-eagle-241.convex.cloud",
+]);
+
+function isAllowedConvexCloudUrl(value: unknown): value is string {
+  if (typeof value !== "string" || !value.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" &&
+      url.hostname.endsWith(".convex.cloud") &&
+      !RETIRED_CONVEX_HOSTS.has(url.hostname.toLowerCase()) &&
+      (url.pathname === "/" || url.pathname === "") &&
+      !url.username &&
+      !url.password &&
+      !url.search &&
+      !url.hash;
+  } catch {
+    return false;
+  }
+}
+
 export function AppAuthProvider({ children }: { children: React.ReactNode }) {
   const rawUrl = import.meta.env.VITE_CONVEX_URL;
-  const isConvexConfigured = Boolean(
-    rawUrl &&
-      typeof rawUrl === "string" &&
-      rawUrl.trim().length > 0 &&
-      rawUrl.trim().startsWith("http") &&
-      !rawUrl.includes("placeholder") &&
-      !rawUrl.includes("dummy"),
-  );
+  const convexUrl = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  const isConvexConfigured = isAllowedConvexCloudUrl(convexUrl);
 
   const realConvex = useMemo(() => {
     if (!isConvexConfigured) return null;
     try {
-      return new ConvexReactClient(rawUrl!);
+      return new ConvexReactClient(convexUrl);
     } catch (e) {
-      console.warn("[AppAuthProvider] Could not connect to configured Convex URL:", e);
+      console.warn("[AppAuthProvider] Could not construct the configured Convex client.");
       return null;
     }
-  }, [isConvexConfigured, rawUrl]);
+  }, [isConvexConfigured, convexUrl]);
 
-  if (realConvex) {
+  const mode = resolveAuthProviderMode({
+    isDevelopment: import.meta.env.DEV,
+    hasConvexClient: Boolean(realConvex),
+  });
+
+  if (mode === "convex" && realConvex) {
     return <ConvexAuthProvider client={realConvex}>{children}</ConvexAuthProvider>;
   }
 
-  return <MockConvexAuthProvider>{children}</MockConvexAuthProvider>;
+  if (mode === "mock") {
+    return <MockConvexAuthProvider>{children}</MockConvexAuthProvider>;
+  }
+
+  return (
+    <div role="alert" className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
+      <div className="max-w-lg text-center">
+        <p className="text-sm font-semibold">Autentikasi belum dikonfigurasi.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Login dinonaktifkan karena layanan autentikasi tidak tersedia. Tidak ada sesi tiruan yang akan dibuat di lingkungan produksi.
+        </p>
+      </div>
+    </div>
+  );
 }
