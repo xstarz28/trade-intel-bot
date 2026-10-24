@@ -12,6 +12,7 @@ const REQUIRED_NAMES = [
   "AUTH_GOOGLE_SECRET",
   "CONVEX_SITE_URL",
   "SITE_URL",
+  "VITE_CONVEX_URL",
 ];
 
 function httpsOrigin(value) {
@@ -56,6 +57,17 @@ export function classifyGoogleAuthConfig(env = process.env) {
   const convexSite = httpsOrigin(env.CONVEX_SITE_URL);
   if (env.CONVEX_SITE_URL?.trim() && (!convexSite || !convexSite.hostname.endsWith(".convex.site"))) {
     invalid.push("CONVEX_SITE_URL must be an HTTPS origin on *.convex.site");
+  }
+
+  const convexCloud = httpsOrigin(env.VITE_CONVEX_URL);
+  if (env.VITE_CONVEX_URL?.trim() && (!convexCloud || !convexCloud.hostname.endsWith(".convex.cloud"))) {
+    invalid.push("VITE_CONVEX_URL must be an HTTPS origin on *.convex.cloud");
+  }
+  if (convexSite && convexCloud) {
+    const expectedSiteHost = convexCloud.hostname.replace(/\\.convex\\.cloud$/i, ".convex.site");
+    if (convexSite.hostname !== expectedSiteHost) {
+      invalid.push("CONVEX_SITE_URL and VITE_CONVEX_URL must identify the same deployment");
+    }
   }
 
   const siteUrl = httpsOrigin(env.SITE_URL);
