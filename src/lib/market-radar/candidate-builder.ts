@@ -15,6 +15,7 @@ import { assessFreshness } from "./freshness";
 import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
 import { calculateTechnical } from "../data/technical";
 import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
+import { matchesDerivativeSymbol } from "@/lib/data/derivatives-symbol";
 
 // ═══════════════════════════════════════════════════════════════
 // RADAR CANDIDATE SOURCE
@@ -122,8 +123,12 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     source.universalIntelligence.assetClass === source.assetClass
     ? source.universalIntelligence
     : undefined;
-  const expectedProviderSymbol = source.providerNative?.providerInstrumentId ?? source.instrument;
-  const derivativesData = source.derivativesData?.symbol === expectedProviderSymbol
+  const derivativesData = source.derivativesData &&
+    matchesDerivativeSymbol(
+      source.instrument,
+      source.providerNative?.providerInstrumentId,
+      source.derivativesData.symbol,
+    )
     ? source.derivativesData
     : undefined;
   const cotData = source.cotData?.requestedInstrument === source.instrument
