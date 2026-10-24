@@ -7,6 +7,8 @@ describe("derivatives symbol identity", () => {
     ["BTC-USDT-SWAP", "BTC"],
     ["BTCUSDT", "BTC"],
     ["ETH-USD-260925", "ETH"],
+    [" BTC / USD ", "BTC"],
+    ["BTC USDT", "BTC"],
   ])("normalizes %s to the base asset %s", (input, expected) => {
     expect(normalizeDerivativeSymbol(input)).toBe(expected);
   });
@@ -21,6 +23,10 @@ describe("derivatives symbol identity", () => {
 
   it("accepts an exchange's concatenated base/quote symbol", () => {
     expect(matchesDerivativeSymbol("BTC-USDT-SWAP", "BTC-USDT-SWAP", "BTCUSDT")).toBe(true);
+  });
+
+  it("normalizes whitespace before comparing provider symbols", () => {
+    expect(matchesDerivativeSymbol(" BTC / USD ", undefined, " BTC ")).toBe(true);
   });
 
   it("rejects derivatives data belonging to a different base asset", () => {
