@@ -307,6 +307,11 @@ function scoreOpportunity(
     }
   }
 
+  // Analytical-depth bonuses are applied after the first clamp above;
+  // enforce the public 0–100 contract again before returning the score.
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  confidence = Math.max(0, Math.min(100, Math.round(confidence)));
+
   // Build primary reasons from top supporting evidence
   const topReasons = supporting.slice(0, 3);
 
