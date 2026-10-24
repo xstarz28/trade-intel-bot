@@ -224,7 +224,9 @@ describe("A — Empty Analysis History", () => {
       treasury: undefined,
       analysisResult: undefined,
     });
-    expect(buildRadarCandidate(noRows, NOW).dataCompleteness).toBe("MINIMAL");
+    const noRowsCandidate = buildRadarCandidate(noRows, NOW);
+    expect(noRowsCandidate.dataCompleteness).toBe("MINIMAL");
+    expect(noRowsCandidate.providerCoverage).not.toBe("FULL");
 
     const shortSample = makeSource({
       snapshot: makeSnapshot({ dataPoints: 19, htfBias: "unknown", mtfAlignment: "INSUFFICIENT_DATA", marketRegime: "UNKNOWN" }),
@@ -235,7 +237,9 @@ describe("A — Empty Analysis History", () => {
       treasury: undefined,
       analysisResult: undefined,
     });
-    expect(buildRadarCandidate(shortSample, NOW).dataCompleteness).toBe("MINIMAL");
+    const shortSampleCandidate = buildRadarCandidate(shortSample, NOW);
+    expect(shortSampleCandidate.dataCompleteness).toBe("MINIMAL");
+    expect(shortSampleCandidate.providerCoverage).not.toBe("FULL");
   });
 
   it("does not mark snapshot plus prior analysis as FULL without independent context", () => {
