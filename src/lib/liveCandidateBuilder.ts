@@ -219,7 +219,7 @@ function extractMtfAlignment(
 function extractAtr(tech: TechnicalData | undefined): number | undefined {
   return tech?.atr14;
 }
-function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: number): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
+export function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: number): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
   if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
   // Higher-timeframe bias is context, not a trigger on the selected setup
   // timeframe. Keep it in htfBias; do not manufacture a directional setup
