@@ -1204,8 +1204,14 @@ export default function Dashboard() {
               // Enrich a small rotating subset with real derivatives context.
               // The action uses provider-side caching and public fallbacks; it is
               // kept parallel to candle acquisition and never blocks on one failure.
+              const derivativeTargets = batch.filter((item, index) => {
+                const base = item.instId.trim().toUpperCase().split(/[/-]/)[0];
+                return batch.findIndex((candidate) =>
+                  candidate.instId.trim().toUpperCase().split(/[/-]/)[0] === base
+                ) === index;
+              }).slice(0, 3);
               const derivativesPromise = Promise.allSettled(
-                batch.slice(0, 3).map(async (item) => {
+                derivativeTargets.map(async (item) => {
                   const key = `${item.instId}|H1`;
                   const existing =
                     liveRecommendationSourceRef.current.get(key)?.derivativesData ??
@@ -1236,13 +1242,14 @@ export default function Dashboard() {
                 concurrency: 5,
               });
               const derivativeSettled = await derivativesPromise;
-              const derivativesByInstrument = new Map<
+              const derivativesByBase = new Map<
                 string,
                 NonNullable<LiveCandidateSource["derivativesData"]>
               >();
               for (const settled of derivativeSettled) {
                 if (settled.status !== "fulfilled" || !settled.value) continue;
-                derivativesByInstrument.set(settled.value.instrument, settled.value.data);
+                const base = settled.value.instrument.trim().toUpperCase().split(/[/-]/)[0];
+                if (base) derivativesByBase.set(base, settled.value.data);
               }
               const { providerNativeAcquisitionToMarketData } =
                 await import("@/lib/market-radar/provider-registry");
@@ -1265,12 +1272,14 @@ export default function Dashboard() {
                 };
                 const key = `${result.instrument}|${timeframe}`;
                 const previousRecommendationSource = liveRecommendationSourceRef.current.get(key);
+                const base = result.instrument.trim().toUpperCase().split(/[/-]/)[0];
+                const derivativeData = base ? derivativesByBase.get(base) : undefined;
                 liveRecommendationSourceRef.current.set(key, {
                   ...previousRecommendationSource,
                   ...source,
                   analysisResult: previousRecommendationSource?.analysisResult,
                   universalIntelligence: previousRecommendationSource?.universalIntelligence,
-                  derivativesData: derivativesByInstrument.get(result.instrument) ?? previousRecommendationSource?.derivativesData,
+                  derivativesData: derivativeData ?? previousRecommendationSource?.derivativesData,
                   calendarData: previousRecommendationSource?.calendarData,
                   treasuryData: previousRecommendationSource?.treasuryData,
                   cotData: previousRecommendationSource?.cotData,
@@ -1285,7 +1294,7 @@ export default function Dashboard() {
                     ...source,
                     analysisResult: existing?.analysisResult,
                     universalIntelligence: existing?.universalIntelligence,
-                    derivativesData: derivativesByInstrument.get(result.instrument) ?? existing?.derivativesData,
+                    derivativesData: derivativeData ?? existing?.derivativesData,
                     calendarData: existing?.calendarData,
                     treasuryData: existing?.treasuryData,
                     cotData: existing?.cotData,
