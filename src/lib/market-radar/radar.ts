@@ -80,6 +80,15 @@ const RADAR_HORIZON_TIMEFRAMES: Record<TradingMode | InvestorHorizon, string[]> 
 };
 
 const RADAR_KNOWN_TIMEFRAMES = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"];
+const RADAR_TIMEFRAME_MS: Record<string, number> = {
+  M1: 60_000,
+  M5: 5 * 60_000,
+  M15: 15 * 60_000,
+  H1: 60 * 60_000,
+  H4: 4 * 60 * 60_000,
+  D1: 24 * 60 * 60_000,
+  W1: 7 * 24 * 60 * 60_000,
+};
 
 function normalizeRadarTimeframe(value?: string): string | undefined {
   if (!value) return undefined;
@@ -114,13 +123,19 @@ function selectSourcesForHorizon(
   }
 
   const preference = RADAR_HORIZON_TIMEFRAMES[horizon];
+  const targetDuration = RADAR_TIMEFRAME_MS[preference[0] ?? "H1"] ?? RADAR_TIMEFRAME_MS.H1!;
   const timeframeRank = (source: RadarCandidateSource): number => {
     const timeframe = normalizeRadarTimeframe(source.snapshot?.availableTimeframes?.[0]);
     if (!timeframe) return 1000;
     const preferred = preference.indexOf(timeframe);
     if (preferred >= 0) return preferred;
-    const known = RADAR_KNOWN_TIMEFRAMES.indexOf(timeframe);
-    return 100 + (known >= 0 ? known : RADAR_KNOWN_TIMEFRAMES.length);
+    const duration = RADAR_TIMEFRAME_MS[timeframe];
+    // If none of the horizon's preferred intervals is available, choose the
+    // closest actual interval, not the smallest enum value (which incorrectly
+    // made M5 the fallback for multi-year horizons).
+    return duration === undefined
+      ? 1000
+      : 100 + Math.abs(duration - targetDuration);
   };
 
   return Array.from(groups.values()).map((group) =>
