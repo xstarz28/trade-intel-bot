@@ -97,7 +97,7 @@ jobs:
           fi
 
           set +e
-          npm run auth:verify -- --json | tee auth-verify.json
+          node scripts/verify-google-auth-config.mjs --json | tee auth-verify.json
           status="${PIPESTATUS[0]}"
           set -e
           state="$(node -e 'const fs=require("node:fs"); console.log(JSON.parse(fs.readFileSync("auth-verify.json","utf8")).state)')"
