@@ -54,7 +54,17 @@ import type { TechnicalData } from "./data/market-types";
 import {
   scanRadar,
   buildRadarState,
+  normalizeRadarTimeframe,
 } from "./market-radar/radar";
+
+describe("Radar timeframe normalization", () => {
+  it("normalizes whitespace and supported interval aliases", () => {
+    expect(normalizeRadarTimeframe("  1 h  ")).toBe("H1");
+    expect(normalizeRadarTimeframe("  1H  ")).toBe("H1");
+    expect(normalizeRadarTimeframe(" 15 M ")).toBe("M15");
+    expect(normalizeRadarTimeframe("  15M  ")).toBe("M15");
+  });
+});
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
