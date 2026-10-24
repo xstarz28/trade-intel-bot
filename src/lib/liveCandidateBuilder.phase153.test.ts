@@ -368,6 +368,41 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
 
 
 
+  it("accepts base-symbol derivatives data for the matching canonical instrument", () => {
+    const now = Date.now();
+    const source: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100_000, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 99_900, high: 100_100, low: 99_800, close: 100_000, volume: 1 }],
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      derivativesData: {
+        provider: "fixture",
+        symbol: "BTC",
+        timestamp: now,
+        freshness: "realtime",
+        availability: { openInterest: true, fundingRate: true, longShort: false, liquidations: false },
+        confidence: "high",
+        openInterest: { current: 500_000_000 },
+        fundingRate: { currentRate: 0.0001 },
+      },
+    };
+
+    const candidate = buildCandidateFromSource(source, now);
+    const radarSource = toRadarCandidateSource(source);
+    expect(candidate.hasDerivatives).toBe(true);
+    expect(candidate.fundingRate).toBe(0.0001);
+    expect(radarSource.derivatives?.fundingRate).toBe(0.0001);
+    expect(radarSource.derivatives?.openInterest).toBe(500_000_000);
+  });
+
   it("rejects derivatives and COT context for a different instrument", () => {
     const now = Date.now();
     const cryptoCandidate = buildCandidateFromSource({
