@@ -8,7 +8,7 @@
  */
 
 export function normalizeDerivativeSymbol(value: string): string {
-  const normalized = value.trim().toUpperCase().replace(/\\s+/g, "");
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
   if (!normalized) return "";
 
   // Canonical pair IDs and exchange-native separated symbols.
@@ -18,7 +18,7 @@ export function normalizeDerivativeSymbol(value: string): string {
 
   const withoutContractSuffix = normalized
     .replace(/-(?:SWAP|FUTURES|PERP)$/i, "")
-    .replace(/-\\d{6,8}$/i, "");
+    .replace(/-\d{6,8}$/i, "");
   if (/[-_:]/.test(withoutContractSuffix)) {
     return withoutContractSuffix.split(/[-_:]/)[0]?.replace(/[^A-Z0-9]/g, "") ?? "";
   }
