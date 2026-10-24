@@ -451,6 +451,55 @@ describe("D — Multi-Asset Scanning", () => {
     expect(opps.every(o => o.assetClass === "crypto")).toBe(true);
   });
 
+  it("selects the horizon-appropriate timeframe instead of reusing the last snapshot", () => {
+    const h1 = makeSource({
+      snapshot: {
+        ...makeSnapshot({
+          instrument: "BTC/USD",
+          htfBias: "long",
+          mtfAlignment: "ALIGNED_BULLISH",
+          marketRegime: "TRENDING",
+          volatility: 800,
+          observedAt: NOW,
+        }),
+        availableTimeframes: ["H1"],
+      },
+      setupDirection: "long",
+      setupStrength: 70,
+      confluenceCount: 3,
+    });
+    const h4 = makeSource({
+      snapshot: {
+        ...makeSnapshot({
+          instrument: "BTC/USD",
+          htfBias: "short",
+          mtfAlignment: "MIXED",
+          marketRegime: "RANGING",
+          volatility: 0,
+          observedAt: NOW,
+        }),
+        availableTimeframes: ["H4"],
+      },
+      setupDirection: "short",
+      setupStrength: 45,
+      confluenceCount: 1,
+    });
+
+    const result = scanRadar(
+      [h1, h4],
+      { horizons: ["INTRADAY", "SWING"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    const intraday = result.results.get("INTRADAY")!.find(o => o.instrument === "BTC/USD")!;
+    const swing = result.results.get("SWING")!.find(o => o.instrument === "BTC/USD")!;
+
+    expect(intraday.score).toBeGreaterThan(swing.score);
+    expect(intraday.supportingEvidence).toContain("MTF aligned: ALIGNED_BULLISH");
+    expect(swing.conflictingEvidence).toContain("MTF mixed signals");
+    expect(result.totalScanned).toBe(1);
+  });
+
   it("uses verified directional setup evidence to differentiate radar scores", () => {
     const config: RadarScanConfig = { horizons: ["INTRADAY"], maxResults: 5 };
     const baseline = scanRadar([makeSource()], config, undefined, NOW)
