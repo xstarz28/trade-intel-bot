@@ -7,6 +7,7 @@ const configured = {
   AUTH_GOOGLE_SECRET: "gocspx-abcdefghijklmnop",
   CONVEX_SITE_URL: "https://hushed-seal-237.convex.site",
   SITE_URL: "https://xstarzanalysis.vercel.app",
+  VITE_CONVEX_URL: "https://hushed-seal-237.convex.cloud",
 };
 
 test("reports missing auth variables by name only", () => {
@@ -17,6 +18,7 @@ test("reports missing auth variables by name only", () => {
     "AUTH_GOOGLE_SECRET",
     "CONVEX_SITE_URL",
     "SITE_URL",
+    "VITE_CONVEX_URL",
   ]);
   assert.equal(JSON.stringify(result).includes("gocspx"), false);
 });
@@ -46,6 +48,15 @@ test("rejects invalid URLs and implausible Google credentials without echoing va
   assert.equal(result.invalid.length, 4);
   assert.equal(JSON.stringify(result).includes(secret), false);
   assert.equal(JSON.stringify(result).includes("not-a-google-client-id"), false);
+});
+
+test("rejects auth and frontend URLs that point at different deployments", () => {
+  const result = classifyGoogleAuthConfig({
+    ...configured,
+    CONVEX_SITE_URL: "https://calculating-eagle-241.convex.site",
+  });
+  assert.equal(result.state, "INVALID");
+  assert.ok(result.invalid.includes("CONVEX_SITE_URL and VITE_CONVEX_URL must identify the same deployment"));
 });
 
 test("keeps the state INVALID when required fields are also missing", () => {
