@@ -614,22 +614,54 @@ describe("D — Multi-Asset Scanning", () => {
       setupStrength: 45,
       confluenceCount: 1,
     });
+    const w1 = makeSource({
+      snapshot: {
+        ...makeSnapshot({
+          instrument: "BTC/USD",
+          htfBias: "long",
+          mtfAlignment: "ALIGNED_BULLISH",
+          marketRegime: "TRENDING",
+          volatility: 2000,
+          observedAt: NOW,
+        }),
+        availableTimeframes: ["W1"],
+      },
+      setupDirection: "long",
+      setupStrength: 70,
+      confluenceCount: 3,
+    });
 
     const result = scanRadar(
-      [h1, h4],
-      { horizons: ["INTRADAY", "SWING"], maxResults: 5 },
+      [h1, h4, w1],
+      { horizons: ["INTRADAY", "SWING", "1-3_YEARS"], maxResults: 5 },
       undefined,
       NOW,
     );
     const intraday = result.results.get("INTRADAY")!.find(o => o.instrument === "BTC/USD")!;
     const swing = result.results.get("SWING")!.find(o => o.instrument === "BTC/USD")!;
+    const longTerm = result.results.get("1-3_YEARS")!.find(o => o.instrument === "BTC/USD")!;
 
     expect(intraday.marketTimeframe).toBe("H1");
     expect(swing.marketTimeframe).toBe("H4");
+    expect(longTerm.marketTimeframe).toBe("W1");
     expect(intraday.score).toBeGreaterThan(swing.score);
     expect(intraday.supportingEvidence).toContain("MTF aligned: ALIGNED_BULLISH");
     expect(swing.conflictingEvidence).toContain("MTF mixed signals");
     expect(result.totalScanned).toBe(1);
+
+    const m5 = makeSource({
+      snapshot: {
+        ...makeSnapshot({ instrument: "BTC/USD", observedAt: NOW }),
+        availableTimeframes: ["M5"],
+      },
+    });
+    const fallback = scanRadar(
+      [m5, h4],
+      { horizons: ["1-3_YEARS"], maxResults: 5 },
+      undefined,
+      NOW,
+    ).results.get("1-3_YEARS")![0]!;
+    expect(fallback.marketTimeframe).toBe("H4");
   });
 
   it("uses verified directional setup evidence to differentiate radar scores", () => {
