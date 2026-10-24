@@ -20,6 +20,8 @@ import { TokenomistAdapter, parseTokenomistResult } from "../lib/data/crypto/tok
 import { PatternPlusUnlockAdapter } from "../lib/data/crypto/patternplus-unlocks-adapter";
 import { fetchCoinGeckoSupplyPayload, parseCoinGeckoSupplyFallback } from "../lib/data/crypto/coingecko-supply";
 import { getProviderSymbol } from "../lib/data/universal/instruments";
+import { normalizeDerivativeSymbol } from "../lib/data/derivatives-symbol";
+import { toCoinGlassSymbol } from "../lib/data/crypto/symbols";
 import { BinancePublicDerivativesAdapter } from "../lib/data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter } from "../lib/data/crypto/bybit-derivatives-adapter";
 import { OkxPublicDerivativesAdapter } from "../lib/data/crypto/okx-derivatives-adapter";
@@ -118,9 +120,9 @@ async function cgFetch(path: string, apiKey: string): Promise<unknown> {
 // ── Symbol mapping ──────────────────────────────────────────────
 
 function mapSymbolForCG(instrument: string): string {
-  // BTC/USD → BTC, ETH/USD → ETH
-  const sym = instrument.toUpperCase().trim();
-  return sym.split("/")[0];
+  // CoinGlass aggregates derivatives by base asset, while callers may supply
+  // canonical pairs (BTC/USD) or exchange-native IDs (BTC-USDT-SWAP).
+  return toCoinGlassSymbol(instrument) ?? normalizeDerivativeSymbol(instrument) ?? instrument.trim().toUpperCase();
 }
 
 // ── Main Action ─────────────────────────────────────────────────
