@@ -1,6 +1,5 @@
-import { pathToFileURL } from "node:url";
-
 #!/usr/bin/env node
+import { pathToFileURL } from "node:url";
 /**
  * Classify Google OAuth configuration without printing credential values.
  * CONFIGURED means variables are present and structurally plausible only;
@@ -64,7 +63,7 @@ export function classifyGoogleAuthConfig(env = process.env) {
     invalid.push("VITE_CONVEX_URL must be an HTTPS origin on *.convex.cloud");
   }
   if (convexSite && convexCloud) {
-    const expectedSiteHost = convexCloud.hostname.replace(/\\.convex\\.cloud$/i, ".convex.site");
+    const expectedSiteHost = convexCloud.hostname.replace(/\.convex\.cloud$/i, ".convex.site");
     if (convexSite.hostname !== expectedSiteHost) {
       invalid.push("CONVEX_SITE_URL and VITE_CONVEX_URL must identify the same deployment");
     }
