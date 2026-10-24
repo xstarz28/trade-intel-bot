@@ -397,7 +397,7 @@ export function scanRadar(
   // Multiple timeframes for one instrument are intentionally retained until
   // horizon-specific selection; candidates.find(instrument) would cross-wire
   // the first timeframe's data into every horizon.
-  const candidateBySource = new Map<RadarCandidateSource, CandidateInput>();
+  const candidateBySource = new Map<RadarCandidateSource, ReturnType<typeof buildRadarCandidate>>();
   for (const source of filteredSources) {
     candidateBySource.set(source, buildRadarCandidate(source, timestamp));
   }
