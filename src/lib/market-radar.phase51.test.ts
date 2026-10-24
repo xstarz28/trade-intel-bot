@@ -214,6 +214,30 @@ describe("A — Empty Analysis History", () => {
     expect(buildRadarCandidate(noCountSource, NOW).dataPoints).toBe(0);
   });
 
+  it("does not count an OHLCV availability flag without a usable observed candle sample", () => {
+    const noRows = makeSource({
+      snapshot: makeSnapshot({ dataPoints: 0 }),
+      derivatives: undefined,
+      fundamentals: undefined,
+      cot: undefined,
+      eia: undefined,
+      treasury: undefined,
+      analysisResult: undefined,
+    });
+    expect(buildRadarCandidate(noRows, NOW).dataCompleteness).toBe("MINIMAL");
+
+    const shortSample = makeSource({
+      snapshot: makeSnapshot({ dataPoints: 19 }),
+      derivatives: undefined,
+      fundamentals: undefined,
+      cot: undefined,
+      eia: undefined,
+      treasury: undefined,
+      analysisResult: undefined,
+    });
+    expect(buildRadarCandidate(shortSample, NOW).dataCompleteness).toBe("MINIMAL");
+  });
+
   it("does not mark snapshot plus prior analysis as FULL without independent context", () => {
     const source = makeSource({
       snapshot: makeSnapshot({}),
