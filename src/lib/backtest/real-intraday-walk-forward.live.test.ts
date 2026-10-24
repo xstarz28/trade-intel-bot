@@ -232,6 +232,5 @@ describe.runIf(enabled)("REAL MARKET intraday walk-forward (Yahoo Finance BTC-US
         expect(Number.isFinite(report.totalNetReturnPct)).toBe(true);
       }
     }
-  }
   }, 240_000);
 });
