@@ -1249,7 +1249,8 @@ describe("AD — Partial Provider Failure", () => {
       makeForexSource(),
     ];
     const result = scanRadar(sources, { horizons: ["SWING"], maxResults: 10 }, undefined, NOW);
-    expect(result.totalScanned).toBe(3);
+    // Scan totals count unique instruments, not duplicate timeframe/provider records.
+    expect(result.totalScanned).toBe(2);
     const opps = result.results.get("SWING")!;
     expect(opps.length).toBeGreaterThanOrEqual(2); // at least BTC and EUR/USD
   });
