@@ -1192,9 +1192,10 @@ export default function Dashboard() {
               );
               discoveryCursorRef.current = nextCursor;
 
-              // Acquire distinct real candles for scalping, intraday, and swing.
+              // Acquire real candles for scalp/intraday/swing plus daily/weekly
+              // context so longer radar horizons do not fall back to M5 data.
               const nativeInputs = batch.flatMap((item) =>
-                (["M5", "H1", "H4"] as const).map((timeframe) => ({
+                (["M5", "H1", "H4", "D1", "W1"] as const).map((timeframe) => ({
                   instrument: item.instId,
                   providerInstrumentId: item.instId,
                   assetClass: "crypto" as const,
@@ -1429,11 +1430,18 @@ export default function Dashboard() {
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
   useEffect(() => {
     if (liveSources.length === 0) return;
-    // Preserve each instrument/timeframe snapshot. The radar selects the
-    // appropriate observed timeframe separately for Intraday, Swing, and
-    // investment horizons; collapsing by instrument here silently made the
-    // last inserted timeframe drive every horizon.
-    const radarSources = liveSources.map(toRadarCandidateSource);
+    // Preserve each instrument/timeframe snapshot and pass sibling intervals
+    // only as higher-timeframe context. The radar selects the appropriate source
+    // separately for each horizon instead of reusing the last inserted interval.
+    const sourcesByInstrument = new Map<string, LiveCandidateSource[]>();
+    for (const source of liveSources) {
+      const group = sourcesByInstrument.get(source.instrument) ?? [];
+      group.push(source);
+      sourcesByInstrument.set(source.instrument, group);
+    }
+    const radarSources = liveSources.map((source) =>
+      toRadarCandidateSource(source, sourcesByInstrument.get(source.instrument) ?? []),
+    );
 
     const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
     const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);
