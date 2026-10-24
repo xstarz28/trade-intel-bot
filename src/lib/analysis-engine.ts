@@ -253,7 +253,7 @@ function applyStructuralVeto(
     ) evidenceNames.push("positioning/sentiment");
 
     const structLabel =
-      input.technicalData?.smc?.internalExternal.external.structure ??
+      input.technicalData?.smc?.internalExternal?.external?.structure ??
       input.technicalData?.structure ?? "unavailable";
     return {
       bias,
