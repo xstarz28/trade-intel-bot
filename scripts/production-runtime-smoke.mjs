@@ -4,8 +4,8 @@ import { access } from "node:fs/promises";
 const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzanalysis.vercel.app";
 const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
 
-if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(url)) {
-  throw new Error(`Refusing non-production Vercel target: ${url}`);
+if (!/^https:\/\/xstarzanalysis\.vercel\.app\/?$/i.test(url)) {
+  throw new Error(`Refusing non-official runtime target; only https://xstarzanalysis.vercel.app is allowed: ${url}`);
 }
 
 const browser = await chromium.launch({ headless: true });
