@@ -12,7 +12,8 @@ import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation
 import type { MarketSnapshot, FreshnessLevel } from "./types";
 import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
-import type { LiveCandidateSource } from "../liveCandidateBuilder";
+import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
+import { calculateTechnical } from "../data/technical";
 import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
 
 // ═══════════════════════════════════════════════════════════════
@@ -24,6 +25,10 @@ export interface RadarCandidateSource {
   universe: UniverseEntry;
   /** Market snapshot from provider (if available). */
   snapshot?: MarketSnapshot | null;
+  /** Verified setup evidence derived from provider candles/technical analysis. */
+  setupDirection?: CandidateInput["setupDirection"];
+  setupStrength?: number;
+  confluenceCount?: number;
   /** Optional additional intelligence. */
   derivatives?: {
     fundingRate?: number;
@@ -101,7 +106,17 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const matchingAnalysis = source.analysisResult?.instrument === source.instrument
     ? source.analysisResult
     : undefined;
-  const technical = source.technicalData ?? matchingAnalysis?.technicalData;
+  const candleSeries = market?.candles?.slice().sort((a, b) => a.timestamp - b.timestamp);
+  const technical = source.technicalData ?? matchingAnalysis?.technicalData ?? (
+    candleSeries && candleSeries.length >= 30
+      ? calculateTechnical(
+          candleSeries,
+          market?.higherTimeframeCandles?.slice().sort((a, b) => a.timestamp - b.timestamp),
+          market?.higherTimeframe ?? "HTF",
+        )
+      : undefined
+  );
+  const setupEvidence = extractSetupEvidence(technical, market?.price?.price);
   const analysis = matchingAnalysis;
   const intelligence = source.universalIntelligence?.instrument === source.instrument &&
     source.universalIntelligence.assetClass === source.assetClass
@@ -231,6 +246,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     snapshot,
     ...(derivatives ? { derivatives } : {}),
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
+    ...(setupEvidence ? setupEvidence : {}),
     ...(rateDifferential !== undefined ? { rateDifferential } : {}),
     ...(yieldDifferential !== undefined ? { yieldDifferential } : {}),
     ...(macroScore !== undefined ? { macroScore } : {}),
@@ -373,6 +389,11 @@ export function buildRadarCandidate(
     freshness,
     providerCoverage,
   };
+
+  // Verified setup evidence from the same source used to build this candidate.
+  if (source.setupDirection !== undefined) candidate.setupDirection = source.setupDirection;
+  if (source.setupStrength !== undefined && Number.isFinite(source.setupStrength)) candidate.setupStrength = source.setupStrength;
+  if (source.confluenceCount !== undefined && Number.isFinite(source.confluenceCount)) candidate.confluenceCount = source.confluenceCount;
 
   // Market structure (only from real data)
   if (snapshot?.htfBias) {
