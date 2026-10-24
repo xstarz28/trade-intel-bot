@@ -167,6 +167,18 @@ describe("A — Empty Analysis History", () => {
     expect(result.results.get("INTRADAY")!.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("preserves verified setup evidence in radar candidates instead of falling back to generic score defaults", () => {
+    const source = makeSource({
+      setupDirection: "short",
+      setupStrength: 71,
+      confluenceCount: 4,
+    });
+    const candidate = buildRadarCandidate(source, NOW);
+    expect(candidate.setupDirection).toBe("short");
+    expect(candidate.setupStrength).toBe(71);
+    expect(candidate.confluenceCount).toBe(4);
+  });
+
   it("candidate builder works without analysis result", () => {
     const source = makeSource({ analysisResult: undefined });
     const candidate = buildRadarCandidate(source, NOW);
