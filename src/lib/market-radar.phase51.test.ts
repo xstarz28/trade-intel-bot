@@ -266,7 +266,8 @@ describe("A — Empty Analysis History", () => {
     };
 
     const source = toRadarCandidateSource(liveSource);
-    expect(source.analysisResult).toBeUndefined();
+    expect(source.analysisResult).toBeDefined(); // same-instrument context remains available
+    expect(source.setupDirection).not.toBe("short"); // mismatched M15 structure is not reused for H1
   });
 
   it("candidate builder works without analysis result", () => {
