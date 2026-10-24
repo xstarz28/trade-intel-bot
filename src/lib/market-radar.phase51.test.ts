@@ -222,6 +222,53 @@ describe("A — Empty Analysis History", () => {
     expect(candidate.confluenceCount).toBe(source.confluenceCount);
   });
 
+  it("does not reuse analysis technical data from a different timeframe", () => {
+    const candles = Array.from({ length: 40 }, (_, i) => {
+      const close = 100 + i * 0.5;
+      return {
+        timestamp: NOW - (40 - i) * 60_000,
+        time: NOW - (40 - i) * 60_000,
+        open: close - 0.2,
+        high: close + 0.4,
+        low: close - 0.4,
+        close,
+        volume: 100 + i,
+      };
+    });
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: candles[candles.length - 1]!.close, timestamp: NOW, source: "test-provider" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        timeframe: "M15",
+        timestamp: NOW,
+        priceSnapshot: {
+          price: candles[candles.length - 1]!.close,
+          timestamp: NOW,
+          source: "test-provider",
+        },
+        technicalData: {
+          structure: "LH/LL",
+          dataPoints: 40,
+        },
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
+    };
+
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.analysisResult).toBeUndefined();
+  });
+
   it("candidate builder works without analysis result", () => {
     const source = makeSource({ analysisResult: undefined });
     const candidate = buildRadarCandidate(source, NOW);
