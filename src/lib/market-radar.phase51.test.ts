@@ -254,6 +254,56 @@ describe("A — Empty Analysis History", () => {
     expect(candidate.confluenceCount).toBe(source.confluenceCount);
   });
 
+  it("derives HTF bias from the nearest sibling timeframe candles", () => {
+    const makeCandles = (trend: number) => Array.from({ length: 80 }, (_, i) => {
+      const wave = [0, 1, 3, 1, 0, -1, -3, -1][i % 8]!;
+      const close = 100 + trend * i + wave;
+      return {
+        timestamp: NOW - (80 - i) * 60_000,
+        time: NOW - (80 - i) * 60_000,
+        open: close - 0.1,
+        high: close + 0.4,
+        low: close - 0.4,
+        close,
+        volume: 100 + i,
+      };
+    });
+    const h1Candles = makeCandles(0.25);
+    const h4Candles = makeCandles(-0.25);
+    const h1: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: h1Candles[h1Candles.length - 1]!.close, timestamp: NOW, source: "test-provider" },
+        candles: h1Candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+    };
+    const h4: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: h4Candles[h4Candles.length - 1]!.close, timestamp: NOW, source: "test-provider" },
+        candles: h4Candles,
+        timeframe: "H4",
+        dataFreshness: "realtime",
+      },
+    };
+
+    const source = toRadarCandidateSource(h1, [h1, h4]);
+    expect(source.snapshot?.htfBias).toBe("short");
+    expect(source.snapshot?.mtfAlignment).toBe("MIXED");
+  });
+
   it("does not reuse analysis technical data from a different timeframe", () => {
     const candles = Array.from({ length: 40 }, (_, i) => {
       const close = 100 + i * 0.5;
