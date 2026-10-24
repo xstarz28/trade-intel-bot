@@ -1,3 +1,5 @@
+import { pathToFileURL } from "node:url";
+
 #!/usr/bin/env node
 /**
  * Classify Google OAuth configuration without printing credential values.
@@ -90,6 +92,6 @@ function main() {
   if (result.state === "INVALID") process.exitCode = 2;
 }
 
-if (import.meta.url === new URL(process.argv[1], "file:").href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
