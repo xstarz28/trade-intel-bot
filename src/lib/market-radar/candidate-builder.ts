@@ -198,11 +198,26 @@ export function toRadarCandidateSource(
     : undefined;
 
   const htf = technical?.mtf?.htfBias;
+  const htfStructure = technical?.htfContext?.structure;
   const htfBias: NonNullable<MarketSnapshot["htfBias"]> =
     htf === "long" || htf === "short" ? htf :
+    htfStructure === "HH/HL" ? "long" :
+    htfStructure === "LH/LL" ? "short" :
+    htfStructure === "range" ? "neutral" : "unknown";
+  const primaryStructureDirection =
     technical?.structure === "HH/HL" ? "long" :
-    technical?.structure === "LH/LL" ? "short" :
-    technical?.structure === "range" ? "neutral" : "unknown";
+    technical?.structure === "LH/LL" ? "short" : undefined;
+  const higherStructureDirection =
+    htfStructure === "HH/HL" ? "long" :
+    htfStructure === "LH/LL" ? "short" : undefined;
+  const derivedMtfAlignment = primaryStructureDirection && higherStructureDirection
+    ? primaryStructureDirection === higherStructureDirection
+      ? primaryStructureDirection === "long" ? "ALIGNED_BULLISH" : "ALIGNED_BEARISH"
+      : "MIXED"
+    : undefined;
+  const mtfAlignment = technical?.mtf?.alignment ??
+    matchingAnalysis?.mtfSummary?.alignment ??
+    derivedMtfAlignment;
   const marketRegime =
     technical?.structure === "HH/HL" || technical?.structure === "LH/LL" ? "TRENDING" :
     technical?.structure === "range" ? "RANGING" : "UNKNOWN";
@@ -263,7 +278,7 @@ export function toRadarCandidateSource(
     availableTimeframes: (market.candles?.length ?? 0) > 0 ? [market.timeframe] : [],
     htfBias,
     marketRegime,
-    mtfAlignment: technical?.mtf?.alignment ?? matchingAnalysis?.mtfSummary?.alignment,
+    mtfAlignment,
     volatility: technical?.atr14,
     provider: market.provider,
     observedAt,
