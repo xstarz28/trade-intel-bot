@@ -182,6 +182,38 @@ describe("A — Empty Analysis History", () => {
     expect(candidate.confluenceCount).toBe(4);
   });
 
+  it("keeps primary setup direction separate from higher-timeframe bias", () => {
+    const technical = {
+      structure: "HH/HL",
+      htfContext: {
+        structure: "LH/LL",
+        timeframe: "H4",
+        dataPoints: 60,
+      },
+      dataPoints: 60,
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 65000, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+    };
+
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.setupDirection).toBe("long");
+    expect(source.snapshot?.htfBias).toBe("short");
+    expect(source.snapshot?.mtfAlignment).toBe("MIXED");
+  });
+
   it("derives radar setup evidence from matching live technical data", () => {
     const technical = {
       structure: "LH/LL",
