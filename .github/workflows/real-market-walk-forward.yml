@@ -28,7 +28,7 @@ jobs:
       - name: Run production decision engine against real daily market history
         env:
           RUN_REAL_MARKET_WALK_FORWARD: "1"
-        run: npx vitest run src/lib/backtest/real-market-walk-forward.live.test.ts --reporter=verbose
+        run: npx vitest run src/lib/backtest/real-market-walk-forward.live.test.ts src/lib/backtest/real-intraday-walk-forward.live.test.ts --reporter=verbose
 
       - name: Upload reproducible market data and metrics
         if: always()
