@@ -6,6 +6,7 @@ import { ConvexAuthActionsContext } from "@convex-dev/auth-internal/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "@/lib/data/universal/okx-discovery";
 import { resolveAuthProviderMode } from "@/lib/auth-provider-mode";
+import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 import type { AssetClass } from "@/lib/data/universal/types";
 
 type MockRecord = Record<string, unknown> & { positionId?: string };
@@ -323,29 +324,6 @@ function MockConvexAuthProvider({ children }: { children: React.ReactNode }) {
       </ConvexProviderWithAuth>
     </ConvexAuthActionsContext.Provider>
   );
-}
-
-const RETIRED_CONVEX_HOSTS = new Set([
-  "tough-goose-455.convex.cloud",
-  "pleasant-curlew-264.convex.cloud",
-  "calculating-eagle-241.convex.cloud",
-]);
-
-function isAllowedConvexCloudUrl(value: unknown): value is string {
-  if (typeof value !== "string" || !value.trim()) return false;
-  try {
-    const url = new URL(value.trim());
-    return url.protocol === "https:" &&
-      url.hostname.endsWith(".convex.cloud") &&
-      !RETIRED_CONVEX_HOSTS.has(url.hostname.toLowerCase()) &&
-      (url.pathname === "/" || url.pathname === "") &&
-      !url.username &&
-      !url.password &&
-      !url.search &&
-      !url.hash;
-  } catch {
-    return false;
-  }
 }
 
 export function AppAuthProvider({ children }: { children: React.ReactNode }) {
