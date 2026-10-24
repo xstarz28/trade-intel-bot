@@ -116,21 +116,24 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
+  const instrumentAnalysis = source.analysisResult?.instrument === source.instrument
+    ? source.analysisResult
+    : undefined;
   const marketTimeframe = normalizeRadarSourceTimeframe(market?.timeframe);
-  const analysisTimeframe = normalizeRadarSourceTimeframe(source.analysisResult?.timeframe);
-  const analysisPrice = source.analysisResult?.priceSnapshot;
+  const analysisTimeframe = normalizeRadarSourceTimeframe(instrumentAnalysis?.timeframe);
+  const analysisPrice = instrumentAnalysis?.priceSnapshot;
   const marketPrice = market?.price;
   const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
     analysisPrice.price === marketPrice.price &&
     analysisPrice.timestamp === marketPrice.timestamp;
-  // A technical analysis is only reusable for the exact market observation
-  // and timeframe that produced it. Same-ticker but different-timeframe data
-  // must not leak into the current horizon's setup evidence.
-  const matchingAnalysis = source.analysisResult?.instrument === source.instrument &&
+  // Technical data is reusable only for the exact market observation and
+  // timeframe that produced it. Same-instrument fundamentals remain valid
+  // context, but a different-timeframe technical read must not leak into setup evidence.
+  const matchingAnalysis = instrumentAnalysis &&
     !!marketTimeframe &&
     analysisTimeframe === marketTimeframe &&
     sameObservedPriceSnapshot
-    ? source.analysisResult
+    ? instrumentAnalysis
     : undefined;
   const candleSeries = market?.candles?.slice().sort((a, b) => a.timestamp - b.timestamp);
   const technical = source.technicalData ?? matchingAnalysis?.technicalData ?? (
@@ -143,7 +146,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
       : undefined
   );
   const setupEvidence = extractSetupEvidence(technical, market?.price?.price);
-  const analysis = matchingAnalysis;
+  const analysis = instrumentAnalysis;
   const intelligence = source.universalIntelligence?.instrument === source.instrument &&
     source.universalIntelligence.assetClass === source.assetClass
     ? source.universalIntelligence
@@ -226,7 +229,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     availableTimeframes: (market.candles?.length ?? 0) > 0 ? [market.timeframe] : [],
     htfBias,
     marketRegime,
-    mtfAlignment: technical?.mtf?.alignment ?? analysis?.mtfSummary?.alignment,
+    mtfAlignment: technical?.mtf?.alignment ?? matchingAnalysis?.mtfSummary?.alignment,
     volatility: technical?.atr14,
     provider: market.provider,
     observedAt,
