@@ -460,17 +460,17 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
       // VPVR and TPO value-area location are one market-profile group. Require
       // available levels to agree, avoiding double-counting two views of
       // similar price-distribution information.
-      const profileSides: Array<"above" | "below"> = [];
+      const profileSides: Array<"above" | "below" | "inside"> = [];
       const vp = tech.smc?.volumeProfile;
       const tpo = tech.smc?.tpoProfile;
       if (vp?.available && Number.isFinite(vp.vah) && Number.isFinite(vp.val)) {
-        if (price > vp.vah!) profileSides.push("above");
-        else if (price < vp.val!) profileSides.push("below");
+        profileSides.push(price > vp.vah! ? "above" : price < vp.val! ? "below" : "inside");
       }
       if (tpo?.available && Number.isFinite(tpo.vah) && Number.isFinite(tpo.val)) {
-        if (price > tpo.vah!) profileSides.push("above");
-        else if (price < tpo.val!) profileSides.push("below");
+        profileSides.push(price > tpo.vah! ? "above" : price < tpo.val! ? "below" : "inside");
       }
+      // A directional vote requires agreement from every available profile.
+      // An in-value-area or disagreeing profile is neutral, not confirmation.
       if (profileSides.length > 0 && profileSides.every((side) => side === "above")) score += 1;
       else if (profileSides.length > 0 && profileSides.every((side) => side === "below")) score -= 1;
     }
