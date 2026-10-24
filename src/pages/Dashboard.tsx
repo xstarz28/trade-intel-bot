@@ -1201,10 +1201,49 @@ export default function Dashboard() {
                   timeframe,
                 })),
               );
+              // Enrich a small rotating subset with real derivatives context.
+              // The action uses provider-side caching and public fallbacks; it is
+              // kept parallel to candle acquisition and never blocks on one failure.
+              const derivativesPromise = Promise.allSettled(
+                batch.slice(0, 3).map(async (item) => {
+                  const key = `${item.instId}|H1`;
+                  const existing =
+                    liveRecommendationSourceRef.current.get(key)?.derivativesData ??
+                    liveSourceRef.current.get(item.instId)?.derivativesData;
+                  if (
+                    existing &&
+                    (existing.freshness === "realtime" || existing.freshness === "delayed") &&
+                    Date.now() - existing.timestamp < 10 * 60_000
+                  ) {
+                    return { instrument: item.instId, data: existing };
+                  }
+
+                  const base = item.instId.trim().toUpperCase().split(/[/-]/)[0];
+                  if (!base) return null;
+                  const result = await withActionTimeout(
+                    fetchDerivatives({ instrument: `${base}/USD` }),
+                    ACTION_TIMEOUTS_MS.derivatives,
+                    `Background derivatives ${base}`,
+                  );
+                  return result.success && result.data
+                    ? { instrument: item.instId, data: result.data }
+                    : null;
+                }),
+              );
+
               const acquired = await acquireOkxNativeLiveDataBatch({
                 instruments: nativeInputs,
                 concurrency: 5,
               });
+              const derivativeSettled = await derivativesPromise;
+              const derivativesByInstrument = new Map<
+                string,
+                NonNullable<LiveCandidateSource["derivativesData"]>
+              >();
+              for (const settled of derivativeSettled) {
+                if (settled.status !== "fulfilled" || !settled.value) continue;
+                derivativesByInstrument.set(settled.value.instrument, settled.value.data);
+              }
               const { providerNativeAcquisitionToMarketData } =
                 await import("@/lib/market-radar/provider-registry");
 
@@ -1231,7 +1270,7 @@ export default function Dashboard() {
                   ...source,
                   analysisResult: previousRecommendationSource?.analysisResult,
                   universalIntelligence: previousRecommendationSource?.universalIntelligence,
-                  derivativesData: previousRecommendationSource?.derivativesData,
+                  derivativesData: derivativesByInstrument.get(result.instrument) ?? previousRecommendationSource?.derivativesData,
                   calendarData: previousRecommendationSource?.calendarData,
                   treasuryData: previousRecommendationSource?.treasuryData,
                   cotData: previousRecommendationSource?.cotData,
@@ -1246,7 +1285,7 @@ export default function Dashboard() {
                     ...source,
                     analysisResult: existing?.analysisResult,
                     universalIntelligence: existing?.universalIntelligence,
-                    derivativesData: existing?.derivativesData,
+                    derivativesData: derivativesByInstrument.get(result.instrument) ?? existing?.derivativesData,
                     calendarData: existing?.calendarData,
                     treasuryData: existing?.treasuryData,
                     cotData: existing?.cotData,
@@ -1366,7 +1405,7 @@ export default function Dashboard() {
     } finally {
       setIsScanning(false);
     }
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchMarketData]);
+  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchMarketData, fetchDerivatives]);
 
   useEffect(() => {
     if (initialScanStartedRef.current) return;
