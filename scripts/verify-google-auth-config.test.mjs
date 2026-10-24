@@ -50,6 +50,15 @@ test("rejects invalid URLs and implausible Google credentials without echoing va
   assert.equal(JSON.stringify(result).includes("not-a-google-client-id"), false);
 });
 
+test("rejects non-official public frontend origins", () => {
+  const result = classifyGoogleAuthConfig({
+    ...configured,
+    SITE_URL: "https://generated-preview.vercel.app",
+  });
+  assert.equal(result.state, "INVALID");
+  assert.ok(result.invalid.includes("SITE_URL must use the official Xstarz Analysis domain"));
+});
+
 test("rejects auth and frontend URLs that point at different deployments", () => {
   const result = classifyGoogleAuthConfig({
     ...configured,
