@@ -22,6 +22,7 @@ import { deriveMacroYieldEvidence, type TreasuryData } from "./data/treasury";
 import type { CotData } from "./data/cot";
 import type { EiaData } from "./data/eia";
 import { calculateTechnical } from "./data/technical";
+import { matchesDerivativeSymbol } from "./data/derivatives-symbol";
 
 // ═══════════════════════════════════════════════════════════════
 // LIVE CANDIDATE INPUT
@@ -451,8 +452,12 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
       source.universalIntelligence.assetClass === source.assetClass
       ? source.universalIntelligence
       : undefined,
-    derivativesData: source.derivativesData?.symbol ===
-      (source.providerNative?.providerInstrumentId ?? source.instrument)
+    derivativesData: source.derivativesData &&
+      matchesDerivativeSymbol(
+        source.instrument,
+        source.providerNative?.providerInstrumentId,
+        source.derivativesData.symbol,
+      )
       ? source.derivativesData
       : undefined,
     cotData: source.cotData?.requestedInstrument === source.instrument
