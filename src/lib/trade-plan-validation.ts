@@ -46,12 +46,12 @@ export function validateTradePlanAgainstMarket(
 
   if (!latest) return { valid: false, reason: "missing_market_candles" };
 
-  // Reject a setup if the newest completed candle has already traded
-  // through its target or stop, even if it later closed back inside the range.
-  // Otherwise the chart can paint an entry after the opportunity has passed.
+  // The plan is created after the latest candle closes, so intrabar wicks
+  // before that entry decision cannot have filled this plan's stop or target.
+  // Only reject when the confirmed close itself has moved through an exit level.
   const targetOrStopAlreadyCrossed = plan.direction === "long"
-    ? latest.high >= target || latest.low <= stop
-    : latest.low <= target || latest.high >= stop;
+    ? latest.close >= target || latest.close <= stop
+    : latest.close <= target || latest.close >= stop;
   if (targetOrStopAlreadyCrossed) {
     return { valid: false, reason: "target_or_stop_already_crossed" };
   }
