@@ -322,7 +322,11 @@ function assessProviderCoverage(source: RadarCandidateSource): CandidateInput["p
   if (total === 0) return "FULL";
   let available = 0;
   if (source.snapshot?.price && source.snapshot.price > 0) available++;
-  if (source.snapshot?.ohlcvAvailable) available++;
+  if (
+    source.snapshot?.ohlcvAvailable === true &&
+    Number.isFinite(source.snapshot.dataPoints) &&
+    (source.snapshot.dataPoints ?? 0) >= 20
+  ) available++;
   if (source.derivatives) available++;
   if (source.fundamentals) available++;
   if (source.cot) available++;
