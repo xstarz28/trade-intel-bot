@@ -393,37 +393,52 @@ export function scanRadar(
     filteredSources = sources.filter(s => config.assetClasses!.includes(s.universe.assetClass));
   }
 
-  // Build candidates from sources
-  const candidates = filteredSources.map(s => buildRadarCandidate(s, timestamp));
-
-  // Score each candidate per horizon
-  const allHorizonOpps = new Map<TradingMode | InvestorHorizon, RadarOpportunity[]>();
-  const freshnessLevels: FreshnessLevel[] = [];
-  let totalWithLiveData = 0;
-  let totalInsufficient = 0;
-  const providerErrors: string[] = [];
-
-  // Initialize empty horizon arrays for all requested horizons
-  for (const horizon of config.horizons) {
-    if (!allHorizonOpps.has(horizon)) allHorizonOpps.set(horizon, []);
+  // Keep each instrument/timeframe candidate paired with its exact source.
+  // Multiple timeframes for one instrument are intentionally retained until
+  // horizon-specific selection; candidates.find(instrument) would cross-wire
+  // the first timeframe's data into every horizon.
+  const candidateBySource = new Map<RadarCandidateSource, CandidateInput>();
+  for (const source of filteredSources) {
+    candidateBySource.set(source, buildRadarCandidate(source, timestamp));
   }
 
+  const sourcesByInstrument = new Map<string, RadarCandidateSource[]>();
   for (const source of filteredSources) {
-    const freshness = source.snapshot
-      ? assessFreshness(source.snapshot.observedAt, timestamp, source.snapshot.freshness)
-      : "UNAVAILABLE";
-    freshnessLevels.push(freshness);
-    if (freshness === "FRESH" || freshness === "DELAYED") totalWithLiveData++;
-    const completeness = candidates.find(c => c.instrument === source.universe.instrument)?.dataCompleteness;
-    if (completeness === "NONE" || completeness === "MINIMAL") totalInsufficient++;
+    const group = sourcesByInstrument.get(source.universe.instrument) ?? [];
+    group.push(source);
+    sourcesByInstrument.set(source.universe.instrument, group);
+  }
+  const bestAvailableSources = Array.from(sourcesByInstrument.values()).map((group) =>
+    [...group].sort((a, b) => freshnessRank(a, timestamp) - freshnessRank(b, timestamp))[0],
+  );
+  const freshnessLevels: FreshnessLevel[] = bestAvailableSources.map((source) => {
+    if (!source.snapshot) return "UNAVAILABLE";
+    return assessFreshness(source.snapshot.observedAt, timestamp, source.snapshot.freshness);
+  });
+  const totalWithLiveData = bestAvailableSources.filter((source) => freshnessRank(source, timestamp) <= 1).length;
+  const totalInsufficient = Array.from(sourcesByInstrument.values()).filter((group) =>
+    group.every((source) => {
+      const completeness = candidateBySource.get(source)?.dataCompleteness;
+      return completeness === "NONE" || completeness === "MINIMAL" || completeness === undefined;
+    }),
+  ).length;
+  const providerErrors: string[] = [];
+  const allHorizonOpps = new Map<TradingMode | InvestorHorizon, RadarOpportunity[]>();
 
-    for (const horizon of config.horizons) {
+  for (const horizon of config.horizons) {
+    const horizonOpps: RadarOpportunity[] = [];
+    const horizonSources = selectSourcesForHorizon(filteredSources, horizon, timestamp);
+
+    for (const source of horizonSources) {
+      const freshness = source.snapshot
+        ? assessFreshness(source.snapshot.observedAt, timestamp, source.snapshot.freshness)
+        : "UNAVAILABLE";
+      const candidate = candidateBySource.get(source);
+
       // Freshness gate check
       const eligibility = checkFreshnessEligibility(freshness, freshness === "FRESH" || freshness === "DELAYED", horizon);
-
       if (!eligibility.eligible) {
-        // Still record as opportunity with EXPIRED/INVALIDATED lifecycle
-        const opp: RadarOpportunity = {
+        horizonOpps.push({
           instrument: source.universe.instrument,
           assetClass: source.universe.assetClass,
           region: source.universe.region,
@@ -431,7 +446,7 @@ export function scanRadar(
           qualityTier: "X",
           score: 0,
           confidence: 0,
-          dataCompleteness: candidates.find(c => c.instrument === source.universe.instrument)?.dataCompleteness ?? "NONE",
+          dataCompleteness: candidate?.dataCompleteness ?? "NONE",
           freshness,
           supportingEvidence: [],
           conflictingEvidence: [eligibility.reason],
@@ -442,17 +457,11 @@ export function scanRadar(
           lastUpdated: timestamp,
           candidateInstrument: source.universe.instrument,
           dependencyGroups: [],
-        };
-
-        if (!allHorizonOpps.has(horizon)) allHorizonOpps.set(horizon, []);
-        allHorizonOpps.get(horizon)!.push(opp);
+        });
         continue;
       }
 
-      // Score the opportunity
       const scored = scoreOpportunity(source, horizon, timestamp);
-      const candidate = candidates.find(c => c.instrument === source.universe.instrument);
-
       const lifecycle: OpportunityLifecycle = scored.score >= 50 ? "ACTIVE" : scored.score >= 30 ? "QUALIFIED" : "DISCOVERED";
       const qualityTier = assignQualityTier(
         scored.score,
@@ -462,7 +471,6 @@ export function scanRadar(
         freshness,
       );
 
-      // Phase 55: Build analytical context summary for the opportunity
       const ad = source.analyticalDepth;
       const analyticalContext = ad ? {
         regime: ad.regime,
@@ -475,7 +483,7 @@ export function scanRadar(
         dimensionsTotal: ad.dimensionsTotal,
       } : undefined;
 
-      const opp: RadarOpportunity = {
+      horizonOpps.push({
         instrument: source.universe.instrument,
         assetClass: source.universe.assetClass,
         region: source.universe.region,
@@ -495,11 +503,10 @@ export function scanRadar(
         candidateInstrument: source.universe.instrument,
         dependencyGroups: [],
         analyticalContext,
-      };
-
-      if (!allHorizonOpps.has(horizon)) allHorizonOpps.set(horizon, []);
-      allHorizonOpps.get(horizon)!.push(opp);
+      });
     }
+
+    allHorizonOpps.set(horizon, horizonOpps);
   }
 
   // For each horizon: sort, filter by correlation, limit
