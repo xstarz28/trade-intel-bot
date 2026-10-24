@@ -42,5 +42,7 @@ jobs:
         run: node --test scripts/verify-coingecko-live.test.mjs
       - name: Test suite
         run: npm test
+      - name: Test Google auth config verifier
+        run: node --test scripts/verify-google-auth-config.test.mjs
       - name: Lint
         run: npm run lint
