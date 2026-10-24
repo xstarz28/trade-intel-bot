@@ -112,7 +112,20 @@ function normalizeRadarSourceTimeframe(value?: string): string | undefined {
   return aliases[normalized] ?? normalized;
 }
 
-export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandidateSource {
+const RADAR_SOURCE_TIMEFRAME_MS: Record<string, number> = {
+  M1: 60_000,
+  M5: 5 * 60_000,
+  M15: 15 * 60_000,
+  H1: 60 * 60_000,
+  H4: 4 * 60 * 60_000,
+  D1: 24 * 60 * 60_000,
+  W1: 7 * 24 * 60 * 60_000,
+};
+
+export function toRadarCandidateSource(
+  source: LiveCandidateSource,
+  relatedSources: LiveCandidateSource[] = [],
+): RadarCandidateSource {
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
@@ -136,13 +149,34 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     ? instrumentAnalysis
     : undefined;
   const candleSeries = market?.candles?.slice().sort((a, b) => a.timestamp - b.timestamp);
+  const currentDuration = marketTimeframe ? RADAR_SOURCE_TIMEFRAME_MS[marketTimeframe] : undefined;
+  const siblingHigherTimeframe = currentDuration === undefined
+    ? undefined
+    : relatedSources
+        .filter((candidate) => candidate !== source && candidate.instrument === source.instrument)
+        .map((candidate) => ({
+          market: candidate.marketData?.instrument === source.instrument ? candidate.marketData : undefined,
+          timeframe: normalizeRadarSourceTimeframe(candidate.marketData?.timeframe),
+        }))
+        .filter((candidate) =>
+          !!candidate.market &&
+          !!candidate.timeframe &&
+          (RADAR_SOURCE_TIMEFRAME_MS[candidate.timeframe] ?? 0) > currentDuration &&
+          (candidate.market.candles?.length ?? 0) >= 30,
+        )
+        .sort((a, b) =>
+          (RADAR_SOURCE_TIMEFRAME_MS[a.timeframe!] ?? Number.POSITIVE_INFINITY) -
+          (RADAR_SOURCE_TIMEFRAME_MS[b.timeframe!] ?? Number.POSITIVE_INFINITY),
+        )[0];
+  const suppliedHigherCandles = (market?.higherTimeframeCandles?.length ?? 0) >= 30
+    ? market?.higherTimeframeCandles
+    : undefined;
+  const higherTimeframeCandles = suppliedHigherCandles ??
+    siblingHigherTimeframe?.market?.candles?.slice().sort((a, b) => a.timestamp - b.timestamp);
+  const higherTimeframeLabel = market?.higherTimeframe ?? siblingHigherTimeframe?.timeframe ?? "HTF";
   const technical = source.technicalData ?? matchingAnalysis?.technicalData ?? (
     candleSeries && candleSeries.length >= 30
-      ? calculateTechnical(
-          candleSeries,
-          market?.higherTimeframeCandles?.slice().sort((a, b) => a.timestamp - b.timestamp),
-          market?.higherTimeframe ?? "HTF",
-        )
+      ? calculateTechnical(candleSeries, higherTimeframeCandles, higherTimeframeLabel)
       : undefined
   );
   const setupEvidence = extractSetupEvidence(technical, market?.price?.price);
