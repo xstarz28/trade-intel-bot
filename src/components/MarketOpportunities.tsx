@@ -321,6 +321,11 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
         <Badge variant="outline" className={cn("text-[9px] font-sans", ASSET_COLORS[opp.assetClass] ?? "border-border/50")}>
           {opp.assetClass}{opp.region ? ` · ${opp.region}` : ""}
         </Badge>
+        {opp.marketTimeframe && (
+          <Badge variant="outline" className="text-[9px] font-sans border-border/50">
+            {opp.marketTimeframe}
+          </Badge>
+        )}
         <Badge variant="outline" className={cn("text-[9px] font-sans", LIFECYCLE_COLORS[opp.lifecycle] ?? "border-border/50")}>
           {opp.lifecycle}
         </Badge>
