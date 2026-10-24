@@ -64,6 +64,77 @@ function assignQualityTier(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// HORIZON-SPECIFIC SOURCE SELECTION
+// ═══════════════════════════════════════════════════════════════
+
+const RADAR_HORIZON_TIMEFRAMES: Record<TradingMode | InvestorHorizon, string[]> = {
+  SCALPING: ["M5", "M1", "M15"],
+  INTRADAY: ["H1", "M15", "H4"],
+  SWING: ["H4", "D1", "W1"],
+  "1-4_WEEKS": ["H4", "D1", "W1"],
+  "1-3_MONTHS": ["D1", "W1", "H4"],
+  "3-6_MONTHS": ["D1", "W1"],
+  "6-12_MONTHS": ["W1", "D1"],
+  "1-3_YEARS": ["W1", "D1"],
+  "3+_YEARS": ["W1", "D1"],
+};
+
+const RADAR_KNOWN_TIMEFRAMES = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"];
+
+function normalizeRadarTimeframe(value?: string): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase().replace(/\\s+/g, "");
+  const aliases: Record<string, string> = {
+    "1M": "M1", "1MIN": "M1", "5M": "M5", "5MIN": "M5",
+    "15M": "M15", "15MIN": "M15", "1H": "H1", "1HR": "H1",
+    "4H": "H4", "4HR": "H4", "1D": "D1", "1DAY": "D1",
+    "1W": "W1", "1WEEK": "W1",
+  };
+  return aliases[normalized] ?? normalized;
+}
+
+function freshnessRank(source: RadarCandidateSource, now: number): number {
+  const snapshot = source.snapshot;
+  const freshness = snapshot
+    ? assessFreshness(snapshot.observedAt, now, snapshot.freshness)
+    : "UNAVAILABLE";
+  return freshness === "FRESH" ? 0 : freshness === "DELAYED" ? 1 : freshness === "STALE" ? 2 : 3;
+}
+
+function selectSourcesForHorizon(
+  sources: RadarCandidateSource[],
+  horizon: TradingMode | InvestorHorizon,
+  now: number,
+): RadarCandidateSource[] {
+  const groups = new Map<string, RadarCandidateSource[]>();
+  for (const source of sources) {
+    const group = groups.get(source.universe.instrument) ?? [];
+    group.push(source);
+    groups.set(source.universe.instrument, group);
+  }
+
+  const preference = RADAR_HORIZON_TIMEFRAMES[horizon];
+  const timeframeRank = (source: RadarCandidateSource): number => {
+    const timeframe = normalizeRadarTimeframe(source.snapshot?.availableTimeframes?.[0]);
+    if (!timeframe) return 1000;
+    const preferred = preference.indexOf(timeframe);
+    if (preferred >= 0) return preferred;
+    const known = RADAR_KNOWN_TIMEFRAMES.indexOf(timeframe);
+    return 100 + (known >= 0 ? known : RADAR_KNOWN_TIMEFRAMES.length);
+  };
+
+  return Array.from(groups.values()).map((group) =>
+    [...group].sort((a, b) => {
+      const freshnessDifference = freshnessRank(a, now) - freshnessRank(b, now);
+      if (freshnessDifference !== 0) return freshnessDifference;
+      const timeframeDifference = timeframeRank(a) - timeframeRank(b);
+      if (timeframeDifference !== 0) return timeframeDifference;
+      return a.universe.instrument.localeCompare(b.universe.instrument);
+    })[0],
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // OPPORTUNITY SCORING
 // ═══════════════════════════════════════════════════════════════
 
