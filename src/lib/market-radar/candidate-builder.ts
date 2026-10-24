@@ -102,7 +102,7 @@ function isPetroleumInstrument(instrument: string): boolean {
 
 function normalizeRadarSourceTimeframe(value?: string): string | undefined {
   if (!value) return undefined;
-  const normalized = value.trim().toUpperCase().replace(/\\s+/g, "");
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
   const aliases: Record<string, string> = {
     "1M": "M1", "1MIN": "M1", "5M": "M5", "5MIN": "M5",
     "15M": "M15", "15MIN": "M15", "1H": "H1", "1HR": "H1",
