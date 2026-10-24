@@ -212,7 +212,7 @@ describe("scoreIndicators (via breakdown)", () => {
         smc: {
           volumeProfile: { available: true, vah: 95, val: 90, poc: 92 },
           tpoProfile: { available: true, vah: 110, val: 90, poc: 100 },
-        } as any,
+        } as unknown as NonNullable<NonNullable<AnalysisInput["technicalData"]>["smc"]>,
       },
     }));
     expect(result.breakdown.indicator).toBe(0);
