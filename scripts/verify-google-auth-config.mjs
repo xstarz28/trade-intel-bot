@@ -72,6 +72,8 @@ export function classifyGoogleAuthConfig(env = process.env) {
   const siteUrl = httpsOrigin(env.SITE_URL);
   if (env.SITE_URL?.trim() && !siteUrl) {
     invalid.push("SITE_URL must be an HTTPS origin");
+  } else if (siteUrl && siteUrl.hostname !== "xstarzanalysis.vercel.app") {
+    invalid.push("SITE_URL must use the official Xstarz Analysis domain");
   }
 
   const callbackUrl = convexSite
