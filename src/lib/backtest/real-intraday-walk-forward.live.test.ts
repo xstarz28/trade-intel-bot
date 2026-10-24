@@ -28,7 +28,7 @@ async function loadYahooIntradayCandles(interval: "15m" | "60m"): Promise<OhlcvC
   const period2 = Math.floor(Date.now() / 1000);
   // Yahoo's intraday retention is limited. A common 60-day window keeps both
   // intervals comparable and makes the evidence reproducible within provider limits.
-  const period1 = period2 - 60 * 24 * 60 * 60;
+  const period1 = period2 - 59 * 24 * 60 * 60;
   const endpoint = new URL("https://query1.finance.yahoo.com/v8/finance/chart/BTC-USD");
   endpoint.searchParams.set("period1", String(period1));
   endpoint.searchParams.set("period2", String(period2));
