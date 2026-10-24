@@ -115,6 +115,28 @@ function scoreOpportunity(
     else if (snapshot.spreadBps > 20) { score -= 5; conflicting.push("wide spread"); }
   }
 
+  // ── Verified setup evidence ──
+  // setupStrength is an internal evidence score, not a win probability.
+  // Only a directional setup with explicit finite evidence can affect ranking.
+  if (
+    (source.setupDirection === "long" || source.setupDirection === "short") &&
+    Number.isFinite(source.setupStrength)
+  ) {
+    const strength = Math.max(0, Math.min(100, source.setupStrength!));
+    const confirmations = Number.isFinite(source.confluenceCount)
+      ? Math.max(0, Math.min(6, Math.floor(source.confluenceCount!)))
+      : 0;
+    const strengthAdjustment = Math.round((strength - 50) * 0.12);
+    const confluenceAdjustment = Math.min(4, confirmations);
+    const setupAdjustment = strengthAdjustment + confluenceAdjustment;
+    score += setupAdjustment;
+    if (setupAdjustment > 0) {
+      supporting.push(`verified ${source.setupDirection} setup evidence (${confirmations} confirmations)`);
+    } else if (setupAdjustment < 0) {
+      conflicting.push(`weak ${source.setupDirection} setup evidence (${confirmations} confirmations)`);
+    }
+  }
+
   // ── Asset-class-specific scoring ──
   switch (source.universe.assetClass) {
     case "crypto":
