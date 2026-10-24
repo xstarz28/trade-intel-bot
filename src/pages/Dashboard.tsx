@@ -1381,11 +1381,11 @@ export default function Dashboard() {
   // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
   useEffect(() => {
     if (liveSources.length === 0) return;
-    // Map the verified runtime snapshots and all independently acquired context.
-    // Keep actual structure authoritative; never infer it from the final analysis bias.
-    const latestPerInstrument = new Map<string, LiveCandidateSource>();
-    for (const source of liveSources) latestPerInstrument.set(source.instrument, source);
-    const radarSources = Array.from(latestPerInstrument.values()).map(toRadarCandidateSource);
+    // Preserve each instrument/timeframe snapshot. The radar selects the
+    // appropriate observed timeframe separately for Intraday, Swing, and
+    // investment horizons; collapsing by instrument here silently made the
+    // last inserted timeframe drive every horizon.
+    const radarSources = liveSources.map(toRadarCandidateSource);
 
     const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
     const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);
