@@ -1025,3 +1025,26 @@ describe("live price freshness gate", () => {
     expect(result.noTradeReasons.join(" ")).toContain("Price snapshot is older than");
   });
 });
+
+
+describe("future market price timestamp gate", () => {
+  it("rejects a quote timestamp beyond the documented clock-skew tolerance", () => {
+    const futureTimestamp = Date.now() + 5 * 60_000;
+    const result = runAnalysis(baseInput({
+      instrument: "EUR/USD",
+      instrumentType: "forex",
+      timeframe: "D1",
+      marketData: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 1.1, timestamp: futureTimestamp, source: "test" },
+        candles: [{ timestamp: futureTimestamp, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 100 }],
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+    }));
+    expect(result.noTradeReasons.join(" ")).toContain("implausibly in the future");
+  });
+});
