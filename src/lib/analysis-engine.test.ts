@@ -1063,12 +1063,22 @@ describe("missing market-profile context disclosure", () => {
         price: { price: 1.11, timestamp: now, source: "test" },
         candles: Array.from({ length: 60 }, (_, i) => ({
           timestamp: now - (60 - i) * 60 * 60_000,
-          open: 1.10, high: 1.12, low: 1.08, close: 1.11, volume: null,
+          open: 1.10, high: 1.12, low: 1.08, close: 1.11, volume: 0,
         })),
         timeframe: "H1",
         dataFreshness: "realtime",
       },
-      technicalData: { dataPoints: 60 },
+      technicalData: {
+        atr14: 0.01,
+        swingHighs: [1.12],
+        swingLows: [1.08],
+        structure: "HH/HL",
+        bosDirection: "bullish",
+        supportLevels: [1.08],
+        resistanceLevels: [1.12],
+        volumeTrend: "stable",
+        dataPoints: 60,
+      },
     }));
 
     expect(result.technicalSummary).toContain("Volume profile unavailable (VPVR): a validated SMC context was not supplied");
