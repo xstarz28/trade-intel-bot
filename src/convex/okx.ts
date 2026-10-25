@@ -19,6 +19,7 @@ import {
   parseOkxOrderBook,
   type ExecutionData,
 } from "../lib/execution-quality";
+import { parseOkxFuturesOpenInterest } from "../lib/data/crypto/okx-futures-open-interest";
 
 const ENDPOINT = "https://www.okx.com/api/v5/public/instruments";
 
@@ -71,6 +72,48 @@ export const fetchOkxInstrumentSpec = action({
  * (lib/execution-quality.ts) — identical to any client-side path.
  * Freshness is based on the EXCHANGE timestamp, never on fetch time.
  */
+/**
+ * Public exact-contract open interest for dated futures / X-Perps.
+ * X-Perps are OKX FUTURES instruments; never substitute the same token's
+ * perpetual swap or accept contract-count values as USD notional.
+ */
+export const fetchOkxFuturesOpenInterest = action({
+  args: { instrument: v.string() },
+  handler: async (_ctx, args) => {
+    const instId = mapInstrumentToOkx(args.instrument);
+    if (!instId || !/-[0-9]{6}$/.test(instId)) {
+      return { success: false as const, error: "A literal dated OKX futures instrument ID is required." };
+    }
+
+    try {
+      const response = await fetch(
+        `https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&instId=${encodeURIComponent(instId)}`,
+        {
+          headers: { Accept: "application/json" },
+          signal: AbortSignal.timeout(4_000),
+        },
+      );
+      if (!response.ok) {
+        return { success: false as const, error: `OKX open-interest endpoint returned HTTP ${response.status}.` };
+      }
+      const payload: unknown = await response.json().catch(() => undefined);
+      if (payload === undefined) {
+        return { success: false as const, error: "OKX open-interest response was malformed." };
+      }
+      const data = parseOkxFuturesOpenInterest(payload, instId);
+      if (!data) {
+        return { success: false as const, error: "OKX returned no fresh, exact-contract USD open-interest value." };
+      }
+      return { success: true as const, data };
+    } catch (error) {
+      return {
+        success: false as const,
+        error: `OKX open-interest fetch failed: ${error instanceof Error ? error.message : "unknown error"}`,
+      };
+    }
+  },
+});
+
 export const fetchOkxOrderBook = action({
   args: { instrument: v.string() },
   handler: async (_ctx, args) => {
