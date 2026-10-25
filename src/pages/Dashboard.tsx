@@ -1314,10 +1314,10 @@ export default function Dashboard() {
   useEffect(() => {
     if (liveSources.length === 0) return;
     // Map the verified runtime snapshots and all independently acquired context.
-    // Keep actual structure authoritative; never infer it from the final analysis bias.
-    const latestPerInstrument = new Map<string, LiveCandidateSource>();
-    for (const source of liveSources) latestPerInstrument.set(source.instrument, source);
-    const radarSources = Array.from(latestPerInstrument.values()).map((source) =>
+    // Preserve distinct timeframe observations until the Radar selects the
+    // horizon-appropriate source. Deduplicating by instrument here silently
+    // discarded M1/M5/H1/D1 siblings before horizon selection could run.
+    const radarSources = liveSources.map((source) =>
       toRadarCandidateSource(source, liveSources),
     );
 
