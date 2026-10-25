@@ -105,6 +105,10 @@ function prioritizeCryptoDiscovery<T extends { instId: string; instType?: string
     /-USDT-SWAP$/i.test(id) ? 0 :
     /-USDC-SWAP$/i.test(id) ? 1 :
     /-(?:USDT|USDC)-[0-9]{6}$/i.test(id) ? 2 :
+    // OKX USD-margined dated futures may use IDs such as BTC-USD-260925
+    // or normalized UM perpetual-family IDs such as 0G-USD_UM_XPERP-310905.
+    /-USD(?:_UM_XPERP)?-[0-9]{6}$/i.test(id) ? 2 :
+    /-USD(?:_UM_XPERP)?-SWAP$/i.test(id) ? 1 :
     /-USDT$/i.test(id) ? 3 :
     /-USDC$/i.test(id) ? 4 : 9;
   const typeRank = (type?: string) =>
