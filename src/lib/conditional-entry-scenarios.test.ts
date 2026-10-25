@@ -22,7 +22,7 @@ function resultFixture(overrides: Partial<AnalysisResult> = {}): AnalysisResult 
     dataFlags: [],
     timestamp: 1,
     candles: Array.from({ length: 30 }, (_, i) => ({
-      timestamp: i * 60_000,
+      timestamp: (i + 1) * 60_000,
       open: 100,
       high: 102,
       low: 98,
