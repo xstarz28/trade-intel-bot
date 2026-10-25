@@ -22,15 +22,39 @@ export interface ConditionalEntryScenario {
  * observed opposing swing levels. No synthetic target is generated.
  */
 export function buildConditionalEntryScenarios(result: AnalysisResult): ConditionalEntryScenario[] {
-  const candles = result.candles ?? [];
-  const tech = result.technicalData as TechnicalData | undefined;
+  return buildConditionalEntryScenariosFromMarketData({
+    candles: result.candles,
+    technicalData: result.technicalData as TechnicalData | undefined,
+    primaryQuality: result.dataQualityContext?.primaryData.status,
+  });
+}
+
+export function buildConditionalEntryScenariosFromMarketData(input: {
+  candles?: AnalysisResult["candles"];
+  technicalData?: TechnicalData;
+  primaryQuality?: string;
+}): ConditionalEntryScenario[] {
+  const candles = input.candles ?? [];
+  const tech = input.technicalData;
   if (candles.length < 20 || !tech || tech.dataPoints < 20) return [];
-  const primaryQuality = result.dataQualityContext?.primaryData.status;
+  const primaryQuality = input.primaryQuality;
   if (primaryQuality && new Set<string>(["STALE", "UNAVAILABLE", "INVALID", "INSUFFICIENT"]).has(primaryQuality)) return [];
 
   const last = candles[candles.length - 1];
-  const values = [last?.close, last?.high, last?.low, tech.atr14];
-  if (!values.slice(0, 3).every((v) => typeof v === "number" && Number.isFinite(v) && v > 0)) return [];
+  const validOhlc = (candle: (typeof candles)[number]) =>
+    [candle.open, candle.high, candle.low, candle.close].every(
+      (value) => typeof value === "number" && Number.isFinite(value) && value > 0,
+    ) &&
+    candle.high >= Math.max(candle.open, candle.close, candle.low) &&
+    candle.low <= Math.min(candle.open, candle.close, candle.high);
+  if (!last || !validOhlc(last)) return [];
+  const recentCandles = candles.slice(-20);
+  if (recentCandles.some((candle) => !validOhlc(candle))) return [];
+  const timestamps = recentCandles.map((candle) => candle.timestamp);
+  if (
+    timestamps.some((value) => !Number.isFinite(value) || value <= 0) ||
+    timestamps.some((value, index) => index > 0 && value <= timestamps[index - 1])
+  ) return [];
   const price = last.close;
   const atr = typeof tech.atr14 === "number" && Number.isFinite(tech.atr14) && tech.atr14 > 0 ? tech.atr14 : undefined;
   const buffer = atr ? atr * 0.1 : 0;
