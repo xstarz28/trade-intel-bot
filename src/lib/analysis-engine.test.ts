@@ -196,6 +196,28 @@ describe("scoreIndicators (via breakdown)", () => {
     expect(result.bias).toBe("Neutral");
   });
 
+  it("does not assign a directional profile vote when VPVR is above value but TPO is inside value", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "100",
+      technicalData: {
+        rsi14: 50,
+        macdHistogram: 0,
+        swingHighs: [],
+        swingLows: [],
+        structure: "range",
+        supportLevels: [],
+        resistanceLevels: [],
+        volumeTrend: "unknown",
+        dataPoints: 60,
+        smc: {
+          volumeProfile: { available: true, vah: 95, val: 90, poc: 92 },
+          tpoProfile: { available: true, vah: 110, val: 90, poc: 100 },
+        } as unknown as NonNullable<NonNullable<AnalysisInput["technicalData"]>["smc"]>,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(0);
+  });
+
   it("scores 0 with empty context", () => {
     const result = runAnalysis(baseInput());
     expect(result.breakdown.indicator).toBe(0);
