@@ -45,8 +45,10 @@ describe("mapInstrumentToOkx (literal-symbol candidates only)", () => {
     expect(mapInstrumentToOkx("ETH / USDT")).toBe("ETH-USDT-SWAP");
   });
 
-  it("passes through explicit exchange ids", () => {
+  it("passes through explicit exchange ids without changing separators", () => {
     expect(mapInstrumentToOkx("BTC-USDT-SWAP")).toBe("BTC-USDT-SWAP");
+    expect(mapInstrumentToOkx("0G-USD_UM_XPERP-310905")).toBe("0G-USD_UM_XPERP-310905");
+    expect(mapInstrumentToOkx("BTC-USD_UM_XPERP")).toBe("BTC-USD_UM_XPERP");
   });
 
   it("unmappable shapes return undefined (no guessing)", () => {
