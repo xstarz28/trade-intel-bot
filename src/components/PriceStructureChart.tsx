@@ -87,15 +87,16 @@ export function PriceStructureChart({
 
   const fmt = (value: number) => formatChartPrice(value, instrumentType, instrument, locale);
   const smc = technicalData?.smc;
-  // Only executable plans belong on the price chart. Rejected projections must not look like entry signals.
-  const candidatePlan = tradePlan;
+  // Prefer an executable plan, but keep a verified market-derived projection visible as a clearly conditional setup.
+  // NO_TRADE remains authoritative: projected levels are never labeled as an executable entry.
+  const candidatePlan = tradePlan ?? projectedTradePlan;
   const planValidation = candidatePlan
     ? validateTradePlanAgainstMarket(candidatePlan, data, technicalData?.atr14)
     : undefined;
   // Final safety boundary: persisted results must not draw stale entry levels.
   const plan = candidatePlan && planValidation?.valid ? candidatePlan : undefined;
-  const rejectedPlan = (!!candidatePlan && !plan) || (!!projectedTradePlan && !tradePlan);
-  const projected = false;
+  const rejectedPlan = !plan && (!!tradePlan || !!projectedTradePlan);
+  const projected = !!plan && !tradePlan;
   const highs = data.map((c) => c.high);
   const lows = data.map((c) => c.low);
   // Keep the visible price scale anchored to recent candles plus the
@@ -199,13 +200,13 @@ export function PriceStructureChart({
         </div>
         {rejectedPlan && (
           <div role="status" className="mt-2 text-[10px] font-mono text-amber-300">
-            {tradePlan ? copy.stale : copy.rejected}
+            {tradePlan ? copy.stale : projectedTradePlan ? copy.stale : copy.rejected}
           </div>
         )}
         {plan && (
           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[9px] font-mono">
             <span className={projected ? "text-amber-300" : "text-sky-300"}>
-              {projected ? "PROJECTED SETUP · NOT EXECUTABLE" : `${copy.plan} · ${copy.verify}`}
+              {projected ? "CONDITIONAL SETUP · NOT EXECUTABLE" : `${copy.plan} · ${copy.verify}`}
             </span>
             <span>{copy.entry} {fmt(Number(plan.entry))}</span>
             <span>{copy.stop} {fmt(Number(plan.stopLoss))}</span>
