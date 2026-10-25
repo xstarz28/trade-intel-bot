@@ -416,25 +416,51 @@ function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessL
 // ═══════════════════════════════════════════════════════════════
 
 function assessProviderCoverage(source: RadarCandidateSource): CandidateInput["providerCoverage"] {
-  const total = source.universe.requiredCapabilities.length;
-  if (total === 0) return "FULL";
-  let available = 0;
-  if (source.snapshot?.price && source.snapshot.price > 0) available++;
-  if (
-    source.snapshot?.ohlcvAvailable === true &&
-    Number.isFinite(source.snapshot.dataPoints) &&
-    (source.snapshot.dataPoints ?? 0) >= 20
-  ) available++;
-  if (source.derivatives) available++;
-  if (source.fundamentals) available++;
-  if (source.cot) available++;
-  if (source.eia) available++;
-  if (source.treasury) available++;
+  // Coverage measures the universe entry's REQUIRED capabilities, not the
+  // total number of unrelated payloads. Optional derivatives/fundamentals
+  // must never compensate for a missing required quote or candle history.
+  const required = source.universe.requiredCapabilities;
+  if (required.length === 0) return "FULL";
 
-  const ratio = available / total;
+  const hasUsableQuote = Number.isFinite(source.snapshot?.price) &&
+    (source.snapshot?.price ?? 0) > 0;
+  const hasUsableOhlcv = source.snapshot?.ohlcvAvailable === true &&
+    Number.isFinite(source.snapshot.dataPoints) &&
+    (source.snapshot.dataPoints ?? 0) >= 20;
+  const hasDerivatives = source.derivatives !== undefined && (
+    source.derivatives.fundingRate !== undefined ||
+    source.derivatives.openInterest !== undefined ||
+    source.derivatives.liquidationVolume !== undefined
+  );
+  const hasFundamentals = source.fundamentals !== undefined &&
+    Object.values(source.fundamentals).some((value) =>
+      value !== undefined && Number.isFinite(value)
+    );
+  const capabilityAvailable: Record<string, boolean> = {
+    quote: hasUsableQuote,
+    ohlcv: hasUsableOhlcv,
+    derivatives: hasDerivatives,
+    fundamentals: hasFundamentals,
+    cot: source.cot?.netNonCommercial !== undefined &&
+      Number.isFinite(source.cot.netNonCommercial),
+    eia: source.eia !== undefined && (
+      source.eia.inventory !== undefined ||
+      source.eia.inventoryChange !== undefined ||
+      source.eia.futuresStructure !== undefined
+    ),
+    macro: source.treasury !== undefined && (
+      source.treasury.tenYearYield !== undefined ||
+      source.treasury.dxyTrend !== undefined ||
+      source.treasury.riskRegime !== undefined
+    ),
+    treasury: source.treasury?.tenYearYield !== undefined &&
+      Number.isFinite(source.treasury.tenYearYield),
+  };
+  const available = required.filter((capability) => capabilityAvailable[capability] === true).length;
+  const ratio = available / required.length;
   if (ratio >= 0.8) return "FULL";
   if (ratio >= 0.5) return "PARTIAL";
-  if (ratio >= 0.2) return "MINIMAL";
+  if (ratio > 0) return "MINIMAL";
   return "NONE";
 }
 
