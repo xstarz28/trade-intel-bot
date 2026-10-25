@@ -161,7 +161,8 @@ export function isUnsafeProvenanceSource(provenance: BuildProvenance): boolean {
     provenance.source === "unknown" ||
     provenance.commit === "unknown" ||
     branch === "" ||
-    branch === "unknown"
+    branch === "unknown" ||
+    provenance.worktreeDirty !== false
   );
 }
 
