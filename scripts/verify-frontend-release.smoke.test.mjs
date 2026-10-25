@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -81,4 +84,29 @@ test('published verification checks auth labels in a lazy-loaded same-origin chu
   assert.equal(check('Google auth surface')?.ok, true, stdout);
   assert.equal(check('guest auth surface')?.ok, true, stdout);
   assert.equal(check('published CSS assets loaded')?.ok, true, stdout);
+});
+
+
+test('release verifier fails closed when worktree provenance is dirty', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'xstarz-release-provenance-'));
+  const dist = join(root, 'dist');
+  mkdirSync(dist);
+  writeFileSync(join(dist, 'index.html'), '<html>XSTARZG Continue with Google Continue without an account</html>');
+  writeFileSync(join(dist, 'logo.svg'), '<svg></svg>');
+  writeFileSync(join(dist, 'build-info.json'), JSON.stringify({
+    commit: 'deadbeef',
+    branch: 'main',
+    worktreeDirty: true,
+  }));
+  const child = spawn(process.execPath, [verifierPath, '--dist', dist, '--expect-commit', 'deadbeef', '--expect-branch', 'main'], { stdio: ['ignore', 'pipe', 'pipe'] });
+  let stdout = '';
+  child.stdout.setEncoding('utf8');
+  child.stdout.on('data', (chunk) => { stdout += chunk; });
+  const outcome = await new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('close', (code) => resolve({ code }));
+  });
+  assert.equal(outcome.code, 1, stdout);
+  const report = JSON.parse(stdout);
+  assert.equal(report.checks.find((item) => item.name === 'source worktree clean')?.ok, false, stdout);
 });
