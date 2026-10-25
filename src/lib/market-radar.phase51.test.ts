@@ -266,11 +266,23 @@ describe("Radar conditional setups", () => {
       undefined,
       NOW,
     );
+    const withoutSetups = { ...source, conditionalScenarios: undefined };
+    const baseline = scanRadar(
+      [withoutSetups],
+      { horizons: ["SCALPING", "1-3_MONTHS"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
     const trading = result.results.get("SCALPING")?.[0];
     const investing = result.results.get("1-3_MONTHS")?.[0];
+    const baselineTrading = baseline.results.get("SCALPING")?.[0];
+    const baselineInvesting = baseline.results.get("1-3_MONTHS")?.[0];
     expect(trading?.currentPrice).toBe(100);
     expect(trading?.conditionalScenarios).toHaveLength(2);
+    expect(trading?.score).toBeGreaterThan(baselineTrading?.score ?? 0);
+    expect(trading?.supportingEvidence).toContain("observed conditional setup meets minimum 1.5R");
     expect(investing).not.toHaveProperty("conditionalScenarios");
+    expect(investing?.score).toBe(baselineInvesting?.score);
   });
 });
 
