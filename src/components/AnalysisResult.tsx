@@ -315,7 +315,8 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
               <div className="rounded border border-border/30 p-2">
                 <span className="text-muted-foreground block">Location</span>
                 <span className="font-semibold">{tech.smc.vwap.available ? `VWAP ${tech.smc.vwap.priceLocation.replace("_", " ")}` : tech.smc.vwap.priceOnlyFallback ? `Price-only mean ${tech.smc.vwap.priceOnlyFallback.sessionMean.toFixed(2)} · ${tech.smc.vwap.priceOnlyFallback.priceLocation.replace("_", " ")}` : "VWAP unavailable"}</span>
-                <span className="text-muted-foreground block mt-1">{tech.smc.volumeProfile.available ? `POC ${tech.smc.volumeProfile.poc?.toFixed(2) ?? "—"} · VA` : tech.smc.tpoProfile?.available ? `TPO POC ${tech.smc.tpoProfile.poc?.toFixed(2) ?? "—"} · VA (time-based)` : "Volume/TPO Profile unavailable"}</span>
+                <span className="text-muted-foreground block mt-1">{tech.smc.volumeProfile.available ? `VPVR POC ${tech.smc.volumeProfile.poc?.toFixed(2) ?? "—"} · VAH ${tech.smc.volumeProfile.vah?.toFixed(2) ?? "—"} · VAL ${tech.smc.volumeProfile.val?.toFixed(2) ?? "—"}` : "VPVR unavailable"}</span>
+                <span className="text-muted-foreground block mt-1">{tech.smc.tpoProfile?.available ? `TPO POC ${tech.smc.tpoProfile.poc?.toFixed(2) ?? "—"} · VAH ${tech.smc.tpoProfile.vah?.toFixed(2) ?? "—"} · VAL ${tech.smc.tpoProfile.val?.toFixed(2) ?? "—"} · ${tech.smc.tpoProfile.blockMinutes}m blocks` : "TPO unavailable"}</span>
               </div>
             </div>
           </CardContent>
