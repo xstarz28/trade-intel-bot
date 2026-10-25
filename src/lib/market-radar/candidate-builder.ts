@@ -14,6 +14,7 @@ import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
 import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
 import { calculateTechnical } from "../data/technical";
+import { buildConditionalEntryScenariosFromMarketData, type ConditionalEntryScenario } from "../conditional-entry-scenarios";
 import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
 import { matchesDerivativeSymbol } from "@/lib/data/derivatives-symbol";
 
@@ -30,6 +31,8 @@ export interface RadarCandidateSource {
   setupDirection?: CandidateInput["setupDirection"];
   setupStrength?: number;
   confluenceCount?: number;
+  /** Conditional entry/invalidations/targets derived from this exact candle snapshot. */
+  conditionalScenarios?: ConditionalEntryScenario[];
   /** Optional additional intelligence. */
   derivatives?: {
     fundingRate?: number;
@@ -179,6 +182,18 @@ export function toRadarCandidateSource(
       ? calculateTechnical(candleSeries, higherTimeframeCandles, higherTimeframeLabel)
       : undefined
   );
+  const conditionalScenarios = market && candleSeries && technical
+    ? buildConditionalEntryScenariosFromMarketData({
+        candles: candleSeries,
+        technicalData: technical,
+        primaryQuality: market.dataFreshness === "stale"
+          ? "STALE"
+          : market.dataFreshness === "unavailable"
+            ? "UNAVAILABLE"
+            : undefined,
+      })
+    : [];
+
   const setupEvidence = extractSetupEvidence(technical, market?.price?.price);
   const analysis = instrumentAnalysis;
   const intelligence = source.universalIntelligence?.instrument === source.instrument &&
@@ -326,6 +341,7 @@ export function toRadarCandidateSource(
       refreshIntervalMs: 300_000,
     },
     snapshot,
+    ...(conditionalScenarios.length > 0 ? { conditionalScenarios } : {}),
     ...(derivatives ? { derivatives } : {}),
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
     ...(setupEvidence ? setupEvidence : {}),
