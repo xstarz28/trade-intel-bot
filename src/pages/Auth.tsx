@@ -23,8 +23,15 @@ export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectA
 
   const run = async (provider: string) => {
     setLoading(true); setError(null);
-    try { await signIn(provider); }
-    catch (e) { setError(e instanceof Error ? e.message : "Sign in failed"); setLoading(false); }
+    try {
+      await signIn(provider);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sign in failed");
+    } finally {
+      // Some auth-action paths can resolve without a full-page navigation.
+      // Always release the button lock so a transient callback failure is retryable.
+      setLoading(false);
+    }
   };
 
   return <div className="min-h-screen bg-background panel-grid flex items-center justify-center px-5">

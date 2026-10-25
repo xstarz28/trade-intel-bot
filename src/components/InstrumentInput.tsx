@@ -37,7 +37,7 @@ type CryptoMarketType = "spot" | "perpetual" | "futures";
 function inferCryptoMarketType(item: Pick<AvailableInstrument, "symbol" | "marketType">): CryptoMarketType {
   if (item.marketType) return item.marketType;
   const symbol = item.symbol.toUpperCase();
-  if (symbol.endsWith("-SWAP") || symbol.endsWith("-FUTURES")) return "perpetual";
+  if (symbol.endsWith("-SWAP") || symbol.endsWith("-FUTURES") || /(?:-XPERP|_XPERP)$/.test(symbol)) return "perpetual";
   if (/-[0-9]{6}$/.test(symbol)) return "futures";
   return "spot";
 }
@@ -382,15 +382,33 @@ export function InstrumentInput({
             </div>
             {!manualSearch && (
               <Select value={form.instrument} onValueChange={selectInstrument} disabled={isAnalyzing}>
-              <SelectTrigger className="h-11 text-sm font-mono">
-                <SelectValue placeholder={filteredInstruments.length ? t.dashboard.selectInstrument : t.market.noData} />
+              <SelectTrigger className="h-11 w-full min-w-0 overflow-hidden text-sm font-mono">
+                <SelectValue
+                  className="min-w-0 truncate"
+                  placeholder={filteredInstruments.length ? t.dashboard.selectInstrument : t.market.noData}
+                />
               </SelectTrigger>
-              <SelectContent className="max-h-80">
+              <SelectContent className="max-h-80 max-w-[calc(100vw-2rem)]">
                 {filteredInstruments.map((item) => (
-                  <SelectItem key={item.symbol} value={item.symbol} className="font-mono">
-                    {item.symbol}
-                    {item.type === "crypto" ? " [" + inferCryptoMarketType(item).toUpperCase() + "]" : ""}
-                    {item.label && item.label !== item.symbol ? ` — ${item.label}` : ""}
+                  <SelectItem
+                    key={item.symbol}
+                    value={item.symbol}
+                    className="h-auto min-h-9 items-start whitespace-normal font-mono"
+                    textValue={`${item.symbol}${item.type === "crypto" ? " [" + inferCryptoMarketType(item).toUpperCase() + "]" : ""}${item.label && item.label !== item.symbol ? ` — ${item.label}` : ""}`}
+                  >
+                    <span className="block min-w-0 max-w-full whitespace-normal break-words leading-5">
+                      <span className="block break-all">{item.symbol}</span>
+                      {item.type === "crypto" && (
+                        <span className="block text-[10px] text-muted-foreground">
+                          {inferCryptoMarketType(item).toUpperCase()}
+                        </span>
+                      )}
+                      {item.label && item.label !== item.symbol && (
+                        <span className="block whitespace-normal break-words text-xs text-muted-foreground">
+                          {item.label}
+                        </span>
+                      )}
+                    </span>
                   </SelectItem>
                 ))}
               </SelectContent>
