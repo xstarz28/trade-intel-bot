@@ -1121,7 +1121,14 @@ function decideTrade(
   // explicitly instead of silently passing the staleness comparison.
   const PRICE_FUTURE_SKEW_MS = 90_000; // documented clock-skew tolerance
   const PRICE_STALE_MS = styleProfile.priceStaleMs;
-  const isHistoricalAnalysis = input.dataMode === "historical";
+  const isHistoricalAnalysis = !!md &&
+    md.dataFreshness !== "realtime" &&
+    md.dataFreshness !== "unavailable" &&
+    typeof md.price?.timestamp === "number" &&
+    Array.isArray(md.candles) &&
+    md.candles.length > 0 &&
+    md.price.timestamp === md.candles[md.candles.length - 1]?.timestamp &&
+    md.price.price === md.candles[md.candles.length - 1]?.close;
   if (md) {
     const ts = md.price?.timestamp;
     const historicalCeiling = md.candles?.[md.candles.length - 1]?.timestamp;
