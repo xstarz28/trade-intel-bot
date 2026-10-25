@@ -22,7 +22,7 @@ function resultFixture(overrides: Partial<AnalysisResult> = {}): AnalysisResult 
     dataFlags: [],
     timestamp: 1,
     candles: Array.from({ length: 30 }, (_, i) => ({
-      timestamp: i * 60_000,
+      timestamp: (i + 1) * 60_000,
       open: 100,
       high: 102,
       low: 98,
@@ -124,6 +124,34 @@ describe("buildConditionalEntryScenarios", () => {
     expect(scenarios[0].targetBasis).toContain("bukan resistance terkonfirmasi");
     expect(scenarios[1].targetBasis).toContain("bukan support terkonfirmasi");
     expect(scenarios.every((scenario) => scenario.reason.includes("Tunggu struktur"))).toBe(true);
+  });
+
+  it("rejects malformed latest OHLC instead of producing plausible levels", () => {
+    const fixture = resultFixture({
+      candles: Array.from({ length: 30 }, (_, i) => ({
+        timestamp: (i + 1) * 60_000,
+        open: 100,
+        high: i === 29 ? 99 : 102,
+        low: 98,
+        close: 100,
+        volume: 10,
+      })),
+    });
+    expect(buildConditionalEntryScenarios(fixture)).toEqual([]);
+  });
+
+  it("rejects non-monotonic candle timestamps", () => {
+    const fixture = resultFixture({
+      candles: Array.from({ length: 30 }, (_, i) => ({
+        timestamp: (i === 25 ? 24 : i + 1) * 60_000,
+        open: 100,
+        high: 102,
+        low: 98,
+        close: 100,
+        volume: 10,
+      })),
+    });
+    expect(buildConditionalEntryScenarios(fixture)).toEqual([]);
   });
 
   it("refuses to derive scenarios from insufficient candles", () => {
