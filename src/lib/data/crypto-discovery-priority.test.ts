@@ -12,6 +12,12 @@ describe("crypto discovery prioritization", () => {
     expect(prioritizeCryptoDiscovery([future])).toContainEqual(future);
   });
 
+  it("keeps USD-margined XPERP swaps filterable as perpetuals", () => {
+    const perpetual = { instId: "BTC-USD_UM_XPERP", instType: "SWAP" };
+    expect(cryptoMarketType(perpetual.instId, perpetual.instType)).toBe("perpetual");
+    expect(prioritizeCryptoDiscovery([perpetual])).toContainEqual(perpetual);
+  });
+
   it("balances spot, perpetual, and dated-futures contracts in the same discovery batch", () => {
     const instruments: DiscoveredCryptoInstrument[] = [
       { instId: "BTC-USDT", instType: "SPOT" },
