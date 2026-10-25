@@ -8,12 +8,10 @@
  * Provider availability NEVER becomes directional evidence.
  */
 
-import type { AssetClass } from "@/lib/data/universal/types";
 import type {
   TradingMode,
   InvestorHorizon,
 } from "@/lib/recommendation-engine";
-import { generateRecommendation } from "@/lib/recommendation-engine";
 import type {
   RadarOpportunity,
   RadarScanConfig,
@@ -22,22 +20,16 @@ import type {
   OpportunityLifecycle,
   QualityTier,
   FreshnessLevel,
-  CorrelationCluster,
-  UniverseEntry,
 } from "./types";
 
 // Re-export types for consumers
 export type { RadarScanResult, RadarScanConfig, RadarOpportunity } from "./types";
 import {
-  HORIZON_FRESHNESS_GATES,
-  meetsFreshness,
-  HORIZON_REFRESH_PRIORITY,
 } from "./types";
-import { DEFAULT_UNIVERSE, CORRELATION_CLUSTERS } from "./universe";
+import { CORRELATION_CLUSTERS } from "./universe";
 import { buildRadarCandidate, type RadarCandidateSource } from "./candidate-builder";
 import {
   checkFreshnessEligibility,
-  shouldTransitionLifecycle,
   assessFreshness,
   summarizeFreshness,
 } from "./freshness";
@@ -72,6 +64,112 @@ function assignQualityTier(
 }
 
 // ═══════════════════════════════════════════════════════════════
+// HORIZON-SPECIFIC SOURCE SELECTION
+// ═══════════════════════════════════════════════════════════════
+
+const RADAR_HORIZON_TIMEFRAMES: Record<TradingMode | InvestorHorizon, string[]> = {
+  SCALPING: ["M5", "M1", "M15"],
+  INTRADAY: ["H1", "M15", "H4"],
+  SWING: ["H4", "D1", "W1"],
+  "1-4_WEEKS": ["H4", "D1", "W1"],
+  "1-3_MONTHS": ["D1", "W1", "H4"],
+  "3-6_MONTHS": ["D1", "W1"],
+  "6-12_MONTHS": ["W1", "D1"],
+  "1-3_YEARS": ["W1", "D1"],
+  "3+_YEARS": ["W1", "D1"],
+};
+
+const RADAR_KNOWN_TIMEFRAMES = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"];
+const RADAR_TIMEFRAME_MS: Record<string, number> = {
+  M1: 60_000,
+  M5: 5 * 60_000,
+  M15: 15 * 60_000,
+  H1: 60 * 60_000,
+  H4: 4 * 60 * 60_000,
+  D1: 24 * 60 * 60_000,
+  W1: 7 * 24 * 60 * 60_000,
+};
+
+export function normalizeRadarTimeframe(value?: string): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
+  const aliases: Record<string, string> = {
+    "1M": "M1", "1MIN": "M1", "5M": "M5", "5MIN": "M5",
+    "15M": "M15", "15MIN": "M15", "1H": "H1", "1HR": "H1",
+    "4H": "H4", "4HR": "H4", "1D": "D1", "1DAY": "D1",
+    "1W": "W1", "1WEEK": "W1",
+  };
+  return aliases[normalized] ?? normalized;
+}
+
+function freshnessRank(source: RadarCandidateSource, now: number): number {
+  const snapshot = source.snapshot;
+  const freshness = snapshot
+    ? assessFreshness(snapshot.observedAt, now, snapshot.freshness)
+    : "UNAVAILABLE";
+  return freshness === "FRESH" ? 0 : freshness === "DELAYED" ? 1 : freshness === "STALE" ? 2 : 3;
+}
+
+function selectSourcesForHorizon(
+  sources: RadarCandidateSource[],
+  horizon: TradingMode | InvestorHorizon,
+  now: number,
+): RadarCandidateSource[] {
+  const groups = new Map<string, RadarCandidateSource[]>();
+  for (const source of sources) {
+    const group = groups.get(source.universe.instrument) ?? [];
+    group.push(source);
+    groups.set(source.universe.instrument, group);
+  }
+
+  const preference = RADAR_HORIZON_TIMEFRAMES[horizon];
+  const targetDuration = RADAR_TIMEFRAME_MS[preference[0] ?? "H1"] ?? RADAR_TIMEFRAME_MS.H1!;
+  const timeframeRank = (source: RadarCandidateSource): number => {
+    const timeframe = normalizeRadarTimeframe(source.snapshot?.availableTimeframes?.[0]);
+    if (!timeframe || !RADAR_KNOWN_TIMEFRAMES.includes(timeframe)) return 1000;
+    const preferred = preference.indexOf(timeframe);
+    if (preferred >= 0) return preferred;
+    const duration = RADAR_TIMEFRAME_MS[timeframe];
+    // If none of the horizon's preferred intervals is available, choose the
+    // closest actual interval, not the smallest enum value (which incorrectly
+    // made M5 the fallback for multi-year horizons).
+    return duration === undefined
+      ? 1000
+      : 100 + Math.abs(duration - targetDuration);
+  };
+
+  return Array.from(groups.values()).map((group) =>
+    [...group].sort((a, b) => {
+      const freshnessA = a.snapshot
+        ? assessFreshness(a.snapshot.observedAt, now, a.snapshot.freshness)
+        : "UNAVAILABLE";
+      const freshnessB = b.snapshot
+        ? assessFreshness(b.snapshot.observedAt, now, b.snapshot.freshness)
+        : "UNAVAILABLE";
+      const eligibleA = checkFreshnessEligibility(
+        freshnessA,
+        freshnessA === "FRESH" || freshnessA === "DELAYED",
+        horizon,
+      ).eligible;
+      const eligibleB = checkFreshnessEligibility(
+        freshnessB,
+        freshnessB === "FRESH" || freshnessB === "DELAYED",
+        horizon,
+      ).eligible;
+      // First reject sources that cannot pass this horizon's freshness gate.
+      // Among eligible sources, timeframe fit outranks generic recency: a fresh
+      // M5 snapshot must not displace a still-eligible D1 source for swing.
+      if (eligibleA !== eligibleB) return eligibleA ? -1 : 1;
+      const timeframeDifference = timeframeRank(a) - timeframeRank(b);
+      if (timeframeDifference !== 0) return timeframeDifference;
+      const freshnessDifference = freshnessRank(a, now) - freshnessRank(b, now);
+      if (freshnessDifference !== 0) return freshnessDifference;
+      return a.universe.instrument.localeCompare(b.universe.instrument);
+    })[0],
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
 // OPPORTUNITY SCORING
 // ═══════════════════════════════════════════════════════════════
 
@@ -84,7 +182,6 @@ function scoreOpportunity(
   const supporting: string[] = [];
   const conflicting: string[] = [];
   const missing: string[] = [];
-  const reasons: string[] = [];
   let score = 50; // baseline
   let confidence = 50;
 
@@ -122,6 +219,28 @@ function scoreOpportunity(
   if (snapshot?.spreadBps !== undefined) {
     if (snapshot.spreadBps < 5) { score += 3; supporting.push("tight spread"); }
     else if (snapshot.spreadBps > 20) { score -= 5; conflicting.push("wide spread"); }
+  }
+
+  // ── Verified setup evidence ──
+  // setupStrength is an internal evidence score, not a win probability.
+  // Only a directional setup with explicit finite evidence can affect ranking.
+  if (
+    (source.setupDirection === "long" || source.setupDirection === "short") &&
+    Number.isFinite(source.setupStrength)
+  ) {
+    const strength = Math.max(0, Math.min(100, source.setupStrength!));
+    const confirmations = Number.isFinite(source.confluenceCount)
+      ? Math.max(0, Math.min(6, Math.floor(source.confluenceCount!)))
+      : 0;
+    const strengthAdjustment = Math.round((strength - 50) * 0.12);
+    const confluenceAdjustment = Math.min(4, confirmations);
+    const setupAdjustment = strengthAdjustment + confluenceAdjustment;
+    score += setupAdjustment;
+    if (setupAdjustment > 0) {
+      supporting.push(`verified ${source.setupDirection} setup evidence (${confirmations} confirmations)`);
+    } else if (setupAdjustment < 0) {
+      conflicting.push(`weak ${source.setupDirection} setup evidence (${confirmations} confirmations)`);
+    }
   }
 
   // ── Asset-class-specific scoring ──
@@ -223,6 +342,11 @@ function scoreOpportunity(
     }
   }
 
+  // Analytical-depth bonuses are applied after the first clamp above;
+  // enforce the public 0–100 contract again before returning the score.
+  score = Math.max(0, Math.min(100, Math.round(score)));
+  confidence = Math.max(0, Math.min(100, Math.round(confidence)));
+
   // Build primary reasons from top supporting evidence
   const topReasons = supporting.slice(0, 3);
 
@@ -309,45 +433,61 @@ export function scanRadar(
     filteredSources = sources.filter(s => config.assetClasses!.includes(s.universe.assetClass));
   }
 
-  // Build candidates from sources
-  const candidates = filteredSources.map(s => buildRadarCandidate(s, timestamp));
-
-  // Score each candidate per horizon
-  const allHorizonOpps = new Map<TradingMode | InvestorHorizon, RadarOpportunity[]>();
-  const freshnessLevels: FreshnessLevel[] = [];
-  let totalWithLiveData = 0;
-  let totalInsufficient = 0;
-  const providerErrors: string[] = [];
-
-  // Initialize empty horizon arrays for all requested horizons
-  for (const horizon of config.horizons) {
-    if (!allHorizonOpps.has(horizon)) allHorizonOpps.set(horizon, []);
+  // Keep each instrument/timeframe candidate paired with its exact source.
+  // Multiple timeframes for one instrument are intentionally retained until
+  // horizon-specific selection; candidates.find(instrument) would cross-wire
+  // the first timeframe's data into every horizon.
+  const candidateBySource = new Map<RadarCandidateSource, ReturnType<typeof buildRadarCandidate>>();
+  for (const source of filteredSources) {
+    candidateBySource.set(source, buildRadarCandidate(source, timestamp));
   }
 
+  const sourcesByInstrument = new Map<string, RadarCandidateSource[]>();
   for (const source of filteredSources) {
-    const freshness = source.snapshot
-      ? assessFreshness(source.snapshot.observedAt, timestamp, source.snapshot.freshness)
-      : "UNAVAILABLE";
-    freshnessLevels.push(freshness);
-    if (freshness === "FRESH" || freshness === "DELAYED") totalWithLiveData++;
-    const completeness = candidates.find(c => c.instrument === source.universe.instrument)?.dataCompleteness;
-    if (completeness === "NONE" || completeness === "MINIMAL") totalInsufficient++;
+    const group = sourcesByInstrument.get(source.universe.instrument) ?? [];
+    group.push(source);
+    sourcesByInstrument.set(source.universe.instrument, group);
+  }
+  const bestAvailableSources = Array.from(sourcesByInstrument.values()).map((group) =>
+    [...group].sort((a, b) => freshnessRank(a, timestamp) - freshnessRank(b, timestamp))[0],
+  );
+  const freshnessLevels: FreshnessLevel[] = bestAvailableSources.map((source) => {
+    if (!source.snapshot) return "UNAVAILABLE";
+    return assessFreshness(source.snapshot.observedAt, timestamp, source.snapshot.freshness);
+  });
+  const totalWithLiveData = bestAvailableSources.filter((source) => freshnessRank(source, timestamp) <= 1).length;
+  const totalInsufficient = Array.from(sourcesByInstrument.values()).filter((group) =>
+    group.every((source) => {
+      const completeness = candidateBySource.get(source)?.dataCompleteness;
+      return completeness === "NONE" || completeness === "MINIMAL" || completeness === undefined;
+    }),
+  ).length;
+  const providerErrors: string[] = [];
+  const allHorizonOpps = new Map<TradingMode | InvestorHorizon, RadarOpportunity[]>();
 
-    for (const horizon of config.horizons) {
+  for (const horizon of config.horizons) {
+    const horizonOpps: RadarOpportunity[] = [];
+    const horizonSources = selectSourcesForHorizon(filteredSources, horizon, timestamp);
+
+    for (const source of horizonSources) {
+      const freshness = source.snapshot
+        ? assessFreshness(source.snapshot.observedAt, timestamp, source.snapshot.freshness)
+        : "UNAVAILABLE";
+      const candidate = candidateBySource.get(source);
+
       // Freshness gate check
       const eligibility = checkFreshnessEligibility(freshness, freshness === "FRESH" || freshness === "DELAYED", horizon);
-
       if (!eligibility.eligible) {
-        // Still record as opportunity with EXPIRED/INVALIDATED lifecycle
-        const opp: RadarOpportunity = {
+        horizonOpps.push({
           instrument: source.universe.instrument,
           assetClass: source.universe.assetClass,
           region: source.universe.region,
+          marketTimeframe: normalizeRadarTimeframe(source.snapshot?.availableTimeframes?.[0]),
           lifecycle: "EXPIRED",
           qualityTier: "X",
           score: 0,
           confidence: 0,
-          dataCompleteness: candidates.find(c => c.instrument === source.universe.instrument)?.dataCompleteness ?? "NONE",
+          dataCompleteness: candidate?.dataCompleteness ?? "NONE",
           freshness,
           supportingEvidence: [],
           conflictingEvidence: [eligibility.reason],
@@ -358,17 +498,11 @@ export function scanRadar(
           lastUpdated: timestamp,
           candidateInstrument: source.universe.instrument,
           dependencyGroups: [],
-        };
-
-        if (!allHorizonOpps.has(horizon)) allHorizonOpps.set(horizon, []);
-        allHorizonOpps.get(horizon)!.push(opp);
+        });
         continue;
       }
 
-      // Score the opportunity
       const scored = scoreOpportunity(source, horizon, timestamp);
-      const candidate = candidates.find(c => c.instrument === source.universe.instrument);
-
       const lifecycle: OpportunityLifecycle = scored.score >= 50 ? "ACTIVE" : scored.score >= 30 ? "QUALIFIED" : "DISCOVERED";
       const qualityTier = assignQualityTier(
         scored.score,
@@ -378,7 +512,6 @@ export function scanRadar(
         freshness,
       );
 
-      // Phase 55: Build analytical context summary for the opportunity
       const ad = source.analyticalDepth;
       const analyticalContext = ad ? {
         regime: ad.regime,
@@ -391,10 +524,11 @@ export function scanRadar(
         dimensionsTotal: ad.dimensionsTotal,
       } : undefined;
 
-      const opp: RadarOpportunity = {
+      horizonOpps.push({
         instrument: source.universe.instrument,
         assetClass: source.universe.assetClass,
         region: source.universe.region,
+        marketTimeframe: normalizeRadarTimeframe(source.snapshot?.availableTimeframes?.[0]),
         lifecycle,
         qualityTier,
         score: scored.score,
@@ -411,11 +545,10 @@ export function scanRadar(
         candidateInstrument: source.universe.instrument,
         dependencyGroups: [],
         analyticalContext,
-      };
-
-      if (!allHorizonOpps.has(horizon)) allHorizonOpps.set(horizon, []);
-      allHorizonOpps.get(horizon)!.push(opp);
+      });
     }
+
+    allHorizonOpps.set(horizon, horizonOpps);
   }
 
   // For each horizon: sort, filter by correlation, limit
@@ -494,7 +627,7 @@ export function scanRadar(
   return {
     results,
     diffs,
-    totalScanned: filteredSources.length,
+    totalScanned: sourcesByInstrument.size,
     totalWithLiveData,
     totalInsufficient,
     freshCount: fs.fresh,

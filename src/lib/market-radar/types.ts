@@ -6,7 +6,7 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { CandidateInput, TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
+import type { TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
 
 // ═══════════════════════════════════════════════════════════════
 // OPPORTUNITY LIFECYCLE
@@ -147,6 +147,16 @@ export interface MarketSnapshot {
   change24h?: number;
   /** 24h volume. */
   volume24h?: number;
+  /** Futures open interest in USD, when supplied by the provider. */
+  openInterestUsd?: number;
+  /** 24h open-interest change in percent, when supplied by the provider. */
+  openInterestChange24h?: number;
+  /** Funding rate as returned by the source (decimal units). */
+  fundingRate?: number;
+  /** 24h long liquidations in USD. */
+  longLiquidationUsd24h?: number;
+  /** 24h short liquidations in USD. */
+  shortLiquidationUsd24h?: number;
   /** Bid-ask spread in bps. */
   spreadBps?: number;
   /** Volatility measure (ATR or implied). */
@@ -184,6 +194,8 @@ export interface RadarOpportunity {
   assetClass: AssetClass;
   /** Region. */
   region?: string;
+  /** Actual observed timeframe used to rank this horizon. */
+  marketTimeframe?: string;
   /** Lifecycle state. */
   lifecycle: OpportunityLifecycle;
   /** Quality tier. */

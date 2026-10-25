@@ -100,6 +100,21 @@ describe("Phase 25 — primary data quality assessment", () => {
     const dq = assessDataQuality(input);
     expect(dq.primaryData.status).toBe("INVALID");
   });
+
+  it("realtime quote older than its timeframe window → STALE", () => {
+    const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000));
+    if (input.marketData) {
+      input.marketData.dataFreshness = "realtime";
+      input.marketData.price = {
+        ...input.marketData.price,
+        timestamp: Date.now() - 4 * 24 * 60 * 60_000,
+        source: "twelve-data",
+      };
+    }
+    const dq = assessDataQuality(input);
+    expect(dq.primaryData.status).toBe("STALE");
+    expect(dq.primaryData.reason).toContain("Realtime price snapshot is older");
+  });
 });
 
 // ── INDICATOR QUALITY ────────────────────────────────────────────

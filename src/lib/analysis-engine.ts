@@ -253,7 +253,7 @@ function applyStructuralVeto(
     ) evidenceNames.push("positioning/sentiment");
 
     const structLabel =
-      input.technicalData?.smc?.internalExternal.external.structure ??
+      input.technicalData?.smc?.internalExternal?.external?.structure ??
       input.technicalData?.structure ?? "unavailable";
     return {
       bias,
@@ -282,7 +282,7 @@ function applyStructuralVeto(
   ) evidenceNames.push("positioning/sentiment");
 
   const structLabel =
-    input.technicalData?.smc?.internalExternal.external.structure ??
+    input.technicalData?.smc?.internalExternal?.external?.structure ??
     input.technicalData?.structure ?? "unavailable";
   return {
     bias: "Neutral",
@@ -460,17 +460,17 @@ function scoreIndicators(input: AnalysisInput): FactorScore {
       // VPVR and TPO value-area location are one market-profile group. Require
       // available levels to agree, avoiding double-counting two views of
       // similar price-distribution information.
-      const profileSides: Array<"above" | "below"> = [];
+      const profileSides: Array<"above" | "below" | "inside"> = [];
       const vp = tech.smc?.volumeProfile;
       const tpo = tech.smc?.tpoProfile;
       if (vp?.available && Number.isFinite(vp.vah) && Number.isFinite(vp.val)) {
-        if (price > vp.vah!) profileSides.push("above");
-        else if (price < vp.val!) profileSides.push("below");
+        profileSides.push(price > vp.vah! ? "above" : price < vp.val! ? "below" : "inside");
       }
       if (tpo?.available && Number.isFinite(tpo.vah) && Number.isFinite(tpo.val)) {
-        if (price > tpo.vah!) profileSides.push("above");
-        else if (price < tpo.val!) profileSides.push("below");
+        profileSides.push(price > tpo.vah! ? "above" : price < tpo.val! ? "below" : "inside");
       }
+      // A directional vote requires agreement from every available profile.
+      // An in-value-area or disagreeing profile is neutral, not confirmation.
       if (profileSides.length > 0 && profileSides.every((side) => side === "above")) score += 1;
       else if (profileSides.length > 0 && profileSides.every((side) => side === "below")) score -= 1;
     }
@@ -1123,10 +1123,14 @@ function decideTrade(
   const PRICE_STALE_MS = styleProfile.priceStaleMs;
   if (md) {
     const ts = md.price?.timestamp;
-    const isValidTs = typeof ts === "number" && Number.isFinite(ts) && ts > 0 && ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
+    const isValidTs =
+      typeof ts === "number" &&
+      Number.isFinite(ts) &&
+      ts > 0 &&
+      ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
     if (!isValidTs) {
       reasons.push(
-        `Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.`,
+        "Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.",
       );
     } else if (Date.now() - ts > PRICE_STALE_MS) {
       reasons.push(
@@ -1167,9 +1171,18 @@ function decideTrade(
   const agreeing = coreScores.filter((f) => f.score !== 0 && Math.sign(f.score) === dirSign);
   const opposing = coreScores.filter((f) => f.score !== 0 && Math.sign(f.score) === -dirSign);
 
-  if (bias !== "Neutral" && agreeing.length < 2) {
+  // Technical confirmation can fill one confluence slot only after external
+  // structure has already established direction. It cannot create or reverse bias.
+  const technicalConfirmation =
+    !!input.technicalData &&
+    input.technicalData.dataPoints >= 14 &&
+    Math.abs(breakdown.indicator) >= 2 &&
+    Math.sign(breakdown.indicator) === dirSign;
+  const confluenceCount = agreeing.length + (technicalConfirmation ? 1 : 0);
+
+  if (bias !== "Neutral" && confluenceCount < 2) {
     reasons.push(
-      `Confluence too weak: only ${agreeing.length} core factor(s) support the ${bias.toLowerCase()} bias (need at least 2).`,
+      `Confluence too weak: only ${confluenceCount} aligned core/technical confirmation(s) support the ${bias.toLowerCase()} bias (need at least 2).`,
     );
   }
 

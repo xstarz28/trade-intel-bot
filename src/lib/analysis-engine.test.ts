@@ -196,6 +196,50 @@ describe("scoreIndicators (via breakdown)", () => {
     expect(result.bias).toBe("Neutral");
   });
 
+  it("does not assign a directional profile vote when VPVR is above value but TPO is inside value", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "100",
+      technicalData: {
+        rsi14: 50,
+        macdHistogram: 0,
+        swingHighs: [],
+        swingLows: [],
+        structure: "range",
+        supportLevels: [],
+        resistanceLevels: [],
+        volumeTrend: "unknown",
+        dataPoints: 60,
+        smc: {
+          volumeProfile: { available: true, vah: 95, val: 90, poc: 92 },
+          tpoProfile: { available: true, vah: 110, val: 90, poc: 100 },
+        } as unknown as NonNullable<NonNullable<AnalysisInput["technicalData"]>["smc"]>,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(0);
+  });
+
+  it("does not assign a directional profile vote when VPVR and TPO value areas are on opposite sides of price", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "100",
+      technicalData: {
+        rsi14: 50,
+        macdHistogram: 0,
+        swingHighs: [],
+        swingLows: [],
+        structure: "range",
+        supportLevels: [],
+        resistanceLevels: [],
+        volumeTrend: "unknown",
+        dataPoints: 60,
+        smc: {
+          volumeProfile: { available: true, vah: 99, val: 95, poc: 97 },
+          tpoProfile: { available: true, vah: 105, val: 101, poc: 103 },
+        } as unknown as NonNullable<NonNullable<AnalysisInput["technicalData"]>["smc"]>,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(0);
+  });
+
   it("scores 0 with empty context", () => {
     const result = runAnalysis(baseInput());
     expect(result.breakdown.indicator).toBe(0);
@@ -956,5 +1000,51 @@ describe("confidence", () => {
     const neutral = runAnalysis(baseInput());
     expect(neutral.confidence).toBeGreaterThanOrEqual(20);
     expect(neutral.confidence).toBeLessThanOrEqual(95);
+  });
+});
+
+
+describe("live price freshness gate", () => {
+  it("does not let a delayed quote bypass staleness just because it matches the last candle", () => {
+    const oldTimestamp = Date.now() - 48 * 60 * 60_000;
+    const result = runAnalysis(baseInput({
+      instrument: "EUR/USD",
+      instrumentType: "forex",
+      timeframe: "D1",
+      marketData: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        provider: "test",
+        fetchTimestamp: oldTimestamp,
+        price: { price: 1.1, timestamp: oldTimestamp, source: "test" },
+        candles: [{ timestamp: oldTimestamp, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 100 }],
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+    }));
+    expect(result.noTradeReasons.join(" ")).toContain("Price snapshot is older than");
+  });
+});
+
+
+describe("future market price timestamp gate", () => {
+  it("rejects a quote timestamp beyond the documented clock-skew tolerance", () => {
+    const futureTimestamp = Date.now() + 5 * 60_000;
+    const result = runAnalysis(baseInput({
+      instrument: "EUR/USD",
+      instrumentType: "forex",
+      timeframe: "D1",
+      marketData: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        provider: "test",
+        fetchTimestamp: Date.now(),
+        price: { price: 1.1, timestamp: futureTimestamp, source: "test" },
+        candles: [{ timestamp: futureTimestamp, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 100 }],
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+    }));
+    expect(result.noTradeReasons.join(" ")).toContain("implausibly in the future");
   });
 });

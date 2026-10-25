@@ -8,23 +8,14 @@
  * Provider availability NEVER becomes directional evidence.
  */
 
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect } from "vitest";
 
 // ── Types ──
 import {
   type FreshnessLevel,
-  type OpportunityLifecycle,
-  type QualityTier,
+  type MarketSnapshot,
   type RadarScanConfig,
-  type RadarScanResult,
-  type RadarOpportunity,
-  type OpportunityDiff,
-  type UniverseEntry,
-  FRESHNESS_ORDER,
-  freshnessRank,
-  meetsFreshness,
   HORIZON_FRESHNESS_GATES,
-  HORIZON_REFRESH_PRIORITY,
 } from "./market-radar/types";
 
 // ── Cache ──
@@ -44,7 +35,6 @@ import {
 // ── Universe ──
 import {
   DEFAULT_UNIVERSE,
-  CORRELATION_CLUSTERS,
   getUniverse,
   getInstrumentEntry,
   getClusterForInstrument,
@@ -54,14 +44,68 @@ import {
 // ── Candidate Builder ──
 import {
   buildRadarCandidate,
+  toRadarCandidateSource,
   type RadarCandidateSource,
 } from "./market-radar/candidate-builder";
+import type { LiveCandidateSource } from "./liveCandidateBuilder";
+import type { TechnicalData } from "./data/market-types";
 
 // ── Radar Engine ──
 import {
   scanRadar,
   buildRadarState,
+  normalizeRadarTimeframe,
 } from "./market-radar/radar";
+
+describe("Radar timeframe normalization", () => {
+  it("normalizes whitespace and supported interval aliases", () => {
+    expect(normalizeRadarTimeframe("  1 h  ")).toBe("H1");
+    expect(normalizeRadarTimeframe("  1H  ")).toBe("H1");
+    expect(normalizeRadarTimeframe(" 15 M ")).toBe("M15");
+    expect(normalizeRadarTimeframe("  15M  ")).toBe("M15");
+  });
+});
+
+describe("Radar horizon source selection", () => {
+  it("keeps a still-eligible higher-timeframe source for swing over an unrelated fresh M5 source", () => {
+    const m5 = makeSource({
+      snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW, freshness: "FRESH" }),
+    });
+    m5.snapshot!.availableTimeframes = ["M5"];
+    const d1 = makeSource({
+      snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW - 10 * 60_000, freshness: "DELAYED" }),
+    });
+    d1.snapshot!.availableTimeframes = ["D1"];
+
+    const result = scanRadar(
+      [m5, d1],
+      { horizons: ["SWING"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    expect(result.results.get("SWING")?.[0]?.marketTimeframe).toBe("D1");
+  });
+
+  it("retains separate timeframe observations and selects the horizon-specific interval", () => {
+    const m5 = makeSource({
+      snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW, dataPoints: 50 }),
+    });
+    m5.snapshot!.availableTimeframes = ["M5"];
+    const d1 = makeSource({
+      snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW, dataPoints: 100 }),
+    });
+    d1.snapshot!.availableTimeframes = ["D1"];
+
+    const result = scanRadar(
+      [m5, d1],
+      { horizons: ["SCALPING", "SWING"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    expect(result.results.get("SCALPING")?.[0]?.marketTimeframe).toBe("M5");
+    expect(result.results.get("SWING")?.[0]?.marketTimeframe).toBe("D1");
+  });
+});
 
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
@@ -70,20 +114,11 @@ import {
 const NOW = Date.now();
 const HOUR = 3600_000;
 
-function makeSnapshot(overrides?: Partial<{
-  instrument: string;
-  price: number;
-  observedAt: number;
-  htfBias: string;
-  mtfAlignment: string;
-  marketRegime: string;
-  spreadBps: number;
-  volatility: number;
-  ohlcvAvailable: boolean;
-  dataPoints: number;
-  provider: string;
-  freshness: FreshnessLevel;
-}>): any {
+function makeSnapshot(overrides?: Partial<Pick<MarketSnapshot,
+  "instrument" | "price" | "observedAt" | "htfBias" | "mtfAlignment" |
+  "marketRegime" | "spreadBps" | "volatility" | "ohlcvAvailable" |
+  "dataPoints" | "provider" | "freshness"
+>>): MarketSnapshot {
   return {
     instrument: overrides?.instrument ?? "BTC/USD",
     assetClass: "crypto",
@@ -186,6 +221,188 @@ describe("A — Empty Analysis History", () => {
     expect(result.results.get("INTRADAY")!.length).toBeGreaterThanOrEqual(1);
   });
 
+  it("preserves verified setup evidence in radar candidates instead of falling back to generic score defaults", () => {
+    const source = makeSource({
+      setupDirection: "short",
+      setupStrength: 71,
+      confluenceCount: 4,
+    });
+    const candidate = buildRadarCandidate(source, NOW);
+    expect(candidate.setupDirection).toBe("short");
+    expect(candidate.setupStrength).toBe(71);
+    expect(candidate.confluenceCount).toBe(4);
+  });
+
+  it("keeps primary setup direction separate from higher-timeframe bias", () => {
+    const technical = {
+      structure: "HH/HL",
+      htfContext: {
+        structure: "LH/LL",
+        timeframe: "H4",
+        dataPoints: 60,
+      },
+      dataPoints: 60,
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 65000, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+    };
+
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.setupDirection).toBe("long");
+    expect(source.snapshot?.htfBias).toBe("short");
+    expect(source.snapshot?.mtfAlignment).toBe("MIXED");
+  });
+
+  it("derives radar setup evidence from matching live technical data", () => {
+    const technical = {
+      structure: "LH/LL",
+      bosDirection: "bearish",
+      rsi14: 32,
+      macdHistogram: -1,
+      volumeTrend: "increasing",
+      swingHighs: [],
+      swingLows: [],
+      supportLevels: [],
+      resistanceLevels: [],
+      dataPoints: 60,
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 65000, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+    };
+
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.setupDirection).toBe("short");
+    expect(source.setupStrength).toBeGreaterThan(35);
+    expect(source.confluenceCount).toBeGreaterThan(0);
+
+    const candidate = buildRadarCandidate(source, NOW);
+    expect(candidate.setupDirection).toBe("short");
+    expect(candidate.setupStrength).toBe(source.setupStrength);
+    expect(candidate.confluenceCount).toBe(source.confluenceCount);
+  });
+
+  it("derives HTF bias from the nearest sibling timeframe candles", () => {
+    const makeCandles = (trend: number) => Array.from({ length: 80 }, (_, i) => {
+      const wave = [0, 1, 3, 1, 0, -1, -3, -1][i % 8]!;
+      const close = 100 + trend * i + wave;
+      return {
+        timestamp: NOW - (80 - i) * 60_000,
+        time: NOW - (80 - i) * 60_000,
+        open: close - 0.1,
+        high: close + 0.4,
+        low: close - 0.4,
+        close,
+        volume: 100 + i,
+      };
+    });
+    const h1Candles = makeCandles(0.25);
+    const h4Candles = makeCandles(-0.25);
+    const h1: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: h1Candles[h1Candles.length - 1]!.close, timestamp: NOW, source: "test-provider" },
+        candles: h1Candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+    };
+    const h4: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: h4Candles[h4Candles.length - 1]!.close, timestamp: NOW, source: "test-provider" },
+        candles: h4Candles,
+        timeframe: "H4",
+        dataFreshness: "realtime",
+      },
+    };
+
+    const source = toRadarCandidateSource(h1, [h1, h4]);
+    expect(source.snapshot?.htfBias).toBe("short");
+    expect(source.snapshot?.mtfAlignment).toBe("MIXED");
+  });
+
+  it("does not reuse analysis technical data from a different timeframe", () => {
+    const candles = Array.from({ length: 40 }, (_, i) => {
+      const close = 100 + i * 0.5;
+      return {
+        timestamp: NOW - (40 - i) * 60_000,
+        time: NOW - (40 - i) * 60_000,
+        open: close - 0.2,
+        high: close + 0.4,
+        low: close - 0.4,
+        close,
+        volume: 100 + i,
+      };
+    });
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: candles[candles.length - 1]!.close, timestamp: NOW, source: "test-provider" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        timeframe: "M15",
+        timestamp: NOW,
+        priceSnapshot: {
+          price: candles[candles.length - 1]!.close,
+          timestamp: NOW,
+          source: "test-provider",
+        },
+        technicalData: {
+          structure: "LH/LL",
+          dataPoints: 40,
+        },
+      } as unknown as NonNullable<LiveCandidateSource["analysisResult"]>,
+    };
+
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.analysisResult).toBeDefined(); // same-instrument context remains available
+    expect(source.setupDirection).not.toBe("short"); // mismatched M15 structure is not reused for H1
+  });
+
   it("candidate builder works without analysis result", () => {
     const source = makeSource({ analysisResult: undefined });
     const candidate = buildRadarCandidate(source, NOW);
@@ -231,6 +448,51 @@ describe("A — Empty Analysis History", () => {
     delete noCountSnapshot.dataPoints;
     const noCountSource = makeSource({ snapshot: noCountSnapshot });
     expect(buildRadarCandidate(noCountSource, NOW).dataPoints).toBe(0);
+  });
+
+  it("does not count an OHLCV availability flag without a usable observed candle sample", () => {
+    const noRows = makeSource({
+      snapshot: makeSnapshot({ dataPoints: 0, htfBias: "unknown", mtfAlignment: "INSUFFICIENT_DATA", marketRegime: "UNKNOWN" }),
+      derivatives: undefined,
+      fundamentals: undefined,
+      cot: undefined,
+      eia: undefined,
+      treasury: undefined,
+      analysisResult: undefined,
+    });
+    const noRowsCandidate = buildRadarCandidate(noRows, NOW);
+    expect(noRowsCandidate.dataCompleteness).toBe("MINIMAL");
+    expect(noRowsCandidate.providerCoverage).not.toBe("FULL");
+
+    const shortSample = makeSource({
+      snapshot: makeSnapshot({ dataPoints: 19, htfBias: "unknown", mtfAlignment: "INSUFFICIENT_DATA", marketRegime: "UNKNOWN" }),
+      derivatives: undefined,
+      fundamentals: undefined,
+      cot: undefined,
+      eia: undefined,
+      treasury: undefined,
+      analysisResult: undefined,
+    });
+    const shortSampleCandidate = buildRadarCandidate(shortSample, NOW);
+    expect(shortSampleCandidate.dataCompleteness).toBe("MINIMAL");
+    expect(shortSampleCandidate.providerCoverage).not.toBe("FULL");
+  });
+
+  it("does not let optional payloads satisfy missing required capabilities", () => {
+    const source = makeSource({
+      universe: {
+        instrument: "BTC/USD",
+        assetClass: "crypto",
+        region: "global",
+        requiredCapabilities: ["ohlcv", "quote", "fundamentals"],
+        priority: 1,
+        refreshIntervalMs: 300_000,
+      },
+      snapshot: makeSnapshot({ dataPoints: 50 }),
+      derivatives: { fundingRate: 0.001 },
+      fundamentals: undefined,
+    });
+    expect(buildRadarCandidate(source, NOW).providerCoverage).toBe("PARTIAL");
   });
 
   it("does not mark snapshot plus prior analysis as FULL without independent context", () => {
@@ -385,6 +647,130 @@ describe("D — Multi-Asset Scanning", () => {
     const result = scanRadar(sources, config, undefined, NOW);
     const opps = result.results.get("SWING")!;
     expect(opps.every(o => o.assetClass === "crypto")).toBe(true);
+  });
+
+  it("selects the horizon-appropriate timeframe instead of reusing the last snapshot", () => {
+    const h1 = makeSource({
+      snapshot: {
+        ...makeSnapshot({
+          instrument: "BTC/USD",
+          htfBias: "long",
+          mtfAlignment: "ALIGNED_BULLISH",
+          marketRegime: "TRENDING",
+          volatility: 800,
+          observedAt: NOW,
+        }),
+        availableTimeframes: ["H1"],
+      },
+      setupDirection: "long",
+      setupStrength: 70,
+      confluenceCount: 3,
+    });
+    const h4 = makeSource({
+      snapshot: {
+        ...makeSnapshot({
+          instrument: "BTC/USD",
+          htfBias: "short",
+          mtfAlignment: "MIXED",
+          marketRegime: "RANGING",
+          volatility: 0,
+          observedAt: NOW,
+        }),
+        availableTimeframes: ["H4"],
+      },
+      setupDirection: "short",
+      setupStrength: 45,
+      confluenceCount: 1,
+    });
+    const w1 = makeSource({
+      snapshot: {
+        ...makeSnapshot({
+          instrument: "BTC/USD",
+          htfBias: "long",
+          mtfAlignment: "ALIGNED_BULLISH",
+          marketRegime: "TRENDING",
+          volatility: 2000,
+          observedAt: NOW,
+        }),
+        availableTimeframes: ["W1"],
+      },
+      setupDirection: "long",
+      setupStrength: 70,
+      confluenceCount: 3,
+    });
+
+    const result = scanRadar(
+      [h1, h4, w1],
+      { horizons: ["INTRADAY", "SWING", "1-3_YEARS"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    const intraday = result.results.get("INTRADAY")!.find(o => o.instrument === "BTC/USD")!;
+    const swing = result.results.get("SWING")!.find(o => o.instrument === "BTC/USD")!;
+    const longTerm = result.results.get("1-3_YEARS")!.find(o => o.instrument === "BTC/USD")!;
+
+    expect(intraday.marketTimeframe).toBe("H1");
+    expect(swing.marketTimeframe).toBe("H4");
+    expect(longTerm.marketTimeframe).toBe("W1");
+    expect(intraday.score).toBeGreaterThan(swing.score);
+    expect(intraday.supportingEvidence).toContain("MTF aligned: ALIGNED_BULLISH");
+    expect(swing.conflictingEvidence).toContain("MTF mixed signals");
+    expect(result.totalScanned).toBe(1);
+
+    const m5 = makeSource({
+      snapshot: {
+        ...makeSnapshot({ instrument: "BTC/USD", observedAt: NOW }),
+        availableTimeframes: ["M5"],
+      },
+    });
+    const fallback = scanRadar(
+      [m5, h4],
+      { horizons: ["1-3_YEARS"], maxResults: 5 },
+      undefined,
+      NOW,
+    ).results.get("1-3_YEARS")![0]!;
+    expect(fallback.marketTimeframe).toBe("H4");
+  });
+
+  it("uses verified directional setup evidence to differentiate radar scores", () => {
+    const config: RadarScanConfig = { horizons: ["INTRADAY"], maxResults: 5 };
+    const baseline = scanRadar([makeSource()], config, undefined, NOW)
+      .results.get("INTRADAY")!.find(o => o.instrument === "BTC/USD");
+    const evidenced = scanRadar([makeSource({
+      setupDirection: "short",
+      setupStrength: 80,
+      confluenceCount: 4,
+    })], config, undefined, NOW)
+      .results.get("INTRADAY")!.find(o => o.instrument === "BTC/USD");
+
+    expect(baseline).toBeDefined();
+    expect(evidenced).toBeDefined();
+    expect(evidenced!.score).toBeGreaterThan(baseline!.score);
+    expect(evidenced!.supportingEvidence.some(e => e.includes("verified short setup evidence"))).toBe(true);
+  });
+
+  it("keeps the final radar score within 0–100 after all evidence bonuses", () => {
+    const source = makeSource({
+      setupDirection: "long",
+      setupStrength: 100,
+      confluenceCount: 6,
+      derivatives: { fundingRate: 0.001, openInterest: 2_000_000 },
+      analyticalDepth: {
+        regime: "TRENDING",
+        dimensionsAvailable: 6,
+        dimensionsTotal: 6,
+        relativeValue: "strong",
+      },
+    });
+    const result = scanRadar(
+      [source],
+      { horizons: ["INTRADAY"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    const opportunity = result.results.get("INTRADAY")![0];
+    expect(opportunity.score).toBeLessThanOrEqual(100);
+    expect(opportunity.score).toBeGreaterThanOrEqual(0);
   });
 });
 
@@ -808,7 +1194,6 @@ describe("Q — Opportunity Lifecycle", () => {
     const source = makeSource({ snapshot: makeSnapshot({ observedAt: NOW }) });
     const config: RadarScanConfig = { horizons: ["INTRADAY"], maxResults: 5 };
     const r1 = scanRadar([source], config, undefined, NOW);
-    const state1 = buildRadarState(r1);
     expect(r1.results.get("INTRADAY")![0].lifecycle).toBe("ACTIVE");
 
     // Stale source → transition
@@ -1080,11 +1465,11 @@ describe("AB — Decision Immutability", () => {
     const result = scanRadar([source], { horizons: ["SWING"], maxResults: 5 }, undefined, NOW);
     const opp = result.results.get("SWING")![0];
     // Opportunity should have its own fields, not decision-engine fields
-    expect((opp as any).recommendation).toBeUndefined();
-    expect((opp as any).bias).toBeUndefined();
-    expect((opp as any).conviction).toBeUndefined();
-    expect((opp as any).tradePlan).toBeUndefined();
-    expect((opp as any).noTradeReasons).toBeUndefined();
+    expect(Object.prototype.hasOwnProperty.call(opp, "recommendation")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "bias")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "conviction")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "tradePlan")).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(opp, "noTradeReasons")).toBe(false);
   });
 });
 
@@ -1118,7 +1503,8 @@ describe("AD — Partial Provider Failure", () => {
       makeForexSource(),
     ];
     const result = scanRadar(sources, { horizons: ["SWING"], maxResults: 10 }, undefined, NOW);
-    expect(result.totalScanned).toBe(3);
+    // Scan totals count unique instruments, not duplicate timeframe/provider records.
+    expect(result.totalScanned).toBe(2);
     const opps = result.results.get("SWING")!;
     expect(opps.length).toBeGreaterThanOrEqual(2); // at least BTC and EUR/USD
   });

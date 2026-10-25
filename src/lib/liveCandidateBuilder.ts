@@ -22,6 +22,7 @@ import { deriveMacroYieldEvidence, type TreasuryData } from "./data/treasury";
 import type { CotData } from "./data/cot";
 import type { EiaData } from "./data/eia";
 import { calculateTechnical } from "./data/technical";
+import { matchesDerivativeSymbol } from "./data/derivatives-symbol";
 
 // ═══════════════════════════════════════════════════════════════
 // LIVE CANDIDATE INPUT
@@ -86,7 +87,7 @@ function assessFreshness(
   if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
 
   // Closed-market daily/weekly candles remain usable only as STALE evidence.
-  const tf = timeframe?.trim().toUpperCase().replace(/\\s+/g, "");
+  const tf = timeframe?.trim().toUpperCase().replace(/\s+/g, "");
   const staleLimitMs = tf === "W1" || tf === "1W" || tf === "1WEEK"
     ? 14 * 24 * 60 * 60_000
     : tf === "D1" || tf === "1D" || tf === "1DAY" || tf === "H4" || tf === "4H" || tf === "4HR"
@@ -174,7 +175,7 @@ function normalizeCandidateTimeframe(value?: string): string | undefined {
 
 function deriveCryptoMarketType(instrument: string, providerInstrumentId?: string): "spot" | "perpetual" | "futures" | undefined {
   const id = (providerInstrumentId ?? instrument).trim().toUpperCase();
-  if (id.endsWith("-SWAP") || id.endsWith("-FUTURES") || /(?:-XPERP|_XPERP)$/i.test(id)) return "perpetual";
+  if (id.endsWith("-SWAP") || id.endsWith("-FUTURES")) return "perpetual";
   if (/-[0-9]{6}$/.test(id)) return "futures";
   return id.includes("-") || id.includes("/") ? "spot" : undefined;
 }
@@ -219,11 +220,11 @@ function extractMtfAlignment(
 function extractAtr(tech: TechnicalData | undefined): number | undefined {
   return tech?.atr14;
 }
-function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: number): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
+export function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: number): Pick<CandidateInput, "setupDirection" | "setupStrength" | "confluenceCount"> {
   if (!tech) return { setupDirection: "unknown", setupStrength: 0, confluenceCount: 0 };
-  const higherStructureDirection =
-    tech.htfContext?.structure === "HH/HL" ? "long" :
-    tech.htfContext?.structure === "LH/LL" ? "short" : undefined;
+  // Higher-timeframe bias is context, not a trigger on the selected setup
+  // timeframe. Keep it in htfBias; do not manufacture a directional setup
+  // when the selected timeframe has neither directional structure nor BOS.
   const structureDirection =
     tech.structure === "HH/HL" ? "long" :
     tech.structure === "LH/LL" ? "short" :
@@ -233,17 +234,12 @@ function extractSetupEvidence(tech: TechnicalData | undefined, currentPrice?: nu
     tech.bosDirection === "bearish" ? "short" : undefined;
   // The selected setup timeframe is authoritative for an actionable setup.
   // A range stays neutral even when the HTF is bullish; only a BOS on the
-  // setup timeframe can break that neutral state. HTF direction is a fallback
-  // only when setup structure itself is genuinely unavailable/unknown.
+  // setup timeframe can break that neutral state. Missing setup structure is
+  // not replaced by HTF direction: the HTF bias remains separate context.
   const direction =
     structureDirection === "neutral"
       ? breakoutDirection ?? "neutral"
-      : structureDirection ??
-        breakoutDirection ??
-        higherStructureDirection ??
-        (tech.mtf?.htfBias === "long" || tech.mtf?.htfBias === "short"
-          ? tech.mtf.htfBias
-          : "neutral");
+      : structureDirection ?? breakoutDirection ?? "neutral";
   if (direction === "neutral") {
     // A range is not a directional signal, but neutral candidates should still
     // be differentiated by their observed context instead of receiving a flat
@@ -456,8 +452,12 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
       source.universalIntelligence.assetClass === source.assetClass
       ? source.universalIntelligence
       : undefined,
-    derivativesData: source.derivativesData?.symbol ===
-      (source.providerNative?.providerInstrumentId ?? source.instrument)
+    derivativesData: source.derivativesData &&
+      matchesDerivativeSymbol(
+        source.instrument,
+        source.providerNative?.providerInstrumentId,
+        source.derivativesData.symbol,
+      )
       ? source.derivativesData
       : undefined,
     cotData: source.cotData?.requestedInstrument === source.instrument
@@ -552,7 +552,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     hasFreshExecutionQuality: !!(
       ar?.executionContext?.available &&
       ar.executionContext.freshness === "FRESH" &&
-      source.instrument.toUpperCase().replace(/[\/_]/g, "-") === ar.executionContext.instrumentId.toUpperCase()
+      source.instrument.toUpperCase().replace(/(?:\\|\/|_)/g, "-") === ar.executionContext.instrumentId.toUpperCase()
     ),
     keySupport: tech?.supportLevels?.[0],
     keyResistance: tech?.resistanceLevels?.[0],
