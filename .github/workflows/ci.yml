@@ -38,6 +38,8 @@ jobs:
         run: node --check scripts/production-runtime-smoke.mjs
       - name: Test suite
         run: npm test
+      - name: Strict lint for market-execution integrity modules
+        run: npx eslint src/lib/execution-quality.ts src/lib/execution-quality.test.ts src/convex/okx.ts
       - name: Lint (advisory)
         continue-on-error: true
         run: npm run lint

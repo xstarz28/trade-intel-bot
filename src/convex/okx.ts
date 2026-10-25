@@ -153,7 +153,7 @@ export const fetchOkxOrderBook = action({
  */
 export const discoverOkxInstruments = action({
   args: {},
-  handler: async (_ctx) => {
+  handler: async () => {
     return discoverOkxInstrumentsPure(
       (url) => fetch(url, { headers: { Accept: "application/json" } }),
     );
