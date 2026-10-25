@@ -66,6 +66,28 @@ describe("Radar timeframe normalization", () => {
   });
 });
 
+describe("Radar horizon source selection", () => {
+  it("retains separate timeframe observations and selects the horizon-specific interval", () => {
+    const m5 = makeSource({
+      snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW, dataPoints: 50 }),
+    });
+    m5.snapshot!.availableTimeframes = ["M5"];
+    const d1 = makeSource({
+      snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW, dataPoints: 100 }),
+    });
+    d1.snapshot!.availableTimeframes = ["D1"];
+
+    const result = scanRadar(
+      [m5, d1],
+      { horizons: ["SCALPING", "SWING"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    expect(result.results.get("SCALPING")?.[0]?.marketTimeframe).toBe("M5");
+    expect(result.results.get("SWING")?.[0]?.marketTimeframe).toBe("D1");
+  });
+});
+
 // ═══════════════════════════════════════════════════════════════
 // HELPERS
 // ═══════════════════════════════════════════════════════════════
