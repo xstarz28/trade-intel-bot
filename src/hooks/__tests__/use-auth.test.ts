@@ -129,7 +129,7 @@ describe("useAuth — three-phase state machine", () => {
         { authLoading: false, authenticated: false, user: undefined },
       ]);
       expect(result.current.phase).toBe("authenticated");
-      act(() => vi.advanceTimersByTime(1999));
+      act(() => vi.advanceTimersByTime(4999));
       expect(result.current.phase).toBe("authenticated");
       act(() => vi.advanceTimersByTime(1));
       expect(result.current.phase).toBe("unauthenticated");
@@ -146,7 +146,7 @@ describe("useAuth — three-phase state machine", () => {
         { authLoading: false, authenticated: false, user: undefined },
         { authLoading: false, authenticated: true, user: { name: "Gilfan" } },
       ]);
-      act(() => vi.advanceTimersByTime(2000));
+      act(() => vi.advanceTimersByTime(5000));
       expect(result.current.phase).toBe("authenticated");
     } finally {
       vi.useRealTimers();
