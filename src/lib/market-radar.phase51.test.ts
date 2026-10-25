@@ -437,6 +437,23 @@ describe("A — Empty Analysis History", () => {
     expect(shortSampleCandidate.providerCoverage).not.toBe("FULL");
   });
 
+  it("does not let optional payloads satisfy missing required capabilities", () => {
+    const source = makeSource({
+      universe: {
+        instrument: "BTC/USD",
+        assetClass: "crypto",
+        region: "global",
+        requiredCapabilities: ["ohlcv", "quote", "fundamentals"],
+        priority: 1,
+        refreshIntervalMs: 300_000,
+      },
+      snapshot: makeSnapshot({ dataPoints: 50 }),
+      derivatives: { fundingRate: 0.001 },
+      fundamentals: undefined,
+    });
+    expect(buildRadarCandidate(source, NOW).providerCoverage).toBe("PARTIAL");
+  });
+
   it("does not mark snapshot plus prior analysis as FULL without independent context", () => {
     const source = makeSource({
       snapshot: makeSnapshot({}),
