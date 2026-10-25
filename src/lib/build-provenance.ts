@@ -147,15 +147,22 @@ export function buildProvenance(input: {
 }
 
 /**
- * True when the artifact was built from `main`.
+ * True only when the build's origin cannot be established.
  *
- * `main`'s history still serves the leaked OTP credential and its tip carries
- * the retired Freebuff scaffold (green theme, platform branding, email-OTP
- * sign-in). An artifact built from it is not the product UI, whatever it looks
- * like, so this flag is published with the provenance rather than hidden.
+ * A branch name is not proof that an artifact is unsafe: the current main tip
+ * is the source of truth once its exact commit, branch, clean worktree, brand,
+ * auth surface, and legacy-code checks all pass. The release verifier enforces
+ * those independent artifact checks. This flag is reserved for missing or
+ * unknown provenance so a verified main build can ship.
  */
 export function isUnsafeProvenanceSource(provenance: BuildProvenance): boolean {
-  return normalizeGitRef(provenance.branch).toLowerCase() === "main";
+  const branch = normalizeGitRef(provenance.branch).toLowerCase();
+  return (
+    provenance.source === "unknown" ||
+    provenance.commit === "unknown" ||
+    branch === "" ||
+    branch === "unknown"
+  );
 }
 
 /**
