@@ -1317,7 +1317,9 @@ export default function Dashboard() {
     // Keep actual structure authoritative; never infer it from the final analysis bias.
     const latestPerInstrument = new Map<string, LiveCandidateSource>();
     for (const source of liveSources) latestPerInstrument.set(source.instrument, source);
-    const radarSources = Array.from(latestPerInstrument.values()).map(toRadarCandidateSource);
+    const radarSources = Array.from(latestPerInstrument.values()).map((source) =>
+      toRadarCandidateSource(source, liveSources),
+    );
 
     const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
     const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);
