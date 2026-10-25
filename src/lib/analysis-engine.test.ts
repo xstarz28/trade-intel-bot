@@ -218,6 +218,28 @@ describe("scoreIndicators (via breakdown)", () => {
     expect(result.breakdown.indicator).toBe(0);
   });
 
+  it("does not assign a directional profile vote when VPVR and TPO value areas are on opposite sides of price", () => {
+    const result = runAnalysis(baseInput({
+      currentPrice: "100",
+      technicalData: {
+        rsi14: 50,
+        macdHistogram: 0,
+        swingHighs: [],
+        swingLows: [],
+        structure: "range",
+        supportLevels: [],
+        resistanceLevels: [],
+        volumeTrend: "unknown",
+        dataPoints: 60,
+        smc: {
+          volumeProfile: { available: true, vah: 99, val: 95, poc: 97 },
+          tpoProfile: { available: true, vah: 105, val: 101, poc: 103 },
+        } as unknown as NonNullable<NonNullable<AnalysisInput["technicalData"]>["smc"]>,
+      },
+    }));
+    expect(result.breakdown.indicator).toBe(0);
+  });
+
   it("scores 0 with empty context", () => {
     const result = runAnalysis(baseInput());
     expect(result.breakdown.indicator).toBe(0);
