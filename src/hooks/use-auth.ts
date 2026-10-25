@@ -49,7 +49,7 @@ export function useAuth() {
     const timeout = setTimeout(() => {
       phaseRef.current = "unauthenticated";
       setPhase("unauthenticated");
-    }, 2000);
+    }, 5000);
 
     return () => clearTimeout(timeout);
   }, [isAuthLoading, isAuthenticated]);
