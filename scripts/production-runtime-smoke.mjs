@@ -1,14 +1,24 @@
-import { chromium, devices } from "playwright";
+import { chromium } from "playwright";
+import { access } from "node:fs/promises";
 
 const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzanalysis.vercel.app";
 const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
 
-if (!/^https:\/\/[a-z0-9.-]+\.vercel\.app\/?$/i.test(url)) {
-  throw new Error(`Refusing non-production Vercel target: ${url}`);
+if (!/^https:\/\/xstarzanalysis\.vercel\.app\/?$/i.test(url)) {
+  throw new Error(`Refusing non-official runtime target; only https://xstarzanalysis.vercel.app is allowed: ${url}`);
 }
 
 const browser = await chromium.launch({ headless: true });
-const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+const storageStatePath = process.env.XSTARZ_SMOKE_STORAGE_STATE;
+if (storageStatePath) {
+  await access(storageStatePath).catch(() => {
+    throw new Error("XSTARZ_SMOKE_STORAGE_STATE was set, but the storage-state file is not readable.");
+  });
+}
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 1000 },
+  ...(storageStatePath ? { storageState: storageStatePath } : {}),
+});
 const page = await context.newPage();
 
 const authTraffic = [];
@@ -19,6 +29,7 @@ const evidence = {
   target: url,
   startedAt: new Date().toISOString(),
   authenticated: false,
+  sessionType: "guest",
   analyses: [],
   marketTypeCoverage: { forex: false, crypto: false, stock: false, commodity: false },
   cryptoContractCoverage: { spot: false, perpetual: false, futures: false },
@@ -306,6 +317,38 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   const sourceMatch = sourceRow.match(/Source:\s*(.+)$/i);
   const quality = /primary:\s*(GOOD|DEGRADED|INSUFFICIENT|STALE|UNAVAILABLE|INVALID)/i.exec(resultText)?.[1];
 
+  // TPO/VPVR are core analysis evidence, not decorative labels. Require
+  // explicit POC/VAH/VAL values when the profile is available, or an honest
+  // unavailable reason when the provider cannot support the profile.
+  const hasVpvrLevels = /vpvr\*?\s*poc:\s*[\d,.]+.*?vah:\s*[\d,.]+.*?val:\s*[\d,.]+/is.test(resultText);
+  const hasTpoLevels = /tpo\s*poc:\s*[\d,.]+.*?vah:\s*[\d,.]+.*?val:\s*[\d,.]+/is.test(resultText);
+  const vpvrUnavailable = /Volume Profile unavailable|Volume limitation: Representative positive volume is unavailable; VPVR was not fabricated/i.test(resultText);
+  const tpoUnavailable = /Volume\/TPO Profile unavailable|TPO profile unavailable/i.test(resultText);
+  const profileEvidence = {
+    vpvr: hasVpvrLevels ? "available" : vpvrUnavailable ? "explicitly unavailable" : "missing values and missing reason",
+    tpo: hasTpoLevels ? "available" : tpoUnavailable ? "explicitly unavailable" : "missing values and missing reason",
+  };
+  if (instrument === "BTC/USD" && !hasVpvrLevels && !vpvrUnavailable) {
+    throw new Error(`BTC/USD result omitted VPVR POC/VAH/VAL and did not explain why the profile is unavailable.\\n${resultText.slice(0, 2400)}`);
+  }
+  if (instrument === "XAU/USD" && !hasTpoLevels && !tpoUnavailable) {
+    throw new Error(`XAU/USD result omitted TPO POC/VAH/VAL and did not explain why the profile is unavailable.\\n${resultText.slice(0, 2400)}`);
+  }
+
+  // Fail closed on stale primary data: a visible stale snapshot must never
+  // coexist with an actionable LONG/SHORT plan, even if other checks pass.
+  if (quality === "STALE") {
+    if (recommendation !== "NO_TRADE") {
+      throw new Error(`${instrument} primary data is STALE but recommendation is ${recommendation}; refusing an actionable decision from stale data`);
+    }
+    if ((await executablePlan.count()) !== 0) {
+      throw new Error(`${instrument} primary data is STALE but an executable trade plan is rendered`);
+    }
+    if ((await noTradeReasons.count()) !== 1 || !/stale|outdated|age|freshness/i.test(await noTradeReasons.innerText())) {
+      throw new Error(`${instrument} primary data is STALE without a visible stale-data rejection reason`);
+    }
+  }
+
   let cryptoIntelligence = null;
   // The supplemental crypto-intelligence panel is a spot dashboard surface.
   // Derivatives must still pass real price/provider/quality/chart checks, but
@@ -357,6 +400,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     source: sourceMatch?.[1]?.trim() ?? null,
     primaryDataQuality: quality ?? null,
     cryptoIntelligence,
+    profileEvidence,
     resultText: resultText.slice(0, 7000),
     resultVisible: true,
   };
@@ -435,13 +479,24 @@ try {
   await page.waitForLoadState("networkidle", { timeout: 30000 }).catch(() => {});
 
   const start = page.getByRole("button", { name: /start analysis/i });
-  if (!(await start.count())) throw new Error("Landing page did not expose Start analysis");
-  await start.click();
-  await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+  if (await start.count()) await start.click();
 
   const guest = page.getByRole("button", { name: /continue without an account/i });
-  if (!(await guest.count())) throw new Error("Auth page did not expose guest sign-in");
-  await guest.click();
+  if (storageStatePath) {
+    // Never convert a guest flow into an authenticated pass. A supplied state
+    // must actually skip the guest choice and reach the dashboard.
+    if (await guest.isVisible().catch(() => false)) {
+      throw new Error("Supplied Playwright storage state is not authenticated: the guest/auth gate is still visible. Use a valid, authorized account session.");
+    }
+    // Do not mark this run authenticated yet: absence of the guest CTA alone
+    // is insufficient. The dashboard and its required controls must load first.
+    evidence.sessionType = "storage-state";
+  } else {
+    await page.getByText("XSTARZG Access", { exact: true }).waitFor({ state: "visible", timeout: 10000 });
+    if (!(await guest.count())) throw new Error("Auth page did not expose guest sign-in");
+    await guest.click();
+    evidence.sessionType = "guest";
+  }
 
   const cryptoCategory = page.getByRole("button", { name: "CRYPTO", exact: true });
   await cryptoCategory.waitFor({ state: "visible", timeout: 30000 });
@@ -463,6 +518,22 @@ try {
   if (!evidence.productSurfaces.riskSizing) {
     throw new Error("Risk-sizing surface did not render all three user-owned account inputs after dashboard navigation.");
   }
+
+  // A guest CTA alone can pass under the local mock-auth fallback. Require
+  // observable traffic to the intended real Convex deployment before treating
+  // this production runtime as usable.
+  await page.waitForTimeout(1500);
+  const activeConvexHost = "hushed-seal-237";
+  const realConvexConnected =
+    convexTraffic.some((item) => item.url?.includes(activeConvexHost)) ||
+    socketTraffic.some((item) => item.url?.includes(activeConvexHost));
+  if (!realConvexConnected) {
+    throw new Error("Production dashboard did not connect to the configured Hushed Convex backend; refusing to accept a mock-auth runtime.");
+  }
+
+  // Only count the storage-state run as authenticated after the dashboard and
+  // its key controls are visibly usable. A guest run remains explicitly guest.
+  if (storageStatePath) evidence.authenticated = true;
   await cryptoCategory.click();
   const instrumentPicker = page.getByRole("combobox").first();
   await instrumentPicker.click();
@@ -483,7 +554,8 @@ try {
     throw new Error("Production instrument selector contains duplicate visible options: " + repeatedOptions.slice(0, 12).join("; "));
   }
   await page.getByRole("option", { name: /BTC\/USD/i }).first().click();
-  evidence.authenticated = true;
+  // Guest entry is not an authenticated account session. Keep authenticated=false
+  // so this smoke cannot accidentally satisfy the authenticated-browser release gate.
 
   // Real production coverage: spot crypto + forex, commodity, and equity.
   await runAnalysisWithQuotaRetry(page, "BTC/USD", "crypto", "M5", true);

@@ -22,6 +22,8 @@ export interface MarketProfile {
   val?: number;
   total?: number;
   valueAreaPercent: number;
+  /** Effective TPO block size after respecting the source candle resolution. */
+  blockMinutes?: number;
   approximation?: string;
 }
 export interface ProfileOptions {
@@ -29,14 +31,23 @@ export interface ProfileOptions {
   valueAreaPercent?: number;
   blockMinutes?: number;
 }
-const validCandles = (input: ProfileCandle[]) => input.filter(c =>
-  Number.isFinite(c.timestamp) && c.timestamp > 0 &&
-  Number.isFinite(c.open) && Number.isFinite(c.high) &&
-  Number.isFinite(c.low) && Number.isFinite(c.close) &&
-  c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0 &&
-  c.high >= Math.max(c.open, c.close, c.low) &&
-  c.low <= Math.min(c.open, c.close, c.high)
-).sort((a,b) => a.timestamp-b.timestamp);
+const validCandles = (input: ProfileCandle[]) => {
+  const sorted = input.filter(c =>
+    Number.isFinite(c.timestamp) && c.timestamp > 0 &&
+    Number.isFinite(c.open) && Number.isFinite(c.high) &&
+    Number.isFinite(c.low) && Number.isFinite(c.close) &&
+    c.open > 0 && c.high > 0 && c.low > 0 && c.close > 0 &&
+    c.high >= Math.max(c.open, c.close, c.low) &&
+    c.low <= Math.min(c.open, c.close, c.high)
+  ).sort((a,b) => a.timestamp-b.timestamp);
+
+  // Provider retries can occasionally return the same candle more than once.
+  // Counting duplicate timestamps would inflate VPVR volume and TPO history.
+  // Keep the last valid record for each timestamp deterministically.
+  const unique = new Map<number, ProfileCandle>();
+  for (const candle of sorted) unique.set(candle.timestamp, candle);
+  return [...unique.values()];
+};
 const finiteOption = (value: number | undefined, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 const optionsOf = (o: ProfileOptions) => ({
@@ -70,18 +81,32 @@ export function calculateTpoProfile(input: ProfileCandle[], options: ProfileOpti
   if (candles.length<20) return {available:false,reason:"At least 20 valid candles are required.",method:"time-price-opportunity",rows:[],valueAreaPercent:o.valueAreaPercent};
   const {low,high,step}=levelsFor(candles,o.rows);
   if (!(high>low)) return {available:false,reason:"Price range is degenerate.",method:"time-price-opportunity",rows:[],valueAreaPercent:o.valueAreaPercent};
+
+  // Never manufacture sub-candle TPO observations. If the input is H1/H4/D1,
+  // 30-minute blocks cannot be reconstructed from OHLC alone; use at least
+  // the median source-candle interval and disclose the effective resolution.
+  const intervals = candles.slice(1)
+    .map((c, i) => c.timestamp - candles[i].timestamp)
+    .filter(delta => Number.isFinite(delta) && delta > 0)
+    .sort((a,b) => a-b);
+  const middle = Math.floor(intervals.length / 2);
+  const medianInterval = intervals.length === 0 ? o.blockMs
+    : intervals.length % 2 === 1 ? intervals[middle]
+    : (intervals[middle - 1] + intervals[middle]) / 2;
+  const effectiveBlockMs = Math.max(o.blockMs, medianInterval);
+  const effectiveBlockMinutes = effectiveBlockMs / 60_000;
   const blocks=Array.from({length:o.rows},()=>new Set<number>());
   for (const c of candles) {
-    const block=Math.floor(c.timestamp/o.blockMs);
-    let first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
+    const block=Math.floor(c.timestamp/effectiveBlockMs);
+    const first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
     let last=Math.max(0,Math.min(o.rows-1,Math.floor((c.high-low)/step)));
     if(c.high===high) last=o.rows-1;
     for(let i=first;i<=last;i++) blocks[i].add(block);
   }
   const values=blocks.map(b=>b.size), rows=values.map((value,i)=>({price:low+(i+0.5)*step,value}));
   const area=areaFor(values,low,step,o.valueAreaPercent);
-  return area ? {available:true,method:"time-price-opportunity",rows,...area,valueAreaPercent:o.valueAreaPercent}
-    : {available:false,reason:"No TPO observations were produced.",method:"time-price-opportunity",rows,valueAreaPercent:o.valueAreaPercent};
+  return area ? {available:true,method:"time-price-opportunity",rows,...area,valueAreaPercent:o.valueAreaPercent,blockMinutes:effectiveBlockMinutes}
+    : {available:false,reason:"No TPO observations were produced.",method:"time-price-opportunity",rows,valueAreaPercent:o.valueAreaPercent,blockMinutes:effectiveBlockMinutes};
 }
 export function calculateVpvrProfile(input: ProfileCandle[], options: ProfileOptions = {}): MarketProfile {
   const candles=validCandles(input), o=optionsOf(options);
@@ -93,7 +118,7 @@ export function calculateVpvrProfile(input: ProfileCandle[], options: ProfileOpt
   const values=Array.from({length:o.rows},()=>0);
   for(const c of candles) {
     const volume=c.volume??0; if(volume===0) continue;
-    let first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
+    const first=Math.max(0,Math.min(o.rows-1,Math.floor((c.low-low)/step)));
     let last=Math.max(0,Math.min(o.rows-1,Math.floor((c.high-low)/step)));
     if(c.high===high) last=o.rows-1;
     const share=volume/Math.max(1,last-first+1);
