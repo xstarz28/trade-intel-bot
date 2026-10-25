@@ -264,9 +264,10 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                     <div className="grid grid-cols-2 gap-2 text-[10px] font-mono">
                       <div><p className="text-muted-foreground">Pemicu</p><p className="font-semibold tabular-nums">{formatPrice(scenario.trigger, result.instrumentType, result.instrument)}</p></div>
                       <div><p className="text-muted-foreground">Invalidasi</p><p className="font-semibold tabular-nums">{formatPrice(scenario.invalidation, result.instrumentType, result.instrument)}</p></div>
-                      <div><p className="text-muted-foreground">Target teramati</p><p className="font-semibold tabular-nums">{scenario.target !== undefined ? formatPrice(scenario.target, result.instrumentType, result.instrument) : "Belum tersedia"}</p></div>
-                      <div><p className="text-muted-foreground">R:R indikatif</p><p className="font-semibold tabular-nums">{scenario.riskReward !== undefined ? scenario.riskReward.toFixed(2) + "R" : "Belum dapat dihitung"}</p></div>
+                      <div><p className="text-muted-foreground">{scenario.targetBasis?.toLowerCase().includes("bukan") || scenario.targetBasis?.toLowerCase().includes("proyeksi") || scenario.targetBasis?.toLowerCase().includes("matematis") ? "Target proyeksi" : "Target struktur"}</p><p className="font-semibold tabular-nums">{scenario.target !== undefined ? formatPrice(scenario.target, result.instrumentType, result.instrument) : "Belum tersedia"}</p></div>
+                      <div><p className="text-muted-foreground">R:R bruto indikatif</p><p className="font-semibold tabular-nums">{scenario.riskReward !== undefined ? scenario.riskReward.toFixed(2) + "R" : "Belum dapat dihitung"}</p></div>
                     </div>
+                    {scenario.targetBasis && <p className="text-[9px] leading-relaxed text-muted-foreground">Dasar target: {scenario.targetBasis}. R:R belum dikurangi biaya trading, spread, funding, atau slippage.</p>}
                     <p className="text-[9px] leading-relaxed text-muted-foreground">{scenario.reason}</p>
                   </div>
                 ))}

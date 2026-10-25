@@ -103,12 +103,23 @@ export function PriceStructureChart({
   // entry/SL/TP levels. Historical support/resistance may sit far outside this
   // M5 window; allowing those distant levels to set the scale crushes candles
   // and makes the chart unreadable. Out-of-window structural levels are omitted.
+  const candleMax = Math.max(...highs);
+  const candleMin = Math.min(...lows);
+  const candleSpan = Math.max(candleMax - candleMin, Number.EPSILON);
+  // Keep distant projected targets from compressing the candle bodies into a
+  // flat strip on mobile. Near entry/SL/TP levels join the scale; distant
+  // levels remain readable in the plan summary above the chart.
   const overlayPrices = (plan
     ? [Number(plan.entry), Number(plan.stopLoss), Number(plan.takeProfit)]
     : []
-  ).filter((value) => Number.isFinite(value) && value > 0);
-  const max = Math.max(...highs, ...overlayPrices);
-  const min = Math.min(...lows, ...overlayPrices);
+  ).filter((value) =>
+    Number.isFinite(value) &&
+    value > 0 &&
+    value >= candleMin - candleSpan * 0.35 &&
+    value <= candleMax + candleSpan * 0.35
+  );
+  const max = Math.max(candleMax, ...overlayPrices);
+  const min = Math.min(candleMin, ...overlayPrices);
   const spanRaw = Math.max(max - min, Number.EPSILON);
   const pad = spanRaw * 0.07;
   const topPrice = max + pad;
