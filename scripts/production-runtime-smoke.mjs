@@ -641,6 +641,43 @@ try {
     throw new Error("Production smoke missing successful real-crypto analysis for contract types: " + missingContractTypes.join(", "));
   }
 
+  // Verify Google OAuth reaches Google's real authorization endpoint from a
+  // clean browser context. This does not sign in or create an authenticated
+  // session; it validates provider wiring and the production callback URI.
+  const oauthContext = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+  });
+  const oauthPage = await oauthContext.newPage();
+  wirePage(oauthPage);
+  try {
+    await oauthPage.goto(url + "/auth", { waitUntil: "domcontentloaded", timeout });
+    const googleButton = oauthPage.getByRole("button", { name: /continue with google/i });
+    await googleButton.waitFor({ state: "visible", timeout: 15000 });
+    evidence.googleOAuth.checked = true;
+    await googleButton.click();
+    await oauthPage.waitForURL((current) => current.hostname === "accounts.google.com", {
+      timeout: 20000,
+    });
+    evidence.googleOAuth.reachedAuthorizationEndpoint = true;
+    const authorizationUrl = new URL(oauthPage.url());
+    const redirectUriRaw = authorizationUrl.searchParams.get("redirect_uri");
+    if (!redirectUriRaw) {
+      throw new Error("Google authorization URL is missing redirect_uri.");
+    }
+    const redirectUri = new URL(redirectUriRaw);
+    const validCallback =
+      redirectUri.protocol === "https:" &&
+      redirectUri.hostname === "hushed-seal-237.convex.site" &&
+      redirectUri.pathname === "/api/auth/callback/google";
+    evidence.googleOAuth.redirectUri = redirectUri.origin + redirectUri.pathname;
+    evidence.googleOAuth.redirectUriMismatch = !validCallback;
+    if (!validCallback) {
+      throw new Error("Google OAuth callback points to an unexpected host/path: " + evidence.googleOAuth.redirectUri);
+    }
+  } finally {
+    await oauthContext.close();
+  }
+
   evidence.completedAt = new Date().toISOString();
   evidence.authTraffic = authTraffic;
   evidence.convexTraffic = convexTraffic.slice(-40);
