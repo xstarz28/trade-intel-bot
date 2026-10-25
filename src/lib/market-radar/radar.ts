@@ -247,6 +247,19 @@ function scoreOpportunity(
     }
   }
 
+  // ── Conditional setup feasibility ──
+  // A bounded ranking bonus requires an observed target, valid invalidation,
+  // and at least 1.5R. It is evidence quality, not a probability of profit.
+  if (isTradingHorizon(horizon) && source.conditionalScenarios?.some((scenario) =>
+    scenario.ready &&
+    scenario.target !== undefined &&
+    Number.isFinite(scenario.riskReward) &&
+    (scenario.riskReward ?? 0) >= 1.5
+  )) {
+    score += 5;
+    supporting.push("observed conditional setup meets minimum 1.5R");
+  }
+
   // ── Asset-class-specific scoring ──
   switch (source.universe.assetClass) {
     case "crypto":
