@@ -220,6 +220,45 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     },
   );
 
+  it("counts exact-contract dated-futures open interest as a second observed data domain", () => {
+    const now = Date.now();
+    const instrument = "0G-USD_UM_XPERP-310905";
+    const candles = Array.from({ length: 210 }, (_, i) => {
+      const close = 100 + i * 0.1;
+      const timestamp = now - (210 - i) * 60_000;
+      return { time: timestamp, timestamp, open: close - 0.05, high: close + 0.2, low: close - 0.2, close, volume: 500 };
+    });
+    const candidate = buildCandidateFromSource({
+      instrument,
+      assetClass: "crypto",
+      providerNative: { provider: "okx", providerInstrumentId: instrument },
+      marketData: {
+        instrument,
+        instrumentType: "crypto",
+        provider: "okx",
+        fetchTimestamp: now,
+        price: { price: candles[candles.length - 1]!.close, timestamp: now, source: "okx" },
+        candles,
+        timeframe: "H1",
+        higherTimeframe: "H4",
+        dataFreshness: "realtime",
+      },
+      derivativesData: {
+        provider: "okx-public-futures-open-interest",
+        symbol: instrument,
+        timestamp: now - 30_000,
+        freshness: "realtime",
+        openInterest: { current: 1_250_000 },
+        availability: { openInterest: true, fundingRate: false, longShort: false, liquidations: false },
+        confidence: "low",
+      },
+    }, now);
+
+    expect(candidate.marketType).toBe("futures");
+    expect(candidate.dataCompleteness).toBe("PARTIAL");
+    expect(candidate.openInterest).toBe(1_250_000);
+  });
+
   it("passes verified technical structure and derivatives into the radar source", () => {
     const now = Date.now();
     const source = {

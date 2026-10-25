@@ -209,6 +209,7 @@ export default function Dashboard() {
   const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
   const fetchOkxOrderBook = useAction(api.okx.fetchOkxOrderBook);
   const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
+  const fetchOkxFuturesOpenInterest = useAction(api.okx.fetchOkxFuturesOpenInterest);
 
   const handleSignOut = async () => {
     await signOut();
@@ -306,9 +307,13 @@ export default function Dashboard() {
           if (input.instrumentType === "crypto") {
             fetchPromises.push(
               withActionTimeout(
-                fetchDerivatives({ instrument: input.instrument }),
+                /-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())
+                  ? fetchOkxFuturesOpenInterest({ instrument: input.instrument })
+                  : fetchDerivatives({ instrument: input.instrument }),
                 ACTION_TIMEOUTS_MS.derivatives,
-                "Derivatives",
+                /-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())
+                  ? "Exact-contract OKX futures open interest"
+                  : "Derivatives",
               ),
             );
             fetchPromises.push(
@@ -1137,6 +1142,37 @@ export default function Dashboard() {
                   });
                 }
               }
+
+              // Enrich dated futures with open interest from that exact OKX contract.
+              // Open interest is non-directional on its own and must never be borrowed
+              // from the same token's perpetual swap.
+              const datedFutures = batch.filter(
+                (item) => cryptoMarketType(item.instId, item.instType) === "futures",
+              );
+              const openInterestResults = await Promise.allSettled(
+                datedFutures.map((item) =>
+                  withActionTimeout(
+                    fetchOkxFuturesOpenInterest({ instrument: item.instId }),
+                    ACTION_TIMEOUTS_MS.derivatives,
+                    `OKX futures open interest ${item.instId}`,
+                  ),
+                ),
+              );
+              openInterestResults.forEach((settled, index) => {
+                if (settled.status !== "fulfilled" || !settled.value.success || !settled.value.data) return;
+                const item = datedFutures[index];
+                if (!item) return;
+                const derivativesData = settled.value.data;
+                for (const [key, source] of liveRecommendationSourceRef.current.entries()) {
+                  if (source.instrument.toUpperCase() === item.instId.toUpperCase()) {
+                    liveRecommendationSourceRef.current.set(key, { ...source, derivativesData });
+                  }
+                }
+                const existing = liveSourceRef.current.get(item.instId);
+                if (existing) {
+                  liveSourceRef.current.set(item.instId, { ...existing, derivativesData });
+                }
+              });
             } catch {
               setMarketDiscoveryMessage((current) =>
                 current ?? "OKX contracts were found, but live candles could not be loaded. Refresh to retry.",
@@ -1252,7 +1288,7 @@ export default function Dashboard() {
     } finally {
       setIsScanning(false);
     }
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchMarketData]);
+  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchOkxFuturesOpenInterest, fetchMarketData]);
 
   useEffect(() => {
     if (initialScanStartedRef.current) return;

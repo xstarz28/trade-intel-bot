@@ -35,6 +35,29 @@ describe("CryptoDerivativesData types", () => {
   });
 });
 
+describe("exact-contract OKX futures OI context", () => {
+  it("labels OI-only X-Perp data as OKX futures without inventing funding or positioning", async () => {
+    const { parseCoinGlassResult } = await import("./crypto/coinglass-adapter");
+    const context = parseCoinGlassResult({
+      provider: "okx-public-futures-open-interest",
+      symbol: "0G-USD_UM_XPERP-310905",
+      timestamp: Date.now(),
+      freshness: "realtime",
+      openInterest: { current: 1_250_000 },
+      availability: { openInterest: true, fundingRate: false, longShort: false, liquidations: false },
+      confidence: "low",
+    }, "0G-USD_UM_XPERP-310905", Date.now());
+
+    expect(context.provider).toBe("OKX Futures (public)");
+    expect(context.available).toBe(true);
+    expect(context.quality).toBe("DEGRADED");
+    expect(context.openInterest?.current).toBe(1_250_000);
+    expect(context.fundingRate).toBeUndefined();
+    expect(context.positioning).toBeUndefined();
+    expect(context.liquidation).toBeUndefined();
+  });
+});
+
 // ── Scoring Integration ────────────────────────────────────────
 
 describe("derivatives scoring in analysis engine", () => {
