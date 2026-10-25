@@ -31,7 +31,7 @@ test('published verification checks auth labels in a lazy-loaded same-origin chu
     }
     if (path === '/build-info.json') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ commit: 'deadbeef', branch: 'main' }));
+      res.end(JSON.stringify({ commit: 'deadbeef', branch: 'main', worktreeDirty: false }));
       return;
     }
     if (path === '/logo.svg') {
