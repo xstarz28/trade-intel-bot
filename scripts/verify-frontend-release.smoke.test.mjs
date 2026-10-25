@@ -34,7 +34,7 @@ test('published verification checks auth labels in a lazy-loaded same-origin chu
     }
     if (path === '/build-info.json') {
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
-      res.end(JSON.stringify({ commit: 'deadbeef', branch: 'main', worktreeDirty: false }));
+      res.end(JSON.stringify({ commit: 'deadbeef', branch: 'main', worktreeDirty: false, unsafeSource: false }));
       return;
     }
     if (path === '/logo.svg') {
@@ -97,6 +97,7 @@ test('release verifier fails closed when worktree provenance is dirty', async ()
     commit: 'deadbeef',
     branch: 'main',
     worktreeDirty: true,
+    unsafeSource: true,
   }));
   const child = spawn(process.execPath, [verifierPath, '--dist', dist, '--expect-commit', 'deadbeef', '--expect-branch', 'main'], { stdio: ['ignore', 'pipe', 'pipe'] });
   let stdout = '';
