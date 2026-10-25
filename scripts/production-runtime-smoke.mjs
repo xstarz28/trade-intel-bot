@@ -328,11 +328,11 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     vpvr: hasVpvrLevels ? "available" : vpvrUnavailable ? "explicitly unavailable" : "missing values and missing reason",
     tpo: hasTpoLevels ? "available" : tpoUnavailable ? "explicitly unavailable" : "missing values and missing reason",
   };
-  if (instrument === "BTC/USD" && !hasVpvrLevels && !vpvrUnavailable) {
-    throw new Error(`BTC/USD result omitted VPVR POC/VAH/VAL and did not explain why the profile is unavailable.\\n${resultText.slice(0, 2400)}`);
+  if (!hasVpvrLevels && !vpvrUnavailable) {
+    throw new Error(`${instrument} result omitted VPVR POC/VAH/VAL and did not explain why the profile is unavailable.\\n${resultText.slice(0, 2400)}`);
   }
-  if (instrument === "XAU/USD" && !hasTpoLevels && !tpoUnavailable) {
-    throw new Error(`XAU/USD result omitted TPO POC/VAH/VAL and did not explain why the profile is unavailable.\\n${resultText.slice(0, 2400)}`);
+  if (!hasTpoLevels && !tpoUnavailable) {
+    throw new Error(`${instrument} result omitted TPO POC/VAH/VAL and did not explain why the profile is unavailable.\\n${resultText.slice(0, 2400)}`);
   }
 
   // Fail closed on stale primary data: a visible stale snapshot must never
