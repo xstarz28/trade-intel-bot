@@ -203,7 +203,6 @@ interface MarketOpportunitiesProps {
 function RankedCard({ item }: { item: RankedInstrument }) {
   const { locale, t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
-  const formatPrice = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
   return (
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
@@ -320,6 +319,7 @@ function RankedCard({ item }: { item: RankedInstrument }) {
 function RadarCard({ opp }: { opp: RadarOpportunity }) {
   const { t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const formatPrice = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
   return (
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
