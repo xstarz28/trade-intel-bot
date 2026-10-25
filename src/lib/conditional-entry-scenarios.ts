@@ -37,14 +37,29 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
   const supports = [...tech.supportLevels, ...tech.swingLows].filter((v) => Number.isFinite(v) && v > 0 && v < price).sort((a, b) => b - a);
   const resistances = [...tech.resistanceLevels, ...tech.swingHighs].filter((v) => Number.isFinite(v) && v > 0 && v > price).sort((a, b) => a - b);
   const unique = (values: number[]) => values.filter((v, i) => values.findIndex((x) => Math.abs(x - v) <= Math.max(Math.abs(v) * 1e-8, 1e-8)) === i);
-  const support = unique(supports)[0];
-  const resistance = unique(resistances)[0];
-  const bullishTarget = unique(resistances).find((v) => resistance !== undefined && v > resistance + buffer);
-  const bearishTarget = unique(supports).find((v) => support !== undefined && v < support - buffer);
+  const uniqueSupports = unique(supports);
+  const uniqueResistances = unique(resistances);
+  const support = uniqueSupports[0];
+  const resistance = uniqueResistances[0];
+  const longTrigger = resistance !== undefined ? resistance + buffer : undefined;
+  const longRisk = longTrigger !== undefined && support !== undefined ? longTrigger - support : 0;
+  const shortTrigger = support !== undefined ? support - buffer : undefined;
+  const shortRisk = shortTrigger !== undefined && resistance !== undefined ? resistance - shortTrigger : 0;
+  const bullishTargetCandidates = uniqueResistances.filter((v) => resistance !== undefined && v > resistance + buffer);
+  const bearishTargetCandidates = uniqueSupports.filter((v) => support !== undefined && v < support - buffer);
+  // Prefer the nearest observed opposing swing that actually meets the minimum
+  // 1.5R requirement. If none qualifies, preserve the nearest observed target
+  // as a rejected scenario rather than fabricating an executable plan.
+  const bullishTarget = bullishTargetCandidates.find((v) =>
+    longRisk > 0 && longTrigger !== undefined && (v - longTrigger) / longRisk >= 1.5
+  ) ?? bullishTargetCandidates[0];
+  const bearishTarget = bearishTargetCandidates.find((v) =>
+    shortRisk > 0 && shortTrigger !== undefined && (shortTrigger - v) / shortRisk >= 1.5
+  ) ?? bearishTargetCandidates[0];
 
   const scenarios: ConditionalEntryScenario[] = [];
   if (resistance !== undefined && support !== undefined) {
-    const trigger = resistance + buffer;
+    const trigger = longTrigger!;
     const invalidation = support;
     const target = bullishTarget;
     const risk = invalidation !== undefined ? trigger - invalidation : 0;
@@ -60,13 +75,13 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
       ...(rr !== undefined ? { riskReward: rr } : {}),
       triggerBasis: "Resistance terdekat + buffer konfirmasi 0,1 ATR",
       invalidationBasis: "Level support/swing low teramati yang membatalkan skenario breakout",
-      ...(target !== undefined ? { targetBasis: "Swing high teramati berikutnya" } : {}),
+      ...(target !== undefined ? { targetBasis: rr !== undefined && rr >= 1.5 ? "Swing high teramati terdekat yang memenuhi minimum R:R 1,5" : "Swing high teramati berikutnya" } : {}),
       ready,
       reason: !atr ? "ATR tidak tersedia; konfirmasi buffer belum dapat dihitung." : !target ? "Belum ada swing high teramati di atas pemicu untuk target yang valid." : !ready ? "R:R berbasis level teramati di bawah minimum 1,5." : "Tunggu candle tutup di atas pemicu dan struktur/MTF mengonfirmasi.",
     });
   }
   if (support !== undefined && resistance !== undefined) {
-    const trigger = support - buffer;
+    const trigger = shortTrigger!;
     const invalidation = resistance;
     const target = bearishTarget;
     const risk = invalidation !== undefined ? invalidation - trigger : 0;
@@ -82,7 +97,7 @@ export function buildConditionalEntryScenarios(result: AnalysisResult): Conditio
       ...(rr !== undefined ? { riskReward: rr } : {}),
       triggerBasis: "Support terdekat − buffer konfirmasi 0,1 ATR",
       invalidationBasis: "Level resistance/swing high teramati yang membatalkan skenario breakdown",
-      ...(target !== undefined ? { targetBasis: "Swing low teramati berikutnya" } : {}),
+      ...(target !== undefined ? { targetBasis: rr !== undefined && rr >= 1.5 ? "Swing low teramati terdekat yang memenuhi minimum R:R 1,5" : "Swing low teramati berikutnya" } : {}),
       ready,
       reason: !atr ? "ATR tidak tersedia; konfirmasi buffer belum dapat dihitung." : !target ? "Belum ada swing low teramati di bawah pemicu untuk target yang valid." : !ready ? "R:R berbasis level teramati di bawah minimum 1,5." : "Tunggu candle tutup di bawah pemicu dan struktur/MTF mengonfirmasi.",
     });
