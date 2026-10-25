@@ -245,7 +245,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           <CardHeader className="px-4 pb-2 pt-3">
             <CardTitle className="text-xs font-mono">$ conditional-entry-scenarios · level bersyarat</CardTitle>
             <p className="text-[10px] leading-relaxed text-muted-foreground">
-              Bukan sinyal entry saat ini. Harga pemicu diturunkan dari resistance/support teramati; tunggu penutupan candle dan konfirmasi struktur. Target hanya ditampilkan jika ada swing pasar teramati.
+              Skenario bersyarat, bukan sinyal entry sekarang. Pemicu dan invalidasi berasal dari level teramati bila tersedia. Target diberi label sebagai target struktur atau proyeksi matematis; proyeksi bukan resistance/support terkonfirmasi. Tunggu candle penutup, konfirmasi struktur dan timeframe lebih tinggi. R:R yang ditampilkan masih bruto, belum dikurangi biaya eksekusi.
             </p>
           </CardHeader>
           <CardContent className="px-4 pb-3">
