@@ -37,7 +37,7 @@ type CryptoMarketType = "spot" | "perpetual" | "futures";
 function inferCryptoMarketType(item: Pick<AvailableInstrument, "symbol" | "marketType">): CryptoMarketType {
   if (item.marketType) return item.marketType;
   const symbol = item.symbol.toUpperCase();
-  if (symbol.endsWith("-SWAP") || symbol.endsWith("-FUTURES") || /(?:-XPERP|_XPERP)(?:-[0-9]{6})?$/.test(symbol)) return "perpetual";
+  if (symbol.endsWith("-SWAP") || symbol.endsWith("-FUTURES") || /(?:-XPERP|_XPERP)$/.test(symbol)) return "perpetual";
   if (/-[0-9]{6}$/.test(symbol)) return "futures";
   return "spot";
 }
