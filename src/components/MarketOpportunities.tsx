@@ -59,7 +59,7 @@ import {
 function inferMarketType(instrument: string, marketType?: "spot" | "perpetual" | "futures"): "spot" | "perpetual" | "futures" | undefined {
   if (marketType) return marketType;
   const symbol = instrument.toUpperCase();
-  if (symbol.endsWith("-SWAP") || symbol.endsWith("-FUTURES")) return "perpetual";
+  if (symbol.endsWith("-SWAP") || symbol.endsWith("-FUTURES") || /(?:-XPERP|_XPERP)(?:-[0-9]{6})?$/.test(symbol)) return "perpetual";
   if (/-[0-9]{6}$/.test(symbol)) return "futures";
   return symbol.includes("-") || symbol.includes("/") ? "spot" : undefined;
 }
