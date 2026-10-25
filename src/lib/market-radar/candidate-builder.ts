@@ -12,8 +12,10 @@ import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation
 import type { MarketSnapshot, FreshnessLevel } from "./types";
 import type { UniverseEntry } from "./types";
 import { assessFreshness } from "./freshness";
-import type { LiveCandidateSource } from "../liveCandidateBuilder";
+import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
+import { calculateTechnical } from "../data/technical";
 import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
+import { matchesDerivativeSymbol } from "@/lib/data/derivatives-symbol";
 
 // ═══════════════════════════════════════════════════════════════
 // RADAR CANDIDATE SOURCE
@@ -24,6 +26,10 @@ export interface RadarCandidateSource {
   universe: UniverseEntry;
   /** Market snapshot from provider (if available). */
   snapshot?: MarketSnapshot | null;
+  /** Verified setup evidence derived from provider candles/technical analysis. */
+  setupDirection?: CandidateInput["setupDirection"];
+  setupStrength?: number;
+  confluenceCount?: number;
   /** Optional additional intelligence. */
   derivatives?: {
     fundingRate?: number;
@@ -94,21 +100,97 @@ function isPetroleumInstrument(instrument: string): boolean {
   return /(?:WTI|CRUDE|USOIL|UKOIL|BRENT|XTIUSD|XBRUSD|CL=F|BZ=F)/i.test(instrument);
 }
 
-export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandidateSource {
+function normalizeRadarSourceTimeframe(value?: string): string | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toUpperCase().replace(/\s+/g, "");
+  const aliases: Record<string, string> = {
+    "1M": "M1", "1MIN": "M1", "5M": "M5", "5MIN": "M5",
+    "15M": "M15", "15MIN": "M15", "1H": "H1", "1HR": "H1",
+    "4H": "H4", "4HR": "H4", "1D": "D1", "1DAY": "D1",
+    "1W": "W1", "1WEEK": "W1",
+  };
+  return aliases[normalized] ?? normalized;
+}
+
+const RADAR_SOURCE_TIMEFRAME_MS: Record<string, number> = {
+  M1: 60_000,
+  M5: 5 * 60_000,
+  M15: 15 * 60_000,
+  H1: 60 * 60_000,
+  H4: 4 * 60 * 60_000,
+  D1: 24 * 60 * 60_000,
+  W1: 7 * 24 * 60 * 60_000,
+};
+
+export function toRadarCandidateSource(
+  source: LiveCandidateSource,
+  relatedSources: LiveCandidateSource[] = [],
+): RadarCandidateSource {
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
-  const matchingAnalysis = source.analysisResult?.instrument === source.instrument
+  const instrumentAnalysis = source.analysisResult?.instrument === source.instrument
     ? source.analysisResult
     : undefined;
-  const technical = source.technicalData ?? matchingAnalysis?.technicalData;
-  const analysis = matchingAnalysis;
+  const marketTimeframe = normalizeRadarSourceTimeframe(market?.timeframe);
+  const analysisTimeframe = normalizeRadarSourceTimeframe(instrumentAnalysis?.timeframe);
+  const analysisPrice = instrumentAnalysis?.priceSnapshot;
+  const marketPrice = market?.price;
+  const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
+    analysisPrice.price === marketPrice.price &&
+    analysisPrice.timestamp === marketPrice.timestamp;
+  // Technical data is reusable only for the exact market observation and
+  // timeframe that produced it. Same-instrument fundamentals remain valid
+  // context, but a different-timeframe technical read must not leak into setup evidence.
+  const matchingAnalysis = instrumentAnalysis &&
+    !!marketTimeframe &&
+    analysisTimeframe === marketTimeframe &&
+    sameObservedPriceSnapshot
+    ? instrumentAnalysis
+    : undefined;
+  const candleSeries = market?.candles?.slice().sort((a, b) => a.timestamp - b.timestamp);
+  const currentDuration = marketTimeframe ? RADAR_SOURCE_TIMEFRAME_MS[marketTimeframe] : undefined;
+  const siblingHigherTimeframe = currentDuration === undefined
+    ? undefined
+    : relatedSources
+        .filter((candidate) => candidate !== source && candidate.instrument === source.instrument)
+        .map((candidate) => ({
+          market: candidate.marketData?.instrument === source.instrument ? candidate.marketData : undefined,
+          timeframe: normalizeRadarSourceTimeframe(candidate.marketData?.timeframe),
+        }))
+        .filter((candidate) =>
+          !!candidate.market &&
+          !!candidate.timeframe &&
+          (RADAR_SOURCE_TIMEFRAME_MS[candidate.timeframe] ?? 0) > currentDuration &&
+          (candidate.market.candles?.length ?? 0) >= 30,
+        )
+        .sort((a, b) =>
+          (RADAR_SOURCE_TIMEFRAME_MS[a.timeframe!] ?? Number.POSITIVE_INFINITY) -
+          (RADAR_SOURCE_TIMEFRAME_MS[b.timeframe!] ?? Number.POSITIVE_INFINITY),
+        )[0];
+  const suppliedHigherCandles = (market?.higherTimeframeCandles?.length ?? 0) >= 30
+    ? market?.higherTimeframeCandles
+    : undefined;
+  const higherTimeframeCandles = suppliedHigherCandles ??
+    siblingHigherTimeframe?.market?.candles?.slice().sort((a, b) => a.timestamp - b.timestamp);
+  const higherTimeframeLabel = market?.higherTimeframe ?? siblingHigherTimeframe?.timeframe ?? "HTF";
+  const technical = source.technicalData ?? matchingAnalysis?.technicalData ?? (
+    candleSeries && candleSeries.length >= 30
+      ? calculateTechnical(candleSeries, higherTimeframeCandles, higherTimeframeLabel)
+      : undefined
+  );
+  const setupEvidence = extractSetupEvidence(technical, market?.price?.price);
+  const analysis = instrumentAnalysis;
   const intelligence = source.universalIntelligence?.instrument === source.instrument &&
     source.universalIntelligence.assetClass === source.assetClass
     ? source.universalIntelligence
     : undefined;
-  const expectedProviderSymbol = source.providerNative?.providerInstrumentId ?? source.instrument;
-  const derivativesData = source.derivativesData?.symbol === expectedProviderSymbol
+  const derivativesData = source.derivativesData &&
+    matchesDerivativeSymbol(
+      source.instrument,
+      source.providerNative?.providerInstrumentId,
+      source.derivativesData.symbol,
+    )
     ? source.derivativesData
     : undefined;
   const cotData = source.cotData?.requestedInstrument === source.instrument
@@ -116,11 +198,26 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     : undefined;
 
   const htf = technical?.mtf?.htfBias;
+  const htfStructure = technical?.htfContext?.structure;
   const htfBias: NonNullable<MarketSnapshot["htfBias"]> =
     htf === "long" || htf === "short" ? htf :
+    htfStructure === "HH/HL" ? "long" :
+    htfStructure === "LH/LL" ? "short" :
+    htfStructure === "range" ? "neutral" : "unknown";
+  const primaryStructureDirection =
     technical?.structure === "HH/HL" ? "long" :
-    technical?.structure === "LH/LL" ? "short" :
-    technical?.structure === "range" ? "neutral" : "unknown";
+    technical?.structure === "LH/LL" ? "short" : undefined;
+  const higherStructureDirection =
+    htfStructure === "HH/HL" ? "long" :
+    htfStructure === "LH/LL" ? "short" : undefined;
+  const derivedMtfAlignment = primaryStructureDirection && higherStructureDirection
+    ? primaryStructureDirection === higherStructureDirection
+      ? primaryStructureDirection === "long" ? "ALIGNED_BULLISH" : "ALIGNED_BEARISH"
+      : "MIXED"
+    : undefined;
+  const mtfAlignment = technical?.mtf?.alignment ??
+    matchingAnalysis?.mtfSummary?.alignment ??
+    derivedMtfAlignment;
   const marketRegime =
     technical?.structure === "HH/HL" || technical?.structure === "LH/LL" ? "TRENDING" :
     technical?.structure === "range" ? "RANGING" : "UNKNOWN";
@@ -181,7 +278,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     availableTimeframes: (market.candles?.length ?? 0) > 0 ? [market.timeframe] : [],
     htfBias,
     marketRegime,
-    mtfAlignment: technical?.mtf?.alignment ?? analysis?.mtfSummary?.alignment,
+    mtfAlignment,
     volatility: technical?.atr14,
     provider: market.provider,
     observedAt,
@@ -231,6 +328,7 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
     snapshot,
     ...(derivatives ? { derivatives } : {}),
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
+    ...(setupEvidence ? setupEvidence : {}),
     ...(rateDifferential !== undefined ? { rateDifferential } : {}),
     ...(yieldDifferential !== undefined ? { yieldDifferential } : {}),
     ...(macroScore !== undefined ? { macroScore } : {}),
@@ -264,8 +362,15 @@ export function toRadarCandidateSource(source: LiveCandidateSource): RadarCandid
 
 function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessLevel {
   let count = 0;
-  if (source.snapshot?.price && source.snapshot.price > 0) count++;
-  if (source.snapshot?.ohlcvAvailable) count++;
+  if (Number.isFinite(source.snapshot?.price) && (source.snapshot?.price ?? 0) > 0) count++;
+  // OHLCV is evidence only when the provider reports a usable candle sample.
+  // A boolean availability flag with zero/unknown rows must not satisfy the
+  // market-history completeness gate.
+  if (
+    source.snapshot?.ohlcvAvailable === true &&
+    Number.isFinite(source.snapshot.dataPoints) &&
+    (source.snapshot.dataPoints ?? 0) >= 20
+  ) count++;
   if (source.snapshot?.htfBias && source.snapshot.htfBias !== "unknown") count++;
   if (
     source.snapshot?.mtfAlignment &&
@@ -279,7 +384,6 @@ function assessDataCompleteness(source: RadarCandidateSource): DataCompletenessL
   if (source.cot?.netNonCommercial !== undefined) count++;
   if (source.eia?.inventory !== undefined) count++;
   if (source.treasury?.tenYearYield !== undefined) count++;
-  if (source.analysisResult) count++;
 
   // Market snapshot fields and prior analysis metadata are not independent
   // contextual intelligence. FULL completeness requires at least one actual
@@ -316,7 +420,11 @@ function assessProviderCoverage(source: RadarCandidateSource): CandidateInput["p
   if (total === 0) return "FULL";
   let available = 0;
   if (source.snapshot?.price && source.snapshot.price > 0) available++;
-  if (source.snapshot?.ohlcvAvailable) available++;
+  if (
+    source.snapshot?.ohlcvAvailable === true &&
+    Number.isFinite(source.snapshot.dataPoints) &&
+    (source.snapshot.dataPoints ?? 0) >= 20
+  ) available++;
   if (source.derivatives) available++;
   if (source.fundamentals) available++;
   if (source.cot) available++;
@@ -363,6 +471,11 @@ export function buildRadarCandidate(
     freshness,
     providerCoverage,
   };
+
+  // Verified setup evidence from the same source used to build this candidate.
+  if (source.setupDirection !== undefined) candidate.setupDirection = source.setupDirection;
+  if (source.setupStrength !== undefined && Number.isFinite(source.setupStrength)) candidate.setupStrength = source.setupStrength;
+  if (source.confluenceCount !== undefined && Number.isFinite(source.confluenceCount)) candidate.confluenceCount = source.confluenceCount;
 
   // Market structure (only from real data)
   if (snapshot?.htfBias) {
