@@ -174,7 +174,7 @@ function normalizeCandidateTimeframe(value?: string): string | undefined {
 
 function deriveCryptoMarketType(instrument: string, providerInstrumentId?: string): "spot" | "perpetual" | "futures" | undefined {
   const id = (providerInstrumentId ?? instrument).trim().toUpperCase();
-  if (id.endsWith("-SWAP") || id.endsWith("-FUTURES")) return "perpetual";
+  if (id.endsWith("-SWAP") || id.endsWith("-FUTURES") || /(?:-XPERP|_XPERP)$/i.test(id)) return "perpetual";
   if (/-[0-9]{6}$/.test(id)) return "futures";
   return id.includes("-") || id.includes("/") ? "spot" : undefined;
 }
