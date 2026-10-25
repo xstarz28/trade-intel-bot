@@ -52,6 +52,34 @@ describe("buildConditionalEntryScenarios", () => {
     expect(scenarios.every((scenario) => (scenario.riskReward ?? 0) < 1.5)).toBe(true);
   });
 
+  it("selects the nearest farther observed swing that meets the 1.5R minimum", () => {
+    const fixture = resultFixture({
+      technicalData: {
+        dataPoints: 30,
+        structure: "range",
+        swingHighs: [110, 120, 145],
+        swingLows: [90, 80, 50],
+        resistanceLevels: [110, 120, 145],
+        supportLevels: [90, 80, 50],
+        volumeTrend: "stable",
+        atr14: 2,
+      },
+    });
+    const scenarios = buildConditionalEntryScenarios(fixture);
+    const long = scenarios.find((scenario) => scenario.direction === "long")!;
+    const short = scenarios.find((scenario) => scenario.direction === "short")!;
+
+    expect(long.target).toBe(145);
+    expect(long.riskReward).toBeGreaterThanOrEqual(1.5);
+    expect(long.ready).toBe(true);
+    expect(long.targetBasis).toContain("memenuhi minimum R:R");
+
+    expect(short.target).toBe(50);
+    expect(short.riskReward).toBeGreaterThanOrEqual(1.5);
+    expect(short.ready).toBe(true);
+    expect(short.targetBasis).toContain("memenuhi minimum R:R");
+  });
+
   it("labels mathematical target projections when no farther observed swing exists", () => {
     const fixture = resultFixture({
       technicalData: {
