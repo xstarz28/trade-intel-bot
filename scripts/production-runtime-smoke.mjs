@@ -316,6 +316,16 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
   const priceMatch = priceRow.match(/Price:\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
   const sourceMatch = sourceRow.match(/Source:\s*(.+)$/i);
   const quality = /primary:\s*(GOOD|DEGRADED|INSUFFICIENT|STALE|UNAVAILABLE|INVALID)/i.exec(resultText)?.[1];
+  // An exchange-returned book for another contract is not valid execution
+  // evidence. Keep this as a release invariant even if the engine also vetoes
+  // the trade, because stale/mismatched execution metrics must not be rendered
+  // as available for the selected instrument.
+  if (
+    /order-book contract does not match requested instrument/i.test(resultText) &&
+    /execution:\s*✓/i.test(resultText)
+  ) {
+    throw new Error(`${instrument} reports a mismatched order-book contract while execution data is marked available.\\n${resultText.slice(0, 2400)}`);
+  }
 
   // TPO/VPVR are core analysis evidence, not decorative labels. Require
   // explicit POC/VAH/VAL values when the profile is available, or an honest
