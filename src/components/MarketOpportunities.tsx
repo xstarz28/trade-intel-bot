@@ -366,12 +366,16 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
         </div>
       </div>
 
+      {opp.currentPrice !== undefined && (
+        <p className="mt-1 text-[9px] font-sans text-muted-foreground/70">
+          Reference price {formatPrice(opp.currentPrice)}{opp.marketTimeframe ? ` · ${opp.marketTimeframe}` : ""}
+        </p>
+      )}
+
       {opp.conditionalScenarios && opp.conditionalScenarios.length > 0 && (
         <div className="mt-2 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2 text-[9px] font-sans text-muted-foreground/70">
             <span className="font-semibold">CONDITIONAL SETUPS · NOT ENTRY SIGNALS</span>
-            {opp.marketTimeframe && <span>· {opp.marketTimeframe}</span>}
-            {opp.currentPrice !== undefined && <span>· Ref {formatPrice(opp.currentPrice)}</span>}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
             {opp.conditionalScenarios.map((scenario) => (
@@ -441,6 +445,17 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
               {opp.invalidationConditions.map((c, i) => (
                 <p key={i} className="text-[9px] font-sans text-red-300/60">{c}</p>
               ))}
+            </div>
+          )}
+          {opp.analyticalContext && (
+            <div>
+              <p className="text-[9px] font-sans font-semibold text-sky-400/80 mb-0.5">Forward thesis context</p>
+              {opp.analyticalContext.regime && <p className="text-[9px] font-sans text-muted-foreground/70">Regime: {opp.analyticalContext.regime}</p>}
+              {opp.analyticalContext.relativeValue && <p className="text-[9px] font-sans text-muted-foreground/70">Relative value: {opp.analyticalContext.relativeValue}</p>}
+              {opp.analyticalContext.primarySupport && <p className="text-[9px] font-sans text-emerald-300/60">Support: {opp.analyticalContext.primarySupport}</p>}
+              {opp.analyticalContext.primaryConflict && <p className="text-[9px] font-sans text-amber-300/60">Conflict: {opp.analyticalContext.primaryConflict}</p>}
+              {opp.analyticalContext.keyRisk && <p className="text-[9px] font-sans text-red-300/60">Key risk: {opp.analyticalContext.keyRisk}</p>}
+              {opp.analyticalContext.missingCritical && <p className="text-[9px] font-sans text-muted-foreground/50">Missing: {opp.analyticalContext.missingCritical}</p>}
             </div>
           )}
           <div className="text-[9px] font-sans text-muted-foreground/60">
