@@ -83,7 +83,12 @@ export const OKX_CONFLICT_REL_TOLERANCE = 0.001;
  * Anything not shaped like BASE/QUOTE or an explicit OKX id → undefined.
  */
 export function mapInstrumentToOkx(instrumentRaw: string): string | undefined {
-  const normalized = instrumentRaw.trim().toUpperCase().replace(/[\s_/]+/g, "-");
+  const raw = instrumentRaw.trim().toUpperCase();
+  // Preserve provider-native OKX IDs with underscore-delimited contract
+  // families (for example, 0G-USD_UM_XPERP-310905). Normalizing underscores
+  // here changes the exchange ID and makes order-book/spec requests fail.
+  if (/^[A-Z0-9]+-[A-Z0-9]+(?:_[A-Z0-9]+)+(?:-(?:SWAP|FUTURES|[0-9]{6}))?$/.test(raw)) return raw;
+  const normalized = raw.replace(/[\s_/]+/g, "-");
   if (/^[A-Z0-9]+-[A-Z0-9]+-(?:SWAP|FUTURES|[0-9]{6})$/.test(normalized)) return normalized;
   const m = /^([A-Z0-9]{2,10})-([A-Z0-9]{2,10})$/.exec(normalized);
   if (!m) return undefined;
