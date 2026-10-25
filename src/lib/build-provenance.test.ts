@@ -27,4 +27,16 @@ describe("build provenance safety", () => {
 
     expect(isUnsafeProvenanceSource(provenance)).toBe(true);
   });
+  it("rejects a main build with a dirty worktree", () => {
+    const provenance = buildProvenance({
+      commit: "5fea56950d53e5ffbbbcdd4074dd1e70f6844745",
+      branch: "main",
+      builtAt: "2026-10-25T03:59:03.000Z",
+      source: "git",
+      worktreeDirty: true,
+    });
+
+    expect(isUnsafeProvenanceSource(provenance)).toBe(true);
+  });
+
 });
