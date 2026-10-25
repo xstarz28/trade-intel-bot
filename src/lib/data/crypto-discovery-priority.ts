@@ -29,6 +29,7 @@ export function prioritizeCryptoDiscovery<T extends DiscoveredCryptoInstrument>(
   const quoteRank = (id: string) =>
     /-USDT-SWAP$/i.test(id) ? 0 :
     /-USDC-SWAP$/i.test(id) ? 1 :
+    /-USD_UM_XPERP$/i.test(id) ? 1 :
     /-(?:USDT|USDC)-[0-9]{6}$/i.test(id) ? 2 :
     // Standard OKX USD-margined dated futures and normalized UM IDs.
     /-USD(?:_UM_XPERP)?-[0-9]{6}$/i.test(id) ? 2 :
