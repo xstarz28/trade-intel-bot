@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   parseOkxOrderBook,
+  requireExactOrderBookInstrument,
   buildExecutionData,
   buildExecutionQuality,
   classifyExecutionRegime,
@@ -59,6 +60,21 @@ describe("parseOkxOrderBook", () => {
     for (const bad of [null, undefined, "oops", { foo: 1 }, { code: "0" }, { code: "0", data: [] }]) {
       expect(parseOkxOrderBook(bad).ok).toBe(false);
     }
+  });
+
+  it("rejects a valid-looking order book returned for a different contract", () => {
+    const parsed = parseOkxOrderBook(booksResponse());
+    const validated = requireExactOrderBookInstrument(parsed, "0G-USD_UM_XPERP-310905");
+    expect(validated.ok).toBe(false);
+    if (!validated.ok) {
+      expect(validated.reason).toContain("requested 0G-USD_UM_XPERP-310905");
+      expect(validated.reason).toContain("received BTC-USDT-SWAP");
+    }
+  });
+
+  it("accepts only an exact exchange contract identity", () => {
+    const parsed = parseOkxOrderBook(booksResponse());
+    expect(requireExactOrderBookInstrument(parsed, "BTC-USDT-SWAP")).toEqual(parsed);
   });
 
   it("requires a real exchange timestamp — missing ts fails closed", () => {

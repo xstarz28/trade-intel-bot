@@ -17,6 +17,7 @@ import { acquireProviderNativeLiveData, acquireBatchProviderNativeLiveData } fro
 import {
   buildExecutionData,
   parseOkxOrderBook,
+  requireExactOrderBookInstrument,
   type ExecutionData,
 } from "../lib/execution-quality";
 import { parseOkxFuturesOpenInterest } from "../lib/data/crypto/okx-futures-open-interest";
@@ -136,7 +137,7 @@ export const fetchOkxOrderBook = action({
       if (json === undefined) {
         return { success: false as const, error: "OKX returned malformed JSON." };
       }
-      const parsed = parseOkxOrderBook(json);
+      const parsed = requireExactOrderBookInstrument(parseOkxOrderBook(json), instId);
       const data = buildExecutionData(parsed, Date.now(), Date.now());
       return { success: data.available as boolean, data } as { success: boolean; data: ExecutionData };
     } catch (e) {

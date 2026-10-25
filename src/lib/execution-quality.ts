@@ -107,6 +107,25 @@ export interface ParsedOrderBookError {
   reason: string;
 }
 
+/**
+ * Fail closed if the exchange returns a valid-looking book for a different
+ * contract than the one requested. Price levels from another instrument must
+ * never influence execution quality, slippage, or a trade veto.
+ */
+export function requireExactOrderBookInstrument(
+  parsed: ParsedOrderBook | ParsedOrderBookError,
+  expectedInstrumentId: string,
+): ParsedOrderBook | ParsedOrderBookError {
+  if (!parsed.ok) return parsed;
+  if (!parsed.instrumentId || parsed.instrumentId !== expectedInstrumentId) {
+    return {
+      ok: false,
+      reason: `instrument identity mismatch: requested ${expectedInstrumentId}, received ${parsed.instrumentId || "missing instrument ID"}`,
+    };
+  }
+  return parsed;
+}
+
 function parseSide(rows: unknown): BookLevel[] {
   if (!Array.isArray(rows)) return [];
   const out: BookLevel[] = [];
