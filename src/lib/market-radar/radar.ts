@@ -140,10 +140,30 @@ function selectSourcesForHorizon(
 
   return Array.from(groups.values()).map((group) =>
     [...group].sort((a, b) => {
-      const freshnessDifference = freshnessRank(a, now) - freshnessRank(b, now);
-      if (freshnessDifference !== 0) return freshnessDifference;
+      const freshnessA = a.snapshot
+        ? assessFreshness(a.snapshot.observedAt, now, a.snapshot.freshness)
+        : "UNAVAILABLE";
+      const freshnessB = b.snapshot
+        ? assessFreshness(b.snapshot.observedAt, now, b.snapshot.freshness)
+        : "UNAVAILABLE";
+      const eligibleA = checkFreshnessEligibility(
+        freshnessA,
+        freshnessA === "FRESH" || freshnessA === "DELAYED",
+        horizon,
+      ).eligible;
+      const eligibleB = checkFreshnessEligibility(
+        freshnessB,
+        freshnessB === "FRESH" || freshnessB === "DELAYED",
+        horizon,
+      ).eligible;
+      // First reject sources that cannot pass this horizon's freshness gate.
+      // Among eligible sources, timeframe fit outranks generic recency: a fresh
+      // M5 snapshot must not displace a still-eligible D1 source for swing.
+      if (eligibleA !== eligibleB) return eligibleA ? -1 : 1;
       const timeframeDifference = timeframeRank(a) - timeframeRank(b);
       if (timeframeDifference !== 0) return timeframeDifference;
+      const freshnessDifference = freshnessRank(a, now) - freshnessRank(b, now);
+      if (freshnessDifference !== 0) return freshnessDifference;
       return a.universe.instrument.localeCompare(b.universe.instrument);
     })[0],
   );
