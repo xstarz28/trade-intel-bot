@@ -5,6 +5,8 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { ConvexAuthActionsContext } from "@convex-dev/auth-internal/client";
 import { getFunctionName, type FunctionReference } from "convex/server";
 import { discoverOkxInstruments as discoverOkxInstrumentsPure } from "@/lib/data/universal/okx-discovery";
+import { isActiveConvexUrl, resolveAuthProviderMode } from "@/lib/auth-provider-mode";
+import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 
 const STORAGE_KEY_ANALYSES = "xstarz_mock_analyses";
 const STORAGE_KEY_POSITIONS = "xstarz_mock_positions";
@@ -300,28 +302,40 @@ function MockConvexAuthProvider({ children }: { children: React.ReactNode }) {
 
 export function AppAuthProvider({ children }: { children: React.ReactNode }) {
   const rawUrl = import.meta.env.VITE_CONVEX_URL;
-  const isConvexConfigured = Boolean(
-    rawUrl &&
-      typeof rawUrl === "string" &&
-      rawUrl.trim().length > 0 &&
-      rawUrl.trim().startsWith("http") &&
-      !rawUrl.includes("placeholder") &&
-      !rawUrl.includes("dummy"),
-  );
+  const convexUrl = typeof rawUrl === "string" ? rawUrl.trim() : "";
+  const isConvexConfigured = isActiveConvexUrl(convexUrl) && isAllowedConvexCloudUrl(convexUrl);
 
   const realConvex = useMemo(() => {
     if (!isConvexConfigured) return null;
     try {
-      return new ConvexReactClient(rawUrl!);
-    } catch (e) {
-      console.warn("[AppAuthProvider] Could not connect to configured Convex URL:", e);
+      return new ConvexReactClient(convexUrl);
+    } catch {
+      console.warn("[AppAuthProvider] Could not construct the configured Convex client.");
       return null;
     }
-  }, [isConvexConfigured, rawUrl]);
+  }, [isConvexConfigured, convexUrl]);
 
-  if (realConvex) {
+  const mode = resolveAuthProviderMode({
+    isDevelopment: import.meta.env.DEV,
+    hasConvexClient: Boolean(realConvex),
+  });
+
+  if (mode === "convex" && realConvex) {
     return <ConvexAuthProvider client={realConvex}>{children}</ConvexAuthProvider>;
   }
 
-  return <MockConvexAuthProvider>{children}</MockConvexAuthProvider>;
+  if (mode === "mock") {
+    return <MockConvexAuthProvider>{children}</MockConvexAuthProvider>;
+  }
+
+  return (
+    <div role="alert" className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
+      <div className="max-w-lg text-center">
+        <p className="text-sm font-semibold">Autentikasi belum dikonfigurasi.</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Login dinonaktifkan karena layanan autentikasi tidak tersedia. Tidak ada sesi tiruan yang akan dibuat di lingkungan produksi.
+        </p>
+      </div>
+    </div>
+  );
 }
