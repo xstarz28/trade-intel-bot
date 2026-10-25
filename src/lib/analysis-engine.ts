@@ -1121,35 +1121,18 @@ function decideTrade(
   // explicitly instead of silently passing the staleness comparison.
   const PRICE_FUTURE_SKEW_MS = 90_000; // documented clock-skew tolerance
   const PRICE_STALE_MS = styleProfile.priceStaleMs;
-  const isHistoricalAnalysis = !!md &&
-    md.dataFreshness !== "realtime" &&
-    md.dataFreshness !== "unavailable" &&
-    typeof md.price?.timestamp === "number" &&
-    Array.isArray(md.candles) &&
-    md.candles.length > 0 &&
-    md.price.timestamp === md.candles[md.candles.length - 1]?.timestamp &&
-    md.price.price === md.candles[md.candles.length - 1]?.close;
   if (md) {
     const ts = md.price?.timestamp;
-    const historicalCeiling = md.candles?.[md.candles.length - 1]?.timestamp;
-    const hasValidHistoricalCeiling =
-      typeof historicalCeiling === "number" &&
-      Number.isFinite(historicalCeiling) &&
-      historicalCeiling > 0;
     const isValidTs =
       typeof ts === "number" &&
       Number.isFinite(ts) &&
       ts > 0 &&
-      (isHistoricalAnalysis
-        ? hasValidHistoricalCeiling && ts <= historicalCeiling
-        : ts <= Date.now() + PRICE_FUTURE_SKEW_MS);
+      ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
     if (!isValidTs) {
       reasons.push(
-        isHistoricalAnalysis
-          ? "Historical price timestamp is invalid or later than the last visible candle."
-          : "Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.",
+        "Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.",
       );
-    } else if (!isHistoricalAnalysis && Date.now() - ts > PRICE_STALE_MS) {
+    } else if (Date.now() - ts > PRICE_STALE_MS) {
       reasons.push(
         `Price snapshot is older than ${PRICE_STALE_MS / 60000} minutes — treating it as stale rather than live.`,
       );
