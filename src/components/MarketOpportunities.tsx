@@ -203,6 +203,7 @@ interface MarketOpportunitiesProps {
 function RankedCard({ item }: { item: RankedInstrument }) {
   const { locale, t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const formatPrice = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
   return (
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
@@ -364,6 +365,41 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
           </Badge>
         </div>
       </div>
+
+      {opp.conditionalScenarios && opp.conditionalScenarios.length > 0 && (
+        <div className="mt-2 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2 text-[9px] font-sans text-muted-foreground/70">
+            <span className="font-semibold">CONDITIONAL SETUPS · NOT ENTRY SIGNALS</span>
+            {opp.marketTimeframe && <span>· {opp.marketTimeframe}</span>}
+            {opp.currentPrice !== undefined && <span>· Ref {formatPrice(opp.currentPrice)}</span>}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {opp.conditionalScenarios.map((scenario) => (
+              <div key={scenario.id} className="rounded-md border border-border/30 bg-background/40 p-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[9px] font-sans font-bold">
+                    {scenario.direction === "long" ? "LONG · BREAKOUT" : "SHORT · BREAKDOWN"}
+                  </span>
+                  <Badge variant="outline" className={cn(
+                    "text-[8px] font-sans",
+                    scenario.ready ? "border-emerald-500/40 text-emerald-400" : "border-amber-500/40 text-amber-400"
+                  )}>
+                    {scenario.ready ? "R:R threshold met · confirm" : "Not qualified"}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-[9px] font-sans text-foreground/80">
+                  Trigger {formatPrice(scenario.trigger)} · Invalidation {formatPrice(scenario.invalidation)}
+                </p>
+                <p className="text-[9px] font-sans text-foreground/80">
+                  Target {scenario.target !== undefined ? formatPrice(scenario.target) : "unavailable"} · Gross R:R {scenario.riskReward !== undefined ? `${scenario.riskReward.toFixed(2)}R` : "unavailable"}
+                </p>
+                <p className="mt-0.5 text-[8px] font-sans text-muted-foreground/70">{scenario.targetBasis ?? scenario.reason}</p>
+                <p className="text-[8px] font-sans text-muted-foreground/60">{scenario.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {opp.primaryReasons.length > 0 && (
         <div className="mt-2 space-y-0.5">
