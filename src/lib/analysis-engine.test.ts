@@ -1022,6 +1022,6 @@ describe("live price freshness gate", () => {
         dataFreshness: "delayed",
       },
     }));
-    expect(result.reasons.join(" ")).toContain("Price snapshot is older than");
+    expect(result.noTradeReasons.join(" ")).toContain("Price snapshot is older than");
   });
 });
