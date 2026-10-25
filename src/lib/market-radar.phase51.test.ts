@@ -67,6 +67,25 @@ describe("Radar timeframe normalization", () => {
 });
 
 describe("Radar horizon source selection", () => {
+  it("keeps a still-eligible higher-timeframe source for swing over an unrelated fresh M5 source", () => {
+    const m5 = makeSource({
+      snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW, freshness: "FRESH" }),
+    });
+    m5.snapshot!.availableTimeframes = ["M5"];
+    const d1 = makeSource({
+      snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW - 10 * 60_000, freshness: "DELAYED" }),
+    });
+    d1.snapshot!.availableTimeframes = ["D1"];
+
+    const result = scanRadar(
+      [m5, d1],
+      { horizons: ["SWING"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    expect(result.results.get("SWING")?.[0]?.marketTimeframe).toBe("D1");
+  });
+
   it("retains separate timeframe observations and selects the horizon-specific interval", () => {
     const m5 = makeSource({
       snapshot: makeSnapshot({ instrument: "BTC/USD", observedAt: NOW, dataPoints: 50 }),
