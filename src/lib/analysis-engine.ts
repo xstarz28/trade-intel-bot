@@ -2593,6 +2593,16 @@ function generateTechnicalSummary(
       } else if (smcInfo.tpoProfile?.unavailableReason) {
         parts.push(`TPO profile unavailable: ${smcInfo.tpoProfile.unavailableReason}`);
       }
+    } else {
+      // Missing/invalid SMC context must be disclosed rather than silently
+      // omitting market-profile evidence. Do not reconstruct or fabricate
+      // levels inside the narrative path when the validated SMC context is absent.
+      parts.push(
+        "Volume profile unavailable (VPVR): a validated SMC context was not supplied for this snapshot; no volume-profile levels are asserted.",
+      );
+      parts.push(
+        "TPO profile unavailable: a validated SMC context was not supplied for this snapshot; no time-at-price levels are asserted.",
+      );
     }
 
     // LTF trigger context
