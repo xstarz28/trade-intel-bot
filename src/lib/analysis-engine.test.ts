@@ -1002,3 +1002,26 @@ describe("confidence", () => {
     expect(neutral.confidence).toBeLessThanOrEqual(95);
   });
 });
+
+
+describe("live price freshness gate", () => {
+  it("does not let a delayed quote bypass staleness just because it matches the last candle", () => {
+    const oldTimestamp = Date.now() - 48 * 60 * 60_000;
+    const result = runAnalysis(baseInput({
+      instrument: "EUR/USD",
+      instrumentType: "forex",
+      timeframe: "D1",
+      marketData: {
+        instrument: "EUR/USD",
+        instrumentType: "forex",
+        provider: "test",
+        fetchTimestamp: oldTimestamp,
+        price: { price: 1.1, timestamp: oldTimestamp, source: "test" },
+        candles: [{ timestamp: oldTimestamp, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 100 }],
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+    }));
+    expect(result.reasons.join(" ")).toContain("Price snapshot is older than");
+  });
+});
