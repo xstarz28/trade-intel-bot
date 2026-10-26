@@ -56,6 +56,17 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       expect(coverage.gaps).toBe(0);
     }
 
+    const noTradeReasonCounts = new Map<string, number>();
+    for (const fold of report.folds) {
+      for (const item of fold.report.noTradeReasonCounts ?? []) {
+        noTradeReasonCounts.set(item.reason, (noTradeReasonCounts.get(item.reason) ?? 0) + item.count);
+      }
+    }
+    const noTradeDiagnostics = [...noTradeReasonCounts.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
+    expect(noTradeDiagnostics.some((item) => item.reason.includes("Price snapshot is older than"))).toBe(false);
+
     const sensitivity = costScenarios.map(({ costBpsPerSide, report: scenarioReport }) => ({
       costBpsPerSide,
       byAsset: scenarioReport.byAsset,
@@ -98,6 +109,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       })),
       byAsset: report.byAsset,
       byRegime: report.byRegime,
+      noTradeDiagnostics,
       sensitivity,
       folds: report.folds.map((fold) => ({
         instrument: fold.instrument,
@@ -130,6 +142,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
           totalNetReturnPct: fold.report.totalNetReturnPct,
           averageNetReturnPct: fold.report.averageNetReturnPct,
         },
+        noTradeReasonCounts: fold.report.noTradeReasonCounts ?? [],
         warnings: fold.report.warnings,
         trades: fold.report.trades,
       })),
@@ -172,6 +185,12 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "|---:|---|---:|---:|---:|---:|---:|---:|---|",
       ...summary.sensitivity.flatMap((scenario) => scenario.byAsset.map((item) =>
         `| ${scenario.costBpsPerSide} | ${item.instrument} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${item.uncertainty} |`)),
+      "",
+      "## Why the engine declined entries (5 bps per side)",
+      "",
+      "| Rejection reason | Count |",
+      "|---|---:|",
+      ...summary.noTradeDiagnostics.map((item) => `| ${item.reason.replace(/\\|/g, "/")} | ${item.count} |`),
       "",
       "## Out-of-sample results by training-window regime (5 bps per side)",
       "",
