@@ -1,40 +1,53 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { fetchHistoricalBinanceSpotOhlcv } from "@/lib/backtest/historical-ohlcv";
-import { runHistoricalWalkForwardEvaluation } from "@/lib/backtest/walk-forward-evaluation";
+import {
+  adaptHistoricalSpotDataset,
+  evaluateMultiAssetWalkForward,
+} from "@/lib/backtest/walk-forward-evaluation";
 
 const enabled = process.env.RUN_REAL_HISTORICAL_EVALUATION === "1";
 
 describe("real historical Binance Spot walk-forward evaluation", () => {
-  it.skipIf(!enabled)("downloads real closed OHLCV and writes an auditable multi-asset report", async () => {
-    const intervalMs = 4 * 60 * 60 * 1000;
+  it.skipIf(!enabled)("downloads real closed OHLCV and writes an auditable multi-asset report with cost sensitivity", async () => {
+    const intervalMs = 24 * 60 * 60 * 1000;
     const now = Date.now();
     const endTime = Math.floor(now / intervalMs) * intervalMs - intervalMs;
-    const trainingBars = 600;
-    const testBars = 600;
+    const trainingBars = 300;
+    const testBars = 250;
     const maxFolds = 6;
     const requestedBars = trainingBars + testBars * maxFolds;
     const startTime = endTime - (requestedBars - 1) * intervalMs;
     const symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"] as const;
     const requests = symbols.map((symbol) => ({
       symbol,
-      interval: "4h" as const,
+      interval: "1d" as const,
       startTime,
       endTime,
     }));
 
-    const report = await runHistoricalWalkForwardEvaluation(
-      requests,
-      async (request) => fetchHistoricalBinanceSpotOhlcv(request),
-      {
+    const sourceDatasets = [];
+    for (const request of requests) {
+      sourceDatasets.push(await fetchHistoricalBinanceSpotOhlcv(request));
+    }
+    const datasets = sourceDatasets.map((dataset) => adaptHistoricalSpotDataset(dataset));
+    for (const dataset of datasets) {
+      expect(dataset.candleCount).toBeGreaterThanOrEqual(trainingBars + testBars);
+      expect(dataset.gaps).toHaveLength(0);
+    }
+
+    const costScenarios = [5, 10, 15].map((costBpsPerSide) => ({
+      costBpsPerSide,
+      report: evaluateMultiAssetWalkForward(datasets, {
         trainingBars,
         testBars,
         maxFolds,
         minimumHistory: 220,
         maxHoldingBars: 20,
-        costBpsPerSide: 5,
-      },
-    );
+        costBpsPerSide,
+      }),
+    }));
+    const report = costScenarios[0].report;
 
     expect(report.providerCoverage).toHaveLength(symbols.length);
     expect(report.folds.length).toBeGreaterThanOrEqual(symbols.length);
@@ -43,19 +56,26 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       expect(coverage.gaps).toBe(0);
     }
 
+    const sensitivity = costScenarios.map(({ costBpsPerSide, report: scenarioReport }) => ({
+      costBpsPerSide,
+      byAsset: scenarioReport.byAsset,
+      byRegime: scenarioReport.byRegime,
+      foldCount: scenarioReport.folds.length,
+      tradeCount: scenarioReport.folds.reduce((sum, fold) => sum + fold.report.executedTrades, 0),
+    }));
     const summary = {
       title: "Trade Intel Bot — Real Historical Walk-forward Evaluation",
       generatedAtIso: new Date(report.generatedAt).toISOString(),
       methodology: report.methodology,
       parameters: {
         provider: "Binance Spot public OHLCV",
-        timeframe: "4h",
+        timeframe: "1d",
         symbols,
         requestedBars,
         trainingBars,
         testBars,
         maxFolds,
-        costBpsPerSide: 5,
+        costSensitivityBpsPerSide: [5, 10, 15],
         maxHoldingBars: 20,
         execution: "signal at completed candle close; next candle open entry; conservative stop-first same-bar ordering",
       },
@@ -78,6 +98,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       })),
       byAsset: report.byAsset,
       byRegime: report.byRegime,
+      sensitivity,
       folds: report.folds.map((fold) => ({
         instrument: fold.instrument,
         timeframe: fold.timeframe,
@@ -113,7 +134,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
         trades: fold.report.trades,
       })),
       limitations: report.limitations,
-      interpretation: "Historical, descriptive evidence only. This report is not a forecast or a guarantee of future profitability. Validate strategy stability and execution assumptions before any release decision.",
+      interpretation: "Historical, descriptive evidence only. This report is not a forecast or a guarantee of future profitability. Sensitivity is tested at 5, 10 and 15 bps per side; real venue fee and fill assumptions still require validation.",
     };
 
     await mkdir("artifacts", { recursive: true });
@@ -127,11 +148,11 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "",
       "## Method",
       "",
-      "- Source: Binance Spot public OHLCV; completed 4-hour candles only.",
+      "- Source: Binance Spot public OHLCV; completed daily candles only.",
       "- Assets: BTCUSDT, ETHUSDT, SOLUSDT.",
-      "- Walk-forward: expanding anchored training, six consecutive 600-bar out-of-sample folds per asset (subject to available source data).",
+      "- Walk-forward: expanding anchored training, six consecutive 250-bar out-of-sample folds per asset (subject to available source data).",
       "- Execution model: signal after candle close, entry at next candle open, stop-first when stop and target touch the same OHLC bar.",
-      "- Cost assumption: 5 basis points per side (fee + slippage combined); sensitivity to other cost levels is not tested in this run.",
+      "- Cost sensitivity: 5, 10 and 15 basis points per side (fee + slippage combined), using the same downloaded data for all scenarios.",
       "",
       "## Data coverage",
       "",
@@ -139,13 +160,20 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "|---|---:|---|---|---:|---|",
       ...summary.coverage.map((item) => `| ${item.instrument} | ${item.candleCount} | ${item.actualRange?.start ?? "n/a"} | ${item.actualRange?.end ?? "n/a"} | ${item.gaps} | ${item.warnings.join("; ") || "none"} |`),
       "",
-      "## Out-of-sample results by asset",
+      "## Out-of-sample results by asset (5 bps per side)",
       "",
       "| Asset | Folds | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Net compounded return % | Exposure % | Trades / 1k bars | Evidence label |",
       "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
       ...summary.byAsset.map((item) => `| ${item.instrument} | ${item.folds} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${fmt(item.exposurePct)} | ${fmt(item.turnoverTradesPer1000Bars)} | ${item.uncertainty} |`),
       "",
-      "## Out-of-sample results by training-window regime",
+      "## Transaction-cost sensitivity by asset",
+      "",
+      "| Cost bps/side | Asset | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Net compounded return % | Evidence label |",
+      "|---:|---|---:|---:|---:|---:|---:|---:|---|",
+      ...summary.sensitivity.flatMap((scenario) => scenario.byAsset.map((item) =>
+        `| ${scenario.costBpsPerSide} | ${item.instrument} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${item.uncertainty} |`)),
+      "",
+      "## Out-of-sample results by training-window regime (5 bps per side)",
       "",
       "| Regime | Folds | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Net compounded return % | Evidence label |",
       "|---|---:|---:|---:|---:|---:|---:|---:|---|",
@@ -155,7 +183,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "",
       ...report.limitations.map((item) => `- ${item}`),
       "",
-      "**Interpretation:** Historical descriptive evidence only; not a forecast or proof of future profitability. The cost assumption has not been sensitivity-tested in this run.",
+      "**Interpretation:** Historical descriptive evidence only; not a forecast or proof of future profitability. Costs are stress-tested at three assumptions, but venue-specific fees, spread, and actual fills still require validation.",
       "",
     ].join("\n");
     await writeFile("artifacts/historical-walk-forward-report.md", markdown, "utf8");
