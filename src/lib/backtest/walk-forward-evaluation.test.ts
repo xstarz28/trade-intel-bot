@@ -4,6 +4,7 @@ import type { WalkForwardReport } from "./walk-forward";
 import {
   adaptHistoricalSpotDataset,
   evaluateMultiAssetWalkForward,
+  runHistoricalWalkForwardEvaluation,
   type HistoricalEvaluationDataset,
 } from "./walk-forward-evaluation";
 
@@ -76,6 +77,37 @@ describe("evaluateMultiAssetWalkForward", () => {
       provider: "binance-spot", instrument: "ETHUSDT", instrumentType: "crypto", timeframe: "H1",
     });
     expect(() => adaptHistoricalSpotDataset({ ...source, timeframe: "3m" })).toThrow(/Unsupported evaluation timeframe/);
+  });
+
+  it("fetches requested datasets sequentially and produces a multi-asset report", async () => {
+    const history = candles(500);
+    const requests = ["BTCUSDT", "ETHUSDT"].map((symbol) => ({
+      symbol, interval: "1m", startTime: history[0].timestamp, endTime: history[history.length - 1].timestamp,
+    }));
+    const calls: string[] = [];
+    const result = await runHistoricalWalkForwardEvaluation(
+      requests,
+      async (request) => {
+        calls.push(request.symbol);
+        return {
+          provider: "binance-spot",
+          instrumentId: request.symbol,
+          timeframe: request.interval,
+          requestedRange: { startTime: request.startTime, endTime: request.endTime },
+          actualRange: { startTime: history[0].timestamp, endTime: history[history.length - 1].timestamp },
+          retrievedAt: 1_800_000_000_000,
+          candleCount: history.length,
+          candles: history,
+          gaps: [],
+          warnings: [],
+        };
+      },
+      { trainingBars: 220, testBars: 100, maxFolds: 1 },
+      { runBacktest: (args) => emptyReport(args) },
+    );
+    expect(calls).toEqual(["BTCUSDT", "ETHUSDT"]);
+    expect(result.providerCoverage.map((item) => item.instrument)).toEqual(["BTCUSDT", "ETHUSDT"]);
+    expect(result.folds).toHaveLength(2);
   });
 
   it("rejects an empty evaluation request", () => {
