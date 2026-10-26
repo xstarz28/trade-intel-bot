@@ -172,6 +172,60 @@ describe("evaluateMultiAssetWalkForward", () => {
     expect(result.folds).toHaveLength(1);
   });
 
+  it("reports 1% fixed-risk equity compounding separately from full-notional trade-return compounding", () => {
+    const history = candles(500);
+    const result = evaluateMultiAssetWalkForward(
+      [dataset()],
+      { trainingBars: 220, testBars: 100, maxFolds: 1 },
+      {
+        runBacktest: (args) => ({
+          ...emptyReport(args),
+          executedTrades: 2,
+          wins: 1,
+          losses: 1,
+          trades: [
+            {
+              signalTime: history[220].timestamp,
+              entryTime: history[221].timestamp,
+              exitTime: history[222].timestamp,
+              direction: "long",
+              entry: 100,
+              exit: 102,
+              stopLoss: 99,
+              takeProfit: 102,
+              exitReason: "take_profit",
+              barsHeld: 2,
+              grossReturnPct: 2,
+              netReturnPct: 1.9,
+              rMultiple: 2,
+              confidence: 80,
+            },
+            {
+              signalTime: history[223].timestamp,
+              entryTime: history[224].timestamp,
+              exitTime: history[225].timestamp,
+              direction: "short",
+              entry: 100,
+              exit: 101,
+              stopLoss: 101,
+              takeProfit: 98,
+              exitReason: "stop_loss",
+              barsHeld: 2,
+              grossReturnPct: -1,
+              netReturnPct: -1.1,
+              rMultiple: -1,
+              confidence: 70,
+            },
+          ],
+        }),
+      },
+    );
+    expect(result.byAsset[0].riskBudgetPct).toBe(1);
+    expect(result.byAsset[0].riskBudgetReturnPct).toBeCloseTo(0.98, 8);
+    expect(result.byAsset[0].riskBudgetMaxDrawdownPct).toBeCloseTo(1, 8);
+    expect(result.byAsset[0].totalNetReturnPct).toBeCloseTo(((1.019 * 0.989) - 1) * 100, 8);
+  });
+
   it("blocks timestamp gaps even when the source metadata omitted them", () => {
     const history = candles(500);
     history.splice(250, 1);
