@@ -111,6 +111,25 @@ describe("evaluateMultiAssetWalkForward", () => {
     expect(result.folds).toHaveLength(1);
   });
 
+  it("blocks timestamp gaps even when the source metadata omitted them", () => {
+    const history = candles(500);
+    history.splice(250, 1);
+    expect(() => evaluateMultiAssetWalkForward([
+      dataset({
+        candles: history,
+        candleCount: history.length,
+        actualRange: { startTime: history[0].timestamp, endTime: history[history.length - 1].timestamp },
+        requestedRange: { startTime: history[0].timestamp, endTime: candles(500)[499].timestamp },
+      }),
+    ], { trainingBars: 220 })).toThrow(/unreported gap/);
+  });
+
+  it("rejects a minimum history larger than the declared training window", () => {
+    expect(() => evaluateMultiAssetWalkForward([dataset()], {
+      trainingBars: 220, minimumHistory: 300,
+    })).toThrow(/minimumHistory/);
+  });
+
   it("rejects provenance that disagrees with the candle payload", () => {
     expect(() => evaluateMultiAssetWalkForward([
       dataset({ candleCount: 499 }),
