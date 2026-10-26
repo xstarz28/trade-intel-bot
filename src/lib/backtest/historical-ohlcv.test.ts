@@ -94,6 +94,23 @@ describe("fetchHistoricalBinanceSpotOhlcv", () => {
     expect(result.warnings.join(" ")).toContain("appears stale");
   });
 
+  it("falls back to a public market-data mirror when the primary host is geo-blocked", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(response({}, false, 451))
+      .mockResolvedValueOnce(response([row(now - 5 * minute)]));
+    const result = await fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 4 * minute,
+    }, {
+      fetchImpl,
+      now: () => now,
+      baseUrls: ["https://api.binance.com", "https://data-api.binance.vision"],
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(new URL(fetchImpl.mock.calls[0][0]).host).toBe("api.binance.com");
+    expect(new URL(fetchImpl.mock.calls[1][0]).host).toBe("data-api.binance.vision");
+    expect(result.candleCount).toBe(1);
+  });
+
   it("rejects invalid ranges and reports HTTP errors clearly", async () => {
     await expect(fetchHistoricalBinanceSpotOhlcv({
       symbol: "BTCUSDT", interval: "1m", startTime: now, endTime: now,
