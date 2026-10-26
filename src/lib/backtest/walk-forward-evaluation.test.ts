@@ -58,6 +58,10 @@ function emptyReport(args: { instrument: string; timeframe: string; candles: Ohl
 }
 
 describe("evaluateMultiAssetWalkForward", () => {
+  it("rejects an empty evaluation request", () => {
+    expect(() => evaluateMultiAssetWalkForward([])).toThrow(/At least one historical dataset/);
+  });
+
   it("creates consecutive OOS folds with past-only training context and provenance", () => {
     const observed: Array<{ candleCount: number; outOfSampleStartIndex: number }> = [];
     const result = evaluateMultiAssetWalkForward(
