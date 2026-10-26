@@ -51,6 +51,8 @@ export interface FoldEvaluation {
   trainingBars: number;
   testBars: number;
   regime: HistoricalRegime;
+  exposurePct: number;
+  turnoverTradesPer1000Bars: number;
   report: WalkForwardReport;
 }
 
@@ -64,6 +66,8 @@ export interface EvaluationSummary {
   winRatePct: number | null;
   maxDrawdownR: number;
   totalNetReturnPct: number;
+  exposurePct: number;
+  turnoverTradesPer1000Bars: number;
   uncertainty: "insufficient_sample" | "descriptive_only";
 }
 
@@ -187,6 +191,8 @@ function classifyRegime(training: readonly OhlcvCandle[]): HistoricalRegime {
 function summarize(instrument: string, folds: FoldEvaluation[], regime?: HistoricalRegime): EvaluationSummary {
   const selected = folds.filter((fold) => fold.instrument === instrument && (!regime || fold.regime === regime));
   const trades = selected.flatMap((fold) => fold.report.trades).sort((a, b) => a.signalTime - b.signalTime);
+  const totalTestBars = selected.reduce((sum, fold) => sum + fold.testBars, 0);
+  const barsExposed = trades.reduce((sum, trade) => sum + trade.barsHeld, 0);
   const wins = trades.filter((trade) => trade.rMultiple > 0).length;
   const grossWinsR = trades.reduce((sum, trade) => sum + Math.max(0, trade.rMultiple), 0);
   const grossLossesR = trades.reduce((sum, trade) => sum + Math.max(0, -trade.rMultiple), 0);
@@ -210,6 +216,8 @@ function summarize(instrument: string, folds: FoldEvaluation[], regime?: Histori
     winRatePct: trades.length ? wins / trades.length * 100 : null,
     maxDrawdownR,
     totalNetReturnPct: (compoundedReturn - 1) * 100,
+    exposurePct: totalTestBars > 0 ? Math.min(100, barsExposed / totalTestBars * 100) : 0,
+    turnoverTradesPer1000Bars: totalTestBars > 0 ? trades.length / totalTestBars * 1000 : 0,
     uncertainty: trades.length < 30 ? "insufficient_sample" : "descriptive_only",
   };
 }
@@ -288,6 +296,12 @@ export function evaluateMultiAssetWalkForward(
         trainingBars: training.length,
         testBars: testEnd - testStart,
         regime: classifyRegime(training),
+        exposurePct: report.candleCount > 0
+          ? Math.min(100, report.trades.reduce((sum, trade) => sum + trade.barsHeld, 0) / (testEnd - testStart) * 100)
+          : 0,
+        turnoverTradesPer1000Bars: testEnd > testStart
+          ? report.executedTrades / (testEnd - testStart) * 1000
+          : 0,
         report,
       });
       testStart += testBars;
