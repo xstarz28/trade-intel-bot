@@ -20,6 +20,53 @@ export interface HistoricalEvaluationDataset {
   warnings?: string[];
 }
 
+export interface HistoricalSpotDatasetLike {
+  provider: string;
+  instrumentId: string;
+  timeframe: string;
+  requestedRange: { startTime: number; endTime: number };
+  actualRange: { startTime: number; endTime: number } | null;
+  retrievedAt: number;
+  candleCount: number;
+  candles: OhlcvCandle[];
+  gaps: Array<{ missingBars: number; expectedTimestamp?: number; nextObservedTimestamp?: number }>;
+  warnings?: string[];
+}
+
+const BINANCE_INTERVAL_TO_TIMEFRAME: Record<string, Timeframe> = {
+  "1m": "M1",
+  "5m": "M5",
+  "15m": "M15",
+  "1h": "H1",
+  "4h": "H4",
+  "1d": "D1",
+  "1w": "W1",
+};
+
+/** Adapt the provider's raw spot dataset into the app's supported backtest timeframes. */
+export function adaptHistoricalSpotDataset(
+  dataset: HistoricalSpotDatasetLike,
+  instrumentType: InstrumentType = "crypto",
+): HistoricalEvaluationDataset {
+  const timeframe = BINANCE_INTERVAL_TO_TIMEFRAME[dataset.timeframe];
+  if (!timeframe) {
+    throw new Error(`Unsupported evaluation timeframe ${dataset.timeframe}; choose 1m, 5m, 15m, 1h, 4h, 1d, or 1w.`);
+  }
+  return {
+    provider: dataset.provider,
+    instrument: dataset.instrumentId,
+    instrumentType,
+    timeframe,
+    requestedRange: dataset.requestedRange,
+    actualRange: dataset.actualRange,
+    retrievedAt: dataset.retrievedAt,
+    candleCount: dataset.candleCount,
+    candles: dataset.candles,
+    gaps: dataset.gaps,
+    warnings: dataset.warnings,
+  };
+}
+
 export interface WalkForwardEvaluationOptions {
   /** Number of candles reserved before each OOS window for historical context. */
   trainingBars?: number;
