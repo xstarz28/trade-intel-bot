@@ -8,6 +8,17 @@ import {
 
 const enabled = process.env.RUN_REAL_HISTORICAL_EVALUATION === "1";
 
+function categorizeNoTradeReason(reason: string): string {
+  if (reason.includes("Price snapshot is older than")) return "Replay freshness gate failure";
+  if (reason.includes("Core bias is Neutral")) return "Core bias neutral: structural/fundamental/positioning agreement missing";
+  if (reason.startsWith("Plan rejected: the latest confirmed market close")) return "Projected plan invalidated: close crossed target or stop";
+  if (reason.startsWith("Confluence too weak")) return "Confluence below minimum";
+  if (reason.startsWith("Structural agreement required")) return "Structural veto: external structure does not support bias";
+  if (reason.startsWith("No opposing structural level")) return "No opposing structural target available";
+  if (reason.startsWith("Projected R:R")) return "Projected R:R below 1.5";
+  return reason;
+}
+
 describe("real historical Binance Spot walk-forward evaluation", () => {
   it.skipIf(!enabled)("downloads real closed OHLCV and writes an auditable multi-asset report with cost sensitivity", async () => {
     const intervalMs = 24 * 60 * 60 * 1000;
@@ -59,13 +70,14 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
     const noTradeReasonCounts = new Map<string, number>();
     for (const fold of report.folds) {
       for (const item of fold.report.noTradeReasonCounts ?? []) {
-        noTradeReasonCounts.set(item.reason, (noTradeReasonCounts.get(item.reason) ?? 0) + item.count);
+        const category = categorizeNoTradeReason(item.reason);
+        noTradeReasonCounts.set(category, (noTradeReasonCounts.get(category) ?? 0) + item.count);
       }
     }
     const noTradeDiagnostics = [...noTradeReasonCounts.entries()]
       .map(([reason, count]) => ({ reason, count }))
       .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
-    expect(noTradeDiagnostics.some((item) => item.reason.includes("Price snapshot is older than"))).toBe(false);
+    expect(noTradeDiagnostics.some((item) => item.reason === "Replay freshness gate failure")).toBe(false);
 
     const sensitivity = costScenarios.map(({ costBpsPerSide, report: scenarioReport }) => ({
       costBpsPerSide,
@@ -175,16 +187,18 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "",
       "## Out-of-sample results by asset (5 bps per side)",
       "",
-      "| Asset | Folds | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Net compounded return % | Exposure % | Trades / 1k bars | Evidence label |",
-      "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
-      ...summary.byAsset.map((item) => `| ${item.instrument} | ${item.folds} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${fmt(item.exposurePct)} | ${fmt(item.turnoverTradesPer1000Bars)} | ${item.uncertainty} |`),
+      "| Asset | Folds | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Full-notional trade-return compound %* | 1% risk-budget return % | 1% risk-budget max DD % | Exposure % | Trades / 1k bars | Evidence label |",
+      "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+      ...summary.byAsset.map((item) => `| ${item.instrument} | ${item.folds} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${fmt(item.riskBudgetReturnPct)} | ${fmt(item.riskBudgetMaxDrawdownPct)} | ${fmt(item.exposurePct)} | ${fmt(item.turnoverTradesPer1000Bars)} | ${item.uncertainty} |`),
+      "",
+      "*Full-notional compounding is trade-return compounding, not an account equity curve. The 1% risk-budget return assumes 1% of current equity at risk per trade and does not model concurrent cross-asset positions or portfolio allocation.*",
       "",
       "## Transaction-cost sensitivity by asset",
       "",
-      "| Cost bps/side | Asset | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Net compounded return % | Evidence label |",
-      "|---:|---|---:|---:|---:|---:|---:|---:|---|",
+      "| Cost bps/side | Asset | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Full-notional compound %* | 1% risk-budget return % | 1% risk-budget max DD % | Evidence label |",
+      "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
       ...summary.sensitivity.flatMap((scenario) => scenario.byAsset.map((item) =>
-        `| ${scenario.costBpsPerSide} | ${item.instrument} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${item.uncertainty} |`)),
+        `| ${scenario.costBpsPerSide} | ${item.instrument} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${fmt(item.riskBudgetReturnPct)} | ${fmt(item.riskBudgetMaxDrawdownPct)} | ${item.uncertainty} |`)),
       "",
       "## Why the engine declined entries (5 bps per side)",
       "",
