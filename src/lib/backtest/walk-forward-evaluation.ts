@@ -128,6 +128,10 @@ export interface EvaluationSummary {
   winRatePct: number | null;
   maxDrawdownR: number;
   totalNetReturnPct: number;
+  /** Hypothetical fixed-fraction compounding at 1% of current equity risked per trade. */
+  riskBudgetPct: number;
+  riskBudgetReturnPct: number;
+  riskBudgetMaxDrawdownPct: number;
   exposurePct: number;
   turnoverTradesPer1000Bars: number;
   uncertainty: "insufficient_sample" | "descriptive_only";
@@ -262,11 +266,23 @@ function summarize(instrument: string, folds: FoldEvaluation[], regime?: Histori
   let peakR = 0;
   let maxDrawdownR = 0;
   let compoundedReturn = 1;
+  const riskBudgetPct = 1;
+  let riskBudgetEquity = 1;
+  let riskBudgetPeak = 1;
+  let riskBudgetMaxDrawdownPct = 0;
   for (const trade of trades) {
     equityR += trade.rMultiple;
     peakR = Math.max(peakR, equityR);
     maxDrawdownR = Math.max(maxDrawdownR, peakR - equityR);
     compoundedReturn *= 1 + trade.netReturnPct / 100;
+    riskBudgetEquity *= Math.max(0, 1 + (riskBudgetPct / 100) * trade.rMultiple);
+    riskBudgetPeak = Math.max(riskBudgetPeak, riskBudgetEquity);
+    if (riskBudgetPeak > 0) {
+      riskBudgetMaxDrawdownPct = Math.max(
+        riskBudgetMaxDrawdownPct,
+        ((riskBudgetPeak - riskBudgetEquity) / riskBudgetPeak) * 100,
+      );
+    }
   }
   return {
     instrument,
@@ -278,6 +294,9 @@ function summarize(instrument: string, folds: FoldEvaluation[], regime?: Histori
     winRatePct: trades.length ? wins / trades.length * 100 : null,
     maxDrawdownR,
     totalNetReturnPct: (compoundedReturn - 1) * 100,
+    riskBudgetPct,
+    riskBudgetReturnPct: (riskBudgetEquity - 1) * 100,
+    riskBudgetMaxDrawdownPct,
     exposurePct: totalTestBars > 0 ? Math.min(100, barsExposed / totalTestBars * 100) : 0,
     turnoverTradesPer1000Bars: totalTestBars > 0 ? trades.length / totalTestBars * 1000 : 0,
     uncertainty: trades.length < 30 ? "insufficient_sample" : "descriptive_only",
@@ -423,6 +442,7 @@ export function evaluateMultiAssetWalkForward(
       "Intrabar stop/target ordering is conservative but OHLC candles cannot reproduce order-book fills, partial fills, latency, or market impact.",
       "Regime labels are deterministic heuristics calculated from each fold's prior training window, not authoritative market-state labels.",
       "Samples with fewer than 30 trades are marked insufficient_sample; larger samples remain descriptive without a confidence interval.",
+      "totalNetReturnPct compounds each trade's unlevered price return as if full notional were reused; it is not an account-equity or portfolio return. riskBudgetReturnPct separately illustrates 1% fixed-fraction risk per trade using net R, without a cross-asset allocator, concurrency/correlation model, margin model, or portfolio-level capital constraints.",
       "Persist the returned JSON together with the source dataset to make the evaluation auditable and reproducible.",
     ],
   };
