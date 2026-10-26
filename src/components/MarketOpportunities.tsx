@@ -200,7 +200,7 @@ interface MarketOpportunitiesProps {
 // RANKED CARD
 // ═══════════════════════════════════════════════════════════════
 
-function RankedCard({ item }: { item: RankedInstrument }) {
+function RankedCard({ item, radarOpp }: { item: RankedInstrument; radarOpp?: RadarOpportunity }) {
   const { locale, t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
@@ -258,6 +258,15 @@ function RankedCard({ item }: { item: RankedInstrument }) {
           </Badge>
         </div>
       </div>
+
+      {radarOpp?.conditionalScenarios?.length ? (
+        <div className="mt-2 rounded-md border border-border/30 bg-background/30 p-2">
+          <p className="text-[9px] font-sans text-muted-foreground/70">Conditional forward scenarios · reference {radarOpp.currentPrice?.toLocaleString()}</p>
+          {radarOpp.conditionalScenarios.map((scenario) => (
+            <p key={scenario.id} className="mt-1 text-[9px] font-sans">{scenario.direction.toUpperCase()} · Trigger {scenario.trigger} · Invalidation {scenario.invalidation} · Target {scenario.target ?? "unavailable"} · R:R {scenario.riskReward?.toFixed(2) ?? "n/a"}R · {scenario.ready ? "conditional, wait for confirmation" : "not qualified"}</p>
+          ))}
+        </div>
+      ) : null}
 
       {item.primaryReasons.length > 0 && (
         <div className="mt-2 space-y-0.5">
@@ -854,7 +863,7 @@ export function MarketOpportunities({
           filteredRanked.length > 0 ? (
             <div data-testid="market-ranked-list" className="space-y-2">
               {filteredRanked.map((item) => (
-                <RankedCard key={item.instrument} item={item} />
+                <RankedCard key={item.instrument} item={item} radarOpp={radarOpps.find((opp) => opp.instrument.toUpperCase() === item.instrument.toUpperCase())} />
               ))}
             </div>
           ) : monitoringRanked.length > 0 ? (
@@ -868,7 +877,7 @@ export function MarketOpportunities({
                 </p>
               </div>
               {monitoringRanked.map((item) => (
-                <RankedCard key={item.instrument} item={item} />
+                <RankedCard key={item.instrument} item={item} radarOpp={radarOpps.find((opp) => opp.instrument.toUpperCase() === item.instrument.toUpperCase())} />
               ))}
             </div>
           ) : (
