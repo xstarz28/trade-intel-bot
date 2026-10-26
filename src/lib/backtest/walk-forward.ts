@@ -96,6 +96,9 @@ export interface WatchlistEvaluationReport {
   linkedTradeProfitFactor: number | null;
   linkedTradeNetReturnPct: number;
   linkedTradeRiskBudgetReturnPct: number;
+  linkedSumR: number;
+  linkedGrossWinsR: number;
+  linkedGrossLossesR: number;
   byType: WatchlistTypeEvaluation[];
 }
 
