@@ -6,8 +6,57 @@ import {
   adaptHistoricalSpotDataset,
   evaluateMultiAssetWalkForward,
 } from "@/lib/backtest/walk-forward-evaluation";
+import type { WatchlistEvaluationReport } from "./walk-forward";
 
 const enabled = process.env.RUN_REAL_HISTORICAL_EVALUATION === "1";
+
+function aggregateWatchlistReports(reports: WatchlistEvaluationReport[]) {
+  const candidates = reports.reduce((sum, report) => sum + report.candidates, 0);
+  const confirmed = reports.reduce((sum, report) => sum + report.confirmed, 0);
+  const expired = reports.reduce((sum, report) => sum + report.expired, 0);
+  const censored = reports.reduce((sum, report) => sum + report.censored, 0);
+  const linkedTradeCount = reports.reduce((sum, report) => sum + report.linkedTradeCount, 0);
+  const linkedTradeWins = reports.reduce((sum, report) => sum + report.linkedTradeWins, 0);
+  const linkedTradeLosses = reports.reduce((sum, report) => sum + report.linkedTradeLosses, 0);
+  const linkedSumR = reports.reduce((sum, report) => sum + report.linkedSumR, 0);
+  const linkedGrossWinsR = reports.reduce((sum, report) => sum + report.linkedGrossWinsR, 0);
+  const linkedGrossLossesR = reports.reduce((sum, report) => sum + report.linkedGrossLossesR, 0);
+  const linkedTradeNetReturnPct = (reports.reduce((equity, report) => equity * (1 + report.linkedTradeNetReturnPct / 100), 1) - 1) * 100;
+  const linkedTradeRiskBudgetReturnPct = (reports.reduce((equity, report) => equity * (1 + report.linkedTradeRiskBudgetReturnPct / 100), 1) - 1) * 100;
+  return {
+    candidates,
+    confirmed,
+    expired,
+    censored,
+    confirmationRatePct: confirmed + expired > 0 ? (confirmed / (confirmed + expired)) * 100 : null,
+    confirmedWithActionableTrade: reports.reduce((sum, report) => sum + report.confirmedWithActionableTrade, 0),
+    confirmedWithoutActionableTrade: reports.reduce((sum, report) => sum + report.confirmedWithoutActionableTrade, 0),
+    linkedTradeCount,
+    linkedTradeWins,
+    linkedTradeLosses,
+    linkedTradeWinRatePct: linkedTradeCount > 0 ? linkedTradeWins / linkedTradeCount * 100 : null,
+    linkedTradeExpectancyR: linkedTradeCount > 0 ? linkedSumR / linkedTradeCount : null,
+    linkedTradeProfitFactor: linkedGrossLossesR > 0 ? linkedGrossWinsR / linkedGrossLossesR : null,
+    linkedTradeNetReturnPct,
+    linkedTradeRiskBudgetReturnPct,
+  };
+}
+
+function aggregateWatchlistByAsset(
+  folds: Array<{ instrument: string; report: { watchlistEvaluation?: WatchlistEvaluationReport } }>,
+) {
+  const groups = new Map<string, WatchlistEvaluationReport[]>();
+  for (const fold of folds) {
+    if (!fold.report.watchlistEvaluation) continue;
+    const reports = groups.get(fold.instrument) ?? [];
+    reports.push(fold.report.watchlistEvaluation);
+    groups.set(fold.instrument, reports);
+  }
+  return [...groups.entries()].map(([instrument, reports]) => ({
+    instrument,
+    ...aggregateWatchlistReports(reports),
+  }));
+}
 
 function categorizeNoTradeReason(reason: string): string {
   if (reason.includes("Price snapshot is older than")) return "Replay freshness gate failure";
@@ -124,6 +173,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       byRegime: scenarioReport.byRegime,
       foldCount: scenarioReport.folds.length,
       tradeCount: scenarioReport.folds.reduce((sum, fold) => sum + fold.report.executedTrades, 0),
+      watchlistByAsset: aggregateWatchlistByAsset(scenarioReport.folds),
     }));
     const summary = {
       title: "Trade Intel Bot — Real Historical Walk-forward Evaluation",
@@ -169,6 +219,8 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       })),
       byAsset: report.byAsset,
       byRegime: report.byRegime,
+      watchlistByAsset: aggregateWatchlistByAsset(report.folds),
+      watchlistEvaluationMethod: "NO_TRADE structural support/resistance watches; confirmation requires a later close beyond the level, directional candle body, and volume above the preceding 20-bar mean. Linked P&L includes only a production-approved trade on the confirmation candle, after the selected per-side costs. MTF and non-OHLCV confirmations are not synthesized.",
       noTradeDiagnostics,
       sensitivity,
       folds: report.folds.map((fold) => ({
@@ -203,6 +255,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
           averageNetReturnPct: fold.report.averageNetReturnPct,
         },
         noTradeReasonCounts: fold.report.noTradeReasonCounts ?? [],
+        watchlistEvaluation: fold.report.watchlistEvaluation ?? null,
         warnings: fold.report.warnings,
         trades: fold.report.trades,
       })),
@@ -255,13 +308,28 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       ...summary.sensitivity.flatMap((scenario) => scenario.byAsset.map((item) =>
         `| ${scenario.feeBpsPerSide} | ${scenario.spreadBpsPerSide} | ${scenario.slippageBpsPerSide} | ${scenario.costBpsPerSide} | ${item.instrument} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${fmt(item.riskBudgetReturnPct)} | ${fmt(item.riskBudgetMaxDrawdownPct)} | ${item.uncertainty} |`)),
       "",
-      "## Why the engine declined entries (5 bps per side)",
+      "## Future opportunity watchlist confirmation (15 bps per side)",
+      "",
+      "| Asset | Watch candidates | Confirmed | Confirmation %* | Expired | Censored | Confirmed with executable trade | Linked trades | Linked expectancy (R) | Linked PF | Linked 1% risk-budget return % |",
+      "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+      ...summary.watchlistByAsset.map((item) => `| ${item.instrument} | ${item.candidates} | ${item.confirmed} | ${fmt(item.confirmationRatePct)} | ${item.expired} | ${item.censored} | ${item.confirmedWithActionableTrade} | ${item.linkedTradeCount} | ${fmt(item.linkedTradeExpectancyR, 3)} | ${fmt(item.linkedTradeProfitFactor, 3)} | ${fmt(item.linkedTradeRiskBudgetReturnPct)} |`),
+      "",
+      "*Confirmation rate excludes right-censored watches that do not have the full 20-bar observation window. A confirmed level is not automatically an entry; the production analysis and execution gates must also approve the trade.*",
+      "",
+      "## Watchlist-linked trade cost sensitivity",
+      "",
+      "| Total bps/side | Asset | Candidates | Confirmed | Confirmation % | Linked trades | Linked expectancy (R) | Linked PF | Linked 1% risk-budget return % |",
+      "|---:|---|---:|---:|---:|---:|---:|---:|---:|",
+      ...summary.sensitivity.flatMap((scenario) => scenario.watchlistByAsset.map((item) =>
+        `| ${scenario.costBpsPerSide} | ${item.instrument} | ${item.candidates} | ${item.confirmed} | ${fmt(item.confirmationRatePct)} | ${item.linkedTradeCount} | ${fmt(item.linkedTradeExpectancyR, 3)} | ${fmt(item.linkedTradeProfitFactor, 3)} | ${fmt(item.linkedTradeRiskBudgetReturnPct)} |`)),
+      "",
+      "## Why the engine declined entries (15 bps per side)",
       "",
       "| Rejection reason | Count |",
       "|---|---:|",
       ...summary.noTradeDiagnostics.map((item) => `| ${item.reason.replace(/\|/g, "/")} | ${item.count} |`),
       "",
-      "## Out-of-sample results by training-window regime (5 bps per side)",
+      "## Out-of-sample results by training-window regime (15 bps per side)",
       "",
       "| Regime | Folds | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Net compounded return % | Evidence label |",
       "|---|---:|---:|---:|---:|---:|---:|---:|---|",
