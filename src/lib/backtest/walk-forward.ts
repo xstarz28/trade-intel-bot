@@ -72,6 +72,8 @@ export interface WatchlistTypeEvaluation {
   censored: number;
   confirmationRatePct: number | null;
   linkedTradeCount: number;
+  linkedTradeWins: number;
+  linkedTradeLosses: number;
   linkedTradeWinRatePct: number | null;
   linkedTradeExpectancyR: number | null;
   linkedTradeProfitFactor: number | null;
@@ -117,6 +119,8 @@ function summarizeLinkedTrades(trades: BacktestTrade[]) {
   const riskBudgetEquity = trades.reduce((equity, trade) => equity * Math.max(0, 1 + 0.01 * trade.rMultiple), 1);
   return {
     linkedTradeCount: trades.length,
+    linkedTradeWins: wins,
+    linkedTradeLosses: trades.filter((trade) => trade.rMultiple < 0).length,
     linkedTradeWinRatePct: trades.length ? (wins / trades.length) * 100 : null,
     linkedTradeExpectancyR: trades.length ? sumR / trades.length : null,
     linkedTradeProfitFactor: grossLossesR > 0 ? grossWinsR / grossLossesR : null,
