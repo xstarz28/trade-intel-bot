@@ -387,7 +387,7 @@ export function evaluateMultiAssetWalkForward(
         testRange: { startTime: candles[testStart].timestamp, endTime: candles[testEnd - 1].timestamp },
         trainingBars: training.length,
         testBars: testEnd - testStart,
-        regime: classifyRegime(training),
+        regime: classifyRegime(regimeWindow),
         exposurePct: report.candleCount > 0
           ? Math.min(100, report.trades.reduce((sum, trade) => sum + trade.barsHeld, 0) / (testEnd - testStart) * 100)
           : 0,
