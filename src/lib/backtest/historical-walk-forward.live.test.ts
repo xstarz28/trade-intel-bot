@@ -75,17 +75,25 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       .update(JSON.stringify(sourceSnapshot))
       .digest("hex");
 
-    const costScenarios = [5, 10, 15].map((costBpsPerSide) => ({
-      costBpsPerSide,
-      report: evaluateMultiAssetWalkForward(datasets, {
-        trainingBars,
-        testBars,
-        maxFolds,
-        minimumHistory: 220,
-        maxHoldingBars: 20,
+    const costScenarios = [
+      { feeBpsPerSide: 10, spreadBpsPerSide: 2, slippageBpsPerSide: 3 },
+      { feeBpsPerSide: 10, spreadBpsPerSide: 2, slippageBpsPerSide: 8 },
+      { feeBpsPerSide: 10, spreadBpsPerSide: 2, slippageBpsPerSide: 13 },
+    ].map((costModel) => {
+      const costBpsPerSide = costModel.feeBpsPerSide + costModel.spreadBpsPerSide + costModel.slippageBpsPerSide;
+      return {
+        ...costModel,
         costBpsPerSide,
-      }),
-    }));
+        report: evaluateMultiAssetWalkForward(datasets, {
+          trainingBars,
+          testBars,
+          maxFolds,
+          minimumHistory: 220,
+          maxHoldingBars: 20,
+          costBpsPerSide,
+        }),
+      };
+    });
     const report = costScenarios[0].report;
 
     expect(report.providerCoverage).toHaveLength(symbols.length);
@@ -107,8 +115,11 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
     expect(noTradeDiagnostics.some((item) => item.reason === "Replay freshness gate failure")).toBe(false);
 
-    const sensitivity = costScenarios.map(({ costBpsPerSide, report: scenarioReport }) => ({
+    const sensitivity = costScenarios.map(({ costBpsPerSide, feeBpsPerSide, spreadBpsPerSide, slippageBpsPerSide, report: scenarioReport }) => ({
       costBpsPerSide,
+      feeBpsPerSide,
+      spreadBpsPerSide,
+      slippageBpsPerSide,
       byAsset: scenarioReport.byAsset,
       byRegime: scenarioReport.byRegime,
       foldCount: scenarioReport.folds.length,
@@ -128,7 +139,13 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
         trainingBars,
         testBars,
         maxFolds,
-        costSensitivityBpsPerSide: [5, 10, 15],
+        costModel: {
+          feeBpsPerSide: 10,
+          spreadBpsPerSide: 2,
+          slippageBpsPerSide: [3, 8, 13],
+          totalBpsPerSide: [15, 20, 25],
+          note: "Explicit assumptions, not measured historical bid/ask spread; actual account fee tier and realized slippage must be verified.",
+        },
         maxHoldingBars: 20,
         execution: "signal at completed candle close; next candle open entry; conservative stop-first same-bar ordering",
       },
@@ -189,7 +206,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
         trades: fold.report.trades,
       })),
       limitations: report.limitations,
-      interpretation: "Historical, descriptive evidence only. This report is not a forecast or a guarantee of future profitability. Sensitivity is tested at 5, 10 and 15 bps per side; real venue fee and fill assumptions still require validation.",
+      interpretation: "Historical, descriptive evidence only. This report is not a forecast or a guarantee of future profitability. Cost sensitivity uses explicit 15, 20 and 25 bps per-side assumptions; real venue fee, spread and fill assumptions still require validation.",
     };
 
     await mkdir("artifacts", { recursive: true });
@@ -209,7 +226,9 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "- Assets: BTCUSDT, ETHUSDT, SOLUSDT.",
       "- Walk-forward: expanding anchored training, six consecutive 250-bar out-of-sample folds per asset (subject to available source data).",
       "- Execution model: signal after candle close, entry at next candle open, stop-first when stop and target touch the same OHLC bar.",
-      "- Cost sensitivity: 5, 10 and 15 basis points per side (fee + slippage combined), using the same downloaded data for all scenarios.",
+      "- Cost model per side: 10 bps fee assumption + 2 bps half-spread assumption + 3/8/13 bps slippage stress assumptions = 15/20/25 bps total per side. Spread and slippage are explicit assumptions, not reconstructed historical quotes; verify actual account fee tier and fills.",
+      "- Funding/borrow is not applicable to this Binance Spot test; results must not be generalized to perpetuals, margin, or borrowed shorts.",
+      "- Same-bar stop/target collisions are stop-first; stops crossed at a bar open use the worse open fill (adverse gap handling).",
       "",
       "## Data coverage",
       "",
@@ -217,7 +236,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "|---|---:|---|---|---:|---|",
       ...summary.coverage.map((item) => `| ${item.instrument} | ${item.candleCount} | ${item.actualRange?.start ?? "n/a"} | ${item.actualRange?.end ?? "n/a"} | ${item.gaps} | ${item.warnings.join("; ") || "none"} |`),
       "",
-      "## Out-of-sample results by asset (5 bps per side)",
+      "## Out-of-sample results by asset (15 bps per side: 10 fee + 2 spread + 3 slippage)",
       "",
       "| Asset | Folds | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Full-notional trade-return compound %* | 1% risk-budget return % | 1% risk-budget max DD % | Exposure % | Trades / 1k bars | Evidence label |",
       "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
@@ -227,10 +246,10 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "",
       "## Transaction-cost sensitivity by asset",
       "",
-      "| Cost bps/side | Asset | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Full-notional compound %* | 1% risk-budget return % | 1% risk-budget max DD % | Evidence label |",
-      "|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
+      "| Fee bps | Spread bps | Slippage bps | Total bps/side | Asset | Trades | Win rate % | Expectancy (R) | Profit factor | Max drawdown (R) | Full-notional compound %* | 1% risk-budget return % | 1% risk-budget max DD % | Evidence label |",
+      "|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---|",
       ...summary.sensitivity.flatMap((scenario) => scenario.byAsset.map((item) =>
-        `| ${scenario.costBpsPerSide} | ${item.instrument} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${fmt(item.riskBudgetReturnPct)} | ${fmt(item.riskBudgetMaxDrawdownPct)} | ${item.uncertainty} |`)),
+        `| ${scenario.feeBpsPerSide} | ${scenario.spreadBpsPerSide} | ${scenario.slippageBpsPerSide} | ${scenario.costBpsPerSide} | ${item.instrument} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR, 3)} | ${fmt(item.profitFactor, 3)} | ${fmt(item.maxDrawdownR, 2)} | ${fmt(item.totalNetReturnPct)} | ${fmt(item.riskBudgetReturnPct)} | ${fmt(item.riskBudgetMaxDrawdownPct)} | ${item.uncertainty} |`)),
       "",
       "## Why the engine declined entries (5 bps per side)",
       "",
