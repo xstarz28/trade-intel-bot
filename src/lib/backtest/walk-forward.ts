@@ -49,6 +49,8 @@ export interface WalkForwardReport {
   totalNetReturnPct: number;
   averageNetReturnPct: number | null;
   trades: BacktestTrade[];
+  /** Aggregated analyzer rejection reasons, useful for diagnosing over-filtering. */
+  noTradeReasonCounts?: Array<{ reason: string; count: number }>;
   warnings: string[];
 }
 
@@ -56,6 +58,7 @@ export interface BacktestSignal {
   recommendation: "LONG" | "SHORT" | "NO_TRADE";
   tradePlan?: Pick<TradePlan, "direction" | "entry" | "stopLoss" | "takeProfit">;
   confidence?: number;
+  noTradeReasons?: string[];
 }
 
 export interface WalkForwardInput {
@@ -225,6 +228,7 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
   const trades: BacktestTrade[] = [];
   let signalsChecked = 0;
   let noTradeSignals = 0;
+  const noTradeReasonCounts = new Map<string, number>();
   let rejectedPlans = 0;
   let nextEligibleSignalIndex = firstSignalIndex;
 
@@ -235,6 +239,8 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     signalsChecked++;
     if (signal.recommendation === "NO_TRADE") {
       noTradeSignals++;
+      const reasons = signal.noTradeReasons?.length ? signal.noTradeReasons : ["Analyzer returned NO_TRADE without a reason"];
+      for (const reason of reasons) noTradeReasonCounts.set(reason, (noTradeReasonCounts.get(reason) ?? 0) + 1);
       continue;
     }
     const trade = simulateTrade({
@@ -283,6 +289,9 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     totalNetReturnPct: (trades.reduce((growth, trade) => growth * (1 + trade.netReturnPct / 100), 1) - 1) * 100,
     averageNetReturnPct: trades.length ? trades.reduce((sum, t) => sum + t.netReturnPct, 0) / trades.length : null,
     trades,
+    noTradeReasonCounts: [...noTradeReasonCounts.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
     warnings,
   };
 }
@@ -326,11 +335,12 @@ export function runProductionWalkForwardBacktest(args: {
         marketData,
         technicalData,
       };
-      const result: AnalysisResult = runAnalysis(analysisInput);
+      const result: AnalysisResult = runAnalysis(analysisInput, { now: () => latest.timestamp });
       return {
         recommendation: result.recommendation,
         tradePlan: result.tradePlan,
         confidence: result.confidence,
+        noTradeReasons: result.noTradeReasons,
       };
     },
   });
