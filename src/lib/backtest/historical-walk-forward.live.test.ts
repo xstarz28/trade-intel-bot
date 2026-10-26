@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { fetchHistoricalBinanceSpotOhlcv } from "@/lib/backtest/historical-ohlcv";
 import {
@@ -47,6 +48,33 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       expect(dataset.gaps).toHaveLength(0);
     }
 
+    const sourceSnapshot = {
+      title: "Trade Intel Bot — Reproducible historical OHLCV source snapshot",
+      capturedAtIso: new Date().toISOString(),
+      provider: "Binance Spot public OHLCV",
+      datasets: sourceDatasets.map((dataset) => {
+        const canonical = {
+          provider: dataset.provider,
+          instrumentId: dataset.instrumentId,
+          timeframe: dataset.timeframe,
+          requestedRange: dataset.requestedRange,
+          actualRange: dataset.actualRange,
+          retrievedAt: dataset.retrievedAt,
+          candleCount: dataset.candleCount,
+          gaps: dataset.gaps,
+          warnings: dataset.warnings,
+          candles: dataset.candles,
+        };
+        return {
+          ...canonical,
+          sha256: createHash("sha256").update(JSON.stringify(canonical)).digest("hex"),
+        };
+      }),
+    };
+    const sourceSnapshotSha256 = createHash("sha256")
+      .update(JSON.stringify(sourceSnapshot))
+      .digest("hex");
+
     const costScenarios = [5, 10, 15].map((costBpsPerSide) => ({
       costBpsPerSide,
       report: evaluateMultiAssetWalkForward(datasets, {
@@ -89,6 +117,8 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
     const summary = {
       title: "Trade Intel Bot — Real Historical Walk-forward Evaluation",
       generatedAtIso: new Date(report.generatedAt).toISOString(),
+      sourceSnapshotFile: "historical-ohlcv-snapshot.json",
+      sourceSnapshotSha256,
       methodology: report.methodology,
       parameters: {
         provider: "Binance Spot public OHLCV",
@@ -163,6 +193,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
     };
 
     await mkdir("artifacts", { recursive: true });
+    await writeFile("artifacts/historical-ohlcv-snapshot.json", JSON.stringify(sourceSnapshot, null, 2), "utf8");
     await writeFile("artifacts/historical-walk-forward-report.json", JSON.stringify(summary, null, 2), "utf8");
     const fmt = (value: number | null | undefined, digits = 2) =>
       value == null || !Number.isFinite(value) ? "n/a" : value.toFixed(digits);
@@ -170,6 +201,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "# Trade Intel Bot — Real Historical Walk-forward Evaluation",
       "",
       `Generated: ${summary.generatedAtIso}`,
+      `Source snapshot: ${summary.sourceSnapshotFile} (SHA-256 ${summary.sourceSnapshotSha256})`,
       "",
       "## Method",
       "",
