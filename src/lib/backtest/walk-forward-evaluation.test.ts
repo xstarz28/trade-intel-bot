@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 import type { WalkForwardReport } from "./walk-forward";
 import {
+  adaptHistoricalSpotDataset,
   evaluateMultiAssetWalkForward,
   type HistoricalEvaluationDataset,
 } from "./walk-forward-evaluation";
@@ -58,6 +59,25 @@ function emptyReport(args: { instrument: string; timeframe: string; candles: Ohl
 }
 
 describe("evaluateMultiAssetWalkForward", () => {
+  it("adapts supported Binance spot intervals into app timeframes", () => {
+    const source = {
+      provider: "binance-spot",
+      instrumentId: "ETHUSDT",
+      timeframe: "1h",
+      requestedRange: { startTime: 1_700_000_000_000, endTime: 1_700_100_000_000 },
+      actualRange: { startTime: 1_700_000_000_000, endTime: 1_700_100_000_000 },
+      retrievedAt: 1_800_000_000_000,
+      candleCount: 0,
+      candles: [],
+      gaps: [],
+      warnings: [],
+    };
+    expect(adaptHistoricalSpotDataset(source)).toMatchObject({
+      provider: "binance-spot", instrument: "ETHUSDT", instrumentType: "crypto", timeframe: "H1",
+    });
+    expect(() => adaptHistoricalSpotDataset({ ...source, timeframe: "3m" })).toThrow(/Unsupported evaluation timeframe/);
+  });
+
   it("rejects an empty evaluation request", () => {
     expect(() => evaluateMultiAssetWalkForward([])).toThrow(/At least one historical dataset/);
   });
