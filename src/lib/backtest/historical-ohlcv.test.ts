@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { fetchHistoricalBinanceSpotOhlcv } from "./historical-ohlcv";
 
 const minute = 60_000;
-const now = 1_700_000_000_000;
+const now = Math.floor(1_700_000_000_000 / minute) * minute;
 
 function row(openTime: number, overrides: Record<number, unknown> = []) {
   const values: unknown[] = [
@@ -77,6 +77,21 @@ describe("fetchHistoricalBinanceSpotOhlcv", () => {
       symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 4 * minute,
     }, { fetchImpl: vi.fn().mockResolvedValue(response([row(now - 5 * minute), row(now - 5 * minute)])), now: () => now }))
       .rejects.toThrow(/duplicate or non-ascending/);
+  });
+
+  it("rejects candle timestamps that are not aligned to the requested interval", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response([row(now - 5 * minute + 1000)]));
+    await expect(fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 4 * minute,
+    }, { fetchImpl, now: () => now })).rejects.toThrow(/invalid OHLCV/);
+  });
+
+  it("warns when a near-current request returns stale provider history", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response([row(now - 5 * minute)]));
+    const result = await fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - 10 * minute, endTime: now,
+    }, { fetchImpl, now: () => now });
+    expect(result.warnings.join(" ")).toContain("appears stale");
   });
 
   it("rejects invalid ranges and reports HTTP errors clearly", async () => {
