@@ -90,7 +90,8 @@ describe("evaluateMultiAssetWalkForward", () => {
     });
     expect(result.folds).toHaveLength(2);
     expect(result.folds[0]).toMatchObject({ fold: 1, trainingBars: 220, testBars: 100 });
-    expect(result.folds[1]).toMatchObject({ fold: 2, trainingBars: 220, testBars: 100 });
+    expect(result.folds[1]).toMatchObject({ fold: 2, trainingBars: 320, testBars: 100 });
+    expect(result.folds[1].trainingRange.startTime).toBe(result.folds[0].trainingRange.startTime);
     expect(result.folds[0].exposurePct).toBe(0);
     expect(result.folds[0].turnoverTradesPer1000Bars).toBe(0);
     expect(result.byAsset[0].exposurePct).toBe(0);
