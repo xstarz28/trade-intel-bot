@@ -61,7 +61,11 @@ describe("buildForwardMarketPath future opportunity watchlist", () => {
 
     expect(path.nextBestAction).toContain("66000");
     expect(path.nextBestAction).toContain("64000");
-    expect(path.watchLevels).toEqual([]);
+    expect(path.watchLevels).toEqual(expect.arrayContaining([
+      expect.objectContaining({ level: "64000", type: "support", source: "keyLevels" }),
+      expect.objectContaining({ level: "66000", type: "resistance", source: "keyLevels" }),
+    ]));
+    expect(path.watchLevels.some((level) => level.type === "entry")).toBe(false);
     expect(path.scenarioTree.some((node) => node.label.includes("Breakout / breakdown"))).toBe(true);
   });
 
