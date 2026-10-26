@@ -95,6 +95,28 @@ export interface WalkForwardEvaluationDependencies {
   runBacktest?: ProductionBacktest;
 }
 
+const TIMEFRAME_MS: Record<Timeframe, number> = {
+  M1: 60_000,
+  M5: 300_000,
+  M15: 900_000,
+  H1: 3_600_000,
+  H4: 14_400_000,
+  D1: 86_400_000,
+  W1: 604_800_000,
+};
+
+function isTimeframeAligned(timestamp: number, timeframe: Timeframe): boolean {
+  if (timeframe === "W1") {
+    const date = new Date(timestamp);
+    return date.getUTCDay() === 1 &&
+      date.getUTCHours() === 0 &&
+      date.getUTCMinutes() === 0 &&
+      date.getUTCSeconds() === 0 &&
+      date.getUTCMilliseconds() === 0;
+  }
+  return timestamp % TIMEFRAME_MS[timeframe] === 0;
+}
+
 function assertDataset(dataset: HistoricalEvaluationDataset, allowGaps: boolean): void {
   if (!dataset.provider.trim()) throw new Error("Historical dataset provider is required.");
   if (!dataset.instrument.trim()) throw new Error("Historical dataset instrument is required.");
@@ -116,6 +138,26 @@ function assertDataset(dataset: HistoricalEvaluationDataset, allowGaps: boolean)
     if (dataset.actualRange.startTime !== dataset.candles[0].timestamp ||
         dataset.actualRange.endTime !== dataset.candles[dataset.candles.length - 1].timestamp) {
       throw new Error(`Actual range does not match candle data for ${dataset.instrument}.`);
+    }
+    if (dataset.actualRange.startTime < dataset.requestedRange.startTime ||
+        dataset.actualRange.endTime > dataset.requestedRange.endTime) {
+      throw new Error(`Actual candle range exceeds the requested bounds for ${dataset.instrument}.`);
+    }
+  }
+  const intervalMs = TIMEFRAME_MS[dataset.timeframe];
+  for (let index = 0; index < dataset.candles.length; index += 1) {
+    const candle = dataset.candles[index];
+    if (!Number.isSafeInteger(candle.timestamp) || !isTimeframeAligned(candle.timestamp, dataset.timeframe)) {
+      throw new Error(`Candle timestamp is not aligned to the declared ${dataset.timeframe} UTC interval for ${dataset.instrument}.`);
+    }
+    if (index > 0) {
+      const delta = candle.timestamp - dataset.candles[index - 1].timestamp;
+      if (delta <= 0 || delta % intervalMs !== 0) {
+        throw new Error(`Candle timestamps are duplicate, descending, or misaligned for ${dataset.instrument}.`);
+      }
+      if (delta !== intervalMs && !allowGaps) {
+        throw new Error(`Candle timestamps contain an unreported gap for ${dataset.instrument}; evaluation is blocked.`);
+      }
     }
   }
   if (dataset.gaps.length > 0 && !allowGaps) {
