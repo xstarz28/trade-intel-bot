@@ -1,0 +1,92 @@
+import { describe, expect, it, vi } from "vitest";
+import { fetchHistoricalBinanceSpotOhlcv } from "./historical-ohlcv";
+
+const minute = 60_000;
+const now = 1_700_000_000_000;
+
+function row(openTime: number, overrides: Record<number, unknown> = []) {
+  const values: unknown[] = [
+    openTime, "100", "105", "98", "103", "12",
+    openTime + minute - 1, "1200", 20, "4", "400", "0",
+  ];
+  for (const [key, value] of Object.entries(overrides)) values[Number(key)] = value;
+  return values;
+}
+
+function response(payload: unknown, ok = true, status = 200): Response {
+  return {
+    ok,
+    status,
+    json: async () => payload,
+  } as Response;
+}
+
+describe("fetchHistoricalBinanceSpotOhlcv", () => {
+  it("returns normalized candles and reproducibility provenance", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response([row(now - 5 * minute), row(now - 4 * minute)]));
+    const result = await fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 4 * minute,
+    }, { fetchImpl, now: () => now });
+
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(new URL(fetchImpl.mock.calls[0][0]).searchParams.get("symbol")).toBe("BTCUSDT");
+    expect(result).toMatchObject({
+      provider: "binance-spot",
+      instrumentId: "BTCUSDT",
+      timeframe: "1m",
+      candleCount: 2,
+      actualRange: { startTime: now - 5 * minute, endTime: now - 4 * minute },
+      gaps: [],
+    });
+    expect(result.candles[0]).toEqual({
+      timestamp: now - 5 * minute, open: 100, high: 105, low: 98, close: 103, volume: 12,
+    });
+  });
+
+  it("excludes an in-progress candle", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response([row(now - minute), row(now)]));
+    const result = await fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - minute, endTime: now,
+    }, { fetchImpl, now: () => now });
+    expect(result.candleCount).toBe(1);
+  });
+
+  it("reports missing bars without fabricating candles", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(response([row(now - 5 * minute), row(now - 2 * minute)]));
+    const result = await fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 2 * minute,
+    }, { fetchImpl, now: () => now });
+    expect(result.candleCount).toBe(2);
+    expect(result.gaps).toEqual([{
+      expectedTimestamp: now - 4 * minute,
+      nextObservedTimestamp: now - 2 * minute,
+      missingBars: 2,
+    }]);
+    expect(result.warnings.join(" ")).toContain("missing bars were not synthesized");
+  });
+
+  it("rejects malformed OHLC and duplicate timestamps", async () => {
+    const malformed = row(now - 5 * minute);
+    malformed[2] = "90";
+    await expect(fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 4 * minute,
+    }, { fetchImpl: vi.fn().mockResolvedValue(response([malformed])), now: () => now }))
+      .rejects.toThrow(/invalid OHLCV/);
+
+    await expect(fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 4 * minute,
+    }, { fetchImpl: vi.fn().mockResolvedValue(response([row(now - 5 * minute), row(now - 5 * minute)])), now: () => now }))
+      .rejects.toThrow(/duplicate or non-ascending/);
+  });
+
+  it("rejects invalid ranges and reports HTTP errors clearly", async () => {
+    await expect(fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now, endTime: now,
+    }, { fetchImpl: vi.fn(), now: () => now })).rejects.toThrow(/endTime > startTime/);
+
+    await expect(fetchHistoricalBinanceSpotOhlcv({
+      symbol: "BTCUSDT", interval: "1m", startTime: now - minute, endTime: now,
+    }, { fetchImpl: vi.fn().mockResolvedValue(response({}, false, 429)), now: () => now }))
+      .rejects.toThrow(/HTTP 429/);
+  });
+});
