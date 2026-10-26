@@ -219,6 +219,14 @@ export async function fetchHistoricalBinanceSpotOhlcv(
   if (candles.length > 0 && candles[candles.length - 1].timestamp < request.endTime - intervalMs) {
     warnings.push("Returned history ends before the requested end; check symbol availability, range, and provider coverage.");
   }
+  const retrievedNow = now();
+  if (
+    request.endTime >= retrievedNow - intervalMs * 2 &&
+    candles.length > 0 &&
+    candles[candles.length - 1].timestamp < retrievedNow - intervalMs * 2
+  ) {
+    warnings.push("Provider history appears stale relative to the requested near-current range; verify provider freshness before treating this dataset as current.");
+  }
 
   return {
     provider: "binance-spot",
