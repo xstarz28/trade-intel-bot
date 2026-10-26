@@ -452,7 +452,7 @@ function buildTriggerLevels(result: AnalysisResult): { triggers: TriggerLevel[];
       description: `Projected ${direction} scenario invalidation; not an active stop order`,
     });
     watches.push({
-      level: direction === "long" ? "resistance" : "support",
+      level: projectedPlan.takeProfit,
       type: direction === "long" ? "resistance" : "support",
       source: "projectedTradePlan",
       description: `Projected ${direction} scenario objective; not a guaranteed target`,
