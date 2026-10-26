@@ -82,7 +82,7 @@ describe("evaluateMultiAssetWalkForward", () => {
   it("fetches requested datasets sequentially and produces a multi-asset report", async () => {
     const history = candles(500);
     const requests = ["BTCUSDT", "ETHUSDT"].map((symbol) => ({
-      symbol, interval: "1m", startTime: history[0].timestamp, endTime: history[history.length - 1].timestamp,
+      symbol, interval: "1m" as const, startTime: history[0].timestamp, endTime: history[history.length - 1].timestamp,
     }));
     const calls: string[] = [];
     const result = await runHistoricalWalkForwardEvaluation(
