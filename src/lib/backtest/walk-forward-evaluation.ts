@@ -272,8 +272,9 @@ export function evaluateMultiAssetWalkForward(
     while (testStart < candles.length - 1 && foldNumber <= maxFolds) {
       const testEnd = Math.min(candles.length, testStart + testBars);
       const foldCandles = candles.slice(0, testEnd);
-      const training = candles.slice(Math.max(0, testStart - trainingBars), testStart);
-      if (training.length < trainingBars) break;
+      const training = candles.slice(0, testStart);
+      const regimeWindow = candles.slice(Math.max(0, testStart - trainingBars), testStart);
+      if (regimeWindow.length < trainingBars) break;
       const report = runBacktest({
         instrument: dataset.instrument,
         instrumentType: dataset.instrumentType,
