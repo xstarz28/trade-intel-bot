@@ -99,7 +99,7 @@ describe("fetchHistoricalBinanceSpotOhlcv", () => {
       .mockResolvedValueOnce(response({}, false, 451))
       .mockResolvedValueOnce(response([row(now - 5 * minute)]));
     const result = await fetchHistoricalBinanceSpotOhlcv({
-      symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 5 * minute,
+      symbol: "BTCUSDT", interval: "1m", startTime: now - 5 * minute, endTime: now - 4 * minute,
     }, {
       fetchImpl,
       now: () => now,
