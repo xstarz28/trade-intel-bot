@@ -2,7 +2,6 @@ import type { OhlcvCandle } from "@/lib/data/market-types";
 import type { Timeframe, InstrumentType } from "@/types/analysis";
 import {
   runProductionWalkForwardBacktest,
-  type BacktestTrade,
   type WalkForwardOptions,
   type WalkForwardReport,
 } from "./walk-forward";
