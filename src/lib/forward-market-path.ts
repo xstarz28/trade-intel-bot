@@ -452,11 +452,30 @@ function buildTriggerLevels(result: AnalysisResult): { triggers: TriggerLevel[];
       description: `Projected ${direction} scenario invalidation; not an active stop order`,
     });
     watches.push({
-      level: projectedPlan.takeProfit,
+      level: direction === "long" ? "resistance" : "support",
       type: direction === "long" ? "resistance" : "support",
       source: "projectedTradePlan",
       description: `Projected ${direction} scenario objective; not a guaranteed target`,
     });
+  } else if (result.recommendation === "NO_TRADE") {
+    // Even when no directional plan survives validation, preserve real structural
+    // levels as conditional future opportunities. Never invent an entry price.
+    if (result.keyLevels?.support && result.keyLevels.support !== "N/A") {
+      watches.push({
+        level: result.keyLevels.support,
+        type: "support",
+        source: "keyLevels",
+        description: "Conditional breakdown watch level — require a candle close below support plus confirmation; not an entry",
+      });
+    }
+    if (result.keyLevels?.resistance && result.keyLevels.resistance !== "N/A") {
+      watches.push({
+        level: result.keyLevels.resistance,
+        type: "resistance",
+        source: "keyLevels",
+        description: "Conditional breakout watch level — require a candle close above resistance plus confirmation; not an entry",
+      });
+    }
   }
 
   return { triggers, watches };
