@@ -438,7 +438,7 @@ export function evaluateMultiAssetWalkForward(
       "This report is descriptive evidence, not a prediction or proof of future profitability.",
       "Each fold is scored only after its training window; signal generation sees past-only candle prefixes.",
       "Spot OHLCV does not include funding, borrow, liquidation, or derivatives basis costs; do not generalize spot results to derivatives.",
-      "Fees and slippage are combined per-side assumptions; replace them with venue- and instrument-specific estimates before release decisions.",
+      "Fees, spread, and slippage are summed into one per-side cost rate; the component estimates are assumptions rather than separately observed historical costs and must be replaced with venue- and instrument-specific estimates before release decisions.",
       "Intrabar stop/target ordering is conservative but OHLC candles cannot reproduce order-book fills, partial fills, latency, or market impact.",
       "Regime labels are deterministic heuristics calculated from each fold's prior training window, not authoritative market-state labels.",
       "Samples with fewer than 30 trades are marked insufficient_sample; larger samples remain descriptive without a confidence interval.",
