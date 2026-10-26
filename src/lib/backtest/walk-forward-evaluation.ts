@@ -231,8 +231,8 @@ export function evaluateMultiAssetWalkForward(
   const testBars = Math.floor(options.testBars ?? 120);
   const maxFolds = Math.floor(options.maxFolds ?? 5);
   const minimumHistory = Math.floor(options.minimumHistory ?? 220);
-  if (trainingBars < 20 || testBars < 10 || maxFolds < 1 || minimumHistory < 20) {
-    throw new Error("trainingBars/minimumHistory must be >=20, testBars >=10, and maxFolds >=1.");
+  if (trainingBars < 20 || testBars < 10 || maxFolds < 1 || minimumHistory < 20 || minimumHistory > trainingBars) {
+    throw new Error("trainingBars must be >=20 and >= minimumHistory; minimumHistory must be >=20, testBars >=10, and maxFolds >=1.");
   }
   if (new Set(datasets.map((dataset) => `${dataset.instrument}|${dataset.timeframe}`)).size !== datasets.length) {
     throw new Error("Duplicate instrument/timeframe datasets are not allowed in one evaluation report.");
@@ -254,7 +254,8 @@ export function evaluateMultiAssetWalkForward(
       actualRange: dataset.actualRange,
       retrievedAt: dataset.retrievedAt,
       candleCount: dataset.candleCount,
-      gaps: dataset.gaps.length,
+      gaps: Math.max(dataset.gaps.length, dataset.candles.reduce((count, candle, index) =>
+        index > 0 && candle.timestamp - dataset.candles[index - 1].timestamp > TIMEFRAME_MS[dataset.timeframe] ? count + 1 : count, 0)),
       sourceWarnings: dataset.warnings ?? [],
     });
 
