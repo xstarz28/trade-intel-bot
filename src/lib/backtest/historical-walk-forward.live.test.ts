@@ -204,7 +204,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "",
       "| Rejection reason | Count |",
       "|---|---:|",
-      ...summary.noTradeDiagnostics.map((item) => `| ${item.reason.replace(/\\|/g, "/")} | ${item.count} |`),
+      ...summary.noTradeDiagnostics.map((item) => `| ${item.reason.replace(/\|/g, "/")} | ${item.count} |`),
       "",
       "## Out-of-sample results by training-window regime (5 bps per side)",
       "",
