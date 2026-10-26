@@ -83,7 +83,19 @@ function validateRequest(request: HistoricalOhlcvRequest): void {
   }
 }
 
-function parseKline(row: unknown, index: number): { candle: OhlcvCandle; closeTime: number } {
+function isAlignedOpenTime(timestamp: number, interval: BinanceSpotInterval): boolean {
+  if (interval === "1w") {
+    const date = new Date(timestamp);
+    return date.getUTCDay() === 1 &&
+      date.getUTCHours() === 0 &&
+      date.getUTCMinutes() === 0 &&
+      date.getUTCSeconds() === 0 &&
+      date.getUTCMilliseconds() === 0;
+  }
+  return timestamp % INTERVAL_MS[interval] === 0;
+}
+
+function parseKline(row: unknown, index: number, interval: BinanceSpotInterval): { candle: OhlcvCandle; closeTime: number } {
   if (!Array.isArray(row) || row.length < 12) {
     throw new Error(`Binance returned malformed kline row at index ${index}.`);
   }
@@ -99,7 +111,7 @@ function parseKline(row: unknown, index: number): { candle: OhlcvCandle; closeTi
       !Number.isSafeInteger(timestamp) || !Number.isSafeInteger(closeTime) ||
       timestamp < 0 || closeTime < timestamp || open <= 0 || high <= 0 || low <= 0 ||
       close <= 0 || volume < 0 || high < Math.max(open, close, low) ||
-      low > Math.min(open, close, high)) {
+      low > Math.min(open, close, high) ||\n      !isAlignedOpenTime(timestamp, interval) ||\n      closeTime !== timestamp + INTERVAL_MS[interval] - 1) {
     throw new Error(`Binance returned invalid OHLCV values at row ${index}.`);
   }
   return { candle: { timestamp, open, high, low, close, volume }, closeTime };
@@ -164,7 +176,7 @@ export async function fetchHistoricalBinanceSpotOhlcv(
 
     let lastOpenTime = -1;
     for (const row of payload) {
-      const parsed = parseKline(row, candles.length);
+      const parsed = parseKline(row, candles.length, request.interval);
       const { candle, closeTime } = parsed;
       if (candle.timestamp <= lastOpenTime) {
         throw new Error("Binance returned duplicate or non-ascending candle timestamps.");
