@@ -93,6 +93,8 @@ export interface WatchlistEvaluationReport {
   confirmedWithActionableTrade: number;
   confirmedWithoutActionableTrade: number;
   linkedTradeCount: number;
+  linkedTradeWins: number;
+  linkedTradeLosses: number;
   linkedTradeWinRatePct: number | null;
   linkedTradeExpectancyR: number | null;
   linkedTradeProfitFactor: number | null;
