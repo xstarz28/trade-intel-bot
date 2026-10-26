@@ -67,6 +67,17 @@ export function adaptHistoricalSpotDataset(
   };
 }
 
+export interface HistoricalSpotRequest {
+  symbol: string;
+  interval: string;
+  startTime: number;
+  endTime: number;
+}
+
+export type FetchHistoricalSpotDataset = (
+  request: HistoricalSpotRequest,
+) => Promise<HistoricalSpotDatasetLike>;
+
 export interface WalkForwardEvaluationOptions {
   /** Number of candles reserved before each OOS window for historical context. */
   trainingBars?: number;
@@ -266,6 +277,35 @@ function summarize(instrument: string, folds: FoldEvaluation[], regime?: Histori
     turnoverTradesPer1000Bars: totalTestBars > 0 ? trades.length / totalTestBars * 1000 : 0,
     uncertainty: trades.length < 30 ? "insufficient_sample" : "descriptive_only",
   };
+}
+
+/**
+ * Fetch multiple historical spot datasets sequentially (to avoid bursty provider
+ * requests), validate request/provenance identity, adapt them to supported app
+ * timeframes, and return the machine-readable walk-forward report.
+ *
+ * Pass fetchHistoricalBinanceSpotOhlcv as fetchDataset after its PR is merged;
+ * dependency injection keeps this module deterministic in tests.
+ */
+export async function runHistoricalWalkForwardEvaluation(
+  requests: HistoricalSpotRequest[],
+  fetchDataset: FetchHistoricalSpotDataset,
+  options: WalkForwardEvaluationOptions = {},
+  dependencies: WalkForwardEvaluationDependencies = {},
+): Promise<MultiAssetWalkForwardReport> {
+  if (requests.length === 0) throw new Error("At least one historical request is required.");
+  const datasets: HistoricalEvaluationDataset[] = [];
+  for (const request of requests) {
+    const source = await fetchDataset(request);
+    if (source.instrumentId !== request.symbol || source.timeframe !== request.interval) {
+      throw new Error(`Historical provider response identity does not match request ${request.symbol}/${request.interval}.`);
+    }
+    if (source.requestedRange.startTime !== request.startTime || source.requestedRange.endTime !== request.endTime) {
+      throw new Error(`Historical provider range does not match request ${request.symbol}/${request.interval}.`);
+    }
+    datasets.push(adaptHistoricalSpotDataset(source));
+  }
+  return evaluateMultiAssetWalkForward(datasets, options, dependencies);
 }
 
 /**
