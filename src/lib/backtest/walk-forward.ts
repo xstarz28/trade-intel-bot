@@ -76,6 +76,10 @@ export interface WatchlistTypeEvaluation {
   linkedTradeExpectancyR: number | null;
   linkedTradeProfitFactor: number | null;
   linkedTradeNetReturnPct: number;
+  linkedTradeRiskBudgetReturnPct: number;
+  linkedSumR: number;
+  linkedGrossWinsR: number;
+  linkedGrossLossesR: number;
 }
 
 export interface WatchlistEvaluationReport {
@@ -115,6 +119,9 @@ function summarizeLinkedTrades(trades: BacktestTrade[]) {
     linkedTradeProfitFactor: grossLossesR > 0 ? grossWinsR / grossLossesR : null,
     linkedTradeNetReturnPct: (fullNotionalEquity - 1) * 100,
     linkedTradeRiskBudgetReturnPct: (riskBudgetEquity - 1) * 100,
+    linkedSumR: sumR,
+    linkedGrossWinsR: grossWinsR,
+    linkedGrossLossesR: grossLossesR,
   };
 }
 
