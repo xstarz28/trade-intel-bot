@@ -425,13 +425,37 @@ function buildTriggerLevels(result: AnalysisResult): { triggers: TriggerLevel[];
     }
   }
 
-  // Trade plan levels as watch levels
-  if (result.tradePlan) {
+  // An approved trade plan is executable; a projected plan is watch-only.
+  // Preserve that distinction so a NO_TRADE decision never leaks into execution.
+  const activePlan = result.tradePlan;
+  const projectedPlan = !activePlan ? result.projectedTradePlan : undefined;
+
+  if (activePlan) {
     watches.push({
-      level: result.tradePlan.entry,
+      level: activePlan.entry,
       type: "entry",
       source: "tradePlan",
-      description: "Trade plan entry level",
+      description: "Validated entry level for the currently actionable plan",
+    });
+  } else if (projectedPlan) {
+    const direction = projectedPlan.direction;
+    watches.push({
+      level: projectedPlan.entry,
+      type: "entry",
+      source: "projectedTradePlan",
+      description: `Watch-only ${direction} entry candidate — requires confirmation; not executable`,
+    });
+    watches.push({
+      level: projectedPlan.stopLoss,
+      type: "invalidation",
+      source: "projectedTradePlan",
+      description: `Projected ${direction} scenario invalidation; not an active stop order`,
+    });
+    watches.push({
+      level: projectedPlan.takeProfit,
+      type: direction === "long" ? "resistance" : "support",
+      source: "projectedTradePlan",
+      description: `Projected ${direction} scenario objective; not a guaranteed target`,
     });
   }
 
@@ -553,8 +577,12 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const invalidationConditions: string[] = [];
 
   if (dir === "neutral") {
-    confirmationConditions.push("Clear directional breakout with displacement");
-    confirmationConditions.push("MTF alignment toward breakout direction");
+    confirmationConditions.push("A candle closes beyond a real structural support/resistance level; a wick alone is insufficient");
+    confirmationConditions.push("Directional displacement and volume/market-structure confirmation where reliable data is available");
+    confirmationConditions.push("MTF alignment toward the breakout direction, without bypassing data-quality or risk gates");
+    if (result.projectedTradePlan) {
+      confirmationConditions.push(`Projected ${result.projectedTradePlan.direction} setup: wait for ${result.projectedTradePlan.entryBasis}; candidate entry ${result.projectedTradePlan.entry} is watch-only until all gates pass`);
+    }
   } else {
     if (primaryPath === "CONTINUATION_FAVORED" || primaryPath === "CONTINUATION_POSSIBLE") {
       confirmationConditions.push("Continuation of current trend structure");
@@ -648,8 +676,15 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
     nextBestAction = "Do not chase — wait for structural confirmation of reversal";
   } else if (extRisk === "HIGH") {
     nextBestAction = "Avoid chasing extension — wait for pullback or continuation confirmation";
+  } else if (dir === "neutral" && result.projectedTradePlan) {
+    const projected = result.projectedTradePlan;
+    nextBestAction = `Add the projected ${projected.direction.toUpperCase()} setup to the watchlist, not as an entry order. Monitor candidate entry ${projected.entry}; require structural breakout/retest confirmation and re-run all execution, data-quality, and risk gates. Invalidate the scenario at ${projected.stopLoss}.`;
   } else if (dir === "neutral") {
-    nextBestAction = "Wait for directional clarity";
+    const support = result.keyLevels?.support;
+    const resistance = result.keyLevels?.resistance;
+    nextBestAction = support && support !== "N/A" && resistance && resistance !== "N/A"
+      ? `No entry now; monitor a confirmed close above resistance ${resistance} for a bullish scenario or below support ${support} for a bearish scenario, then wait for retest/confirmation.`
+      : "No entry now; monitor for a confirmed structural break, then wait for retest and re-evaluate. Reliable price levels are not available, so no numeric trigger is invented.";
   } else {
     nextBestAction = "Wait for clearer structural setup";
   }
@@ -665,6 +700,14 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
 
   // ── Scenario tree ──
   const scenarioTree = buildScenarioTree(dir, primaryPath, result.keyLevels?.invalidation ?? "");
+  if (dir === "neutral" && result.projectedTradePlan) {
+    const projected = result.projectedTradePlan;
+    scenarioTree.unshift({
+      label: `WATCHLIST: Projected ${projected.direction.toUpperCase()} setup (not executable)`,
+      condition: `Price reaches candidate entry ${projected.entry} and confirms ${projected.entryBasis}; all risk/data gates must pass`,
+      outcome: `Only then re-evaluate a possible ${projected.direction.toUpperCase()} trade; invalidate this scenario at ${projected.stopLoss}`,
+    });
+  }
 
   // ── Trader / Investor views ──
   let traderView = "";
