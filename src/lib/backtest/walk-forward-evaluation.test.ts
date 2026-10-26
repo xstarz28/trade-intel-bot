@@ -7,8 +7,9 @@ import {
 } from "./walk-forward-evaluation";
 
 function candles(count: number, close = 100): OhlcvCandle[] {
+  const start = Math.floor(1_700_000_000_000 / 60_000) * 60_000;
   return Array.from({ length: count }, (_, index) => ({
-    timestamp: 1_700_000_000_000 + index * 60_000,
+    timestamp: start + index * 60_000,
     open: close,
     high: close + 1,
     low: close - 1,
