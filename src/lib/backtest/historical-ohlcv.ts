@@ -66,11 +66,6 @@ export interface HistoricalOhlcvDependencies {
   now?: () => number;
 }
 
-type BinanceKline = [
-  number, string, string, string, string, string,
-  number, string, number, string, string, string
-];
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -79,7 +74,7 @@ function validateRequest(request: HistoricalOhlcvRequest): void {
   if (!/^[A-Z0-9]{5,24}$/.test(request.symbol)) {
     throw new Error("symbol must be an uppercase Binance spot symbol, e.g. BTCUSDT.");
   }
-  if (!(request.interval in INTERVAL_MS)) {
+  if (!Object.prototype.hasOwnProperty.call(INTERVAL_MS, request.interval)) {
     throw new Error("Unsupported Binance spot interval.");
   }
   if (!Number.isSafeInteger(request.startTime) || !Number.isSafeInteger(request.endTime) ||
