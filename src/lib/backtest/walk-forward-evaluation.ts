@@ -234,6 +234,7 @@ export function evaluateMultiAssetWalkForward(
   if (trainingBars < 20 || testBars < 10 || maxFolds < 1 || minimumHistory < 20 || minimumHistory > trainingBars) {
     throw new Error("trainingBars must be >=20 and >= minimumHistory; minimumHistory must be >=20, testBars >=10, and maxFolds >=1.");
   }
+  if (datasets.length === 0) throw new Error("At least one historical dataset is required for evaluation.");
   if (new Set(datasets.map((dataset) => `${dataset.instrument}|${dataset.timeframe}`)).size !== datasets.length) {
     throw new Error("Duplicate instrument/timeframe datasets are not allowed in one evaluation report.");
   }
@@ -243,8 +244,8 @@ export function evaluateMultiAssetWalkForward(
   for (const dataset of datasets) {
     assertDataset(dataset, options.allowGaps ?? false);
     const candles = dataset.candles;
-    if (candles.length < trainingBars + 2) {
-      throw new Error(`Insufficient candles for ${dataset.instrument}: need at least ${trainingBars + 2}, received ${candles.length}.`);
+    if (candles.length < trainingBars + 11) {
+      throw new Error(`Insufficient candles for ${dataset.instrument}: need at least ${trainingBars + 11} to form training context and a minimally useful OOS window, received ${candles.length}.`);
     }
     providerCoverage.push({
       provider: dataset.provider,
