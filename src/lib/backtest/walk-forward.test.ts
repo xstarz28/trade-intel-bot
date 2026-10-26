@@ -49,6 +49,18 @@ describe("runWalkForwardBacktest", () => {
     expect(seenLengths.length).toBeGreaterThan(0);
   });
 
+  it("does not reject historical candles as wall-clock stale in production-engine replay", () => {
+    const report = runProductionWalkForwardBacktest({
+      instrument: "BTCUSDT",
+      instrumentType: "crypto",
+      timeframe: "M1",
+      candles: candles(30),
+      options: { minimumHistory: 20 },
+    });
+    expect(report.signalsChecked).toBeGreaterThan(0);
+    expect(report.noTradeReasonCounts?.some((item) => item.reason.includes("Price snapshot is older than"))).toBe(false);
+  });
+
   it("scores only the configured out-of-sample period while retaining earlier candles as history", () => {
     const data = candles(30);
     const seenIndices: number[] = [];
