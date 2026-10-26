@@ -111,7 +111,9 @@ function parseKline(row: unknown, index: number, interval: BinanceSpotInterval):
       !Number.isSafeInteger(timestamp) || !Number.isSafeInteger(closeTime) ||
       timestamp < 0 || closeTime < timestamp || open <= 0 || high <= 0 || low <= 0 ||
       close <= 0 || volume < 0 || high < Math.max(open, close, low) ||
-      low > Math.min(open, close, high) ||\n      !isAlignedOpenTime(timestamp, interval) ||\n      closeTime !== timestamp + INTERVAL_MS[interval] - 1) {
+      low > Math.min(open, close, high) ||
+      !isAlignedOpenTime(timestamp, interval) ||
+      closeTime !== timestamp + INTERVAL_MS[interval] - 1) {
     throw new Error(`Binance returned invalid OHLCV values at row ${index}.`);
   }
   return { candle: { timestamp, open, high, low, close, volume }, closeTime };
