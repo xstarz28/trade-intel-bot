@@ -1054,6 +1054,7 @@ function decideTrade(
   alignment: HtfAlignment | undefined,
   mtf?: MtfContext,
   structuralVeto?: string,
+  now: () => number = Date.now,
 ): TradeDecision {
   const reasons: string[] = [];
   // Phase 11 P3 — gate trace: failures are captured at push-time while the
@@ -1127,12 +1128,12 @@ function decideTrade(
       typeof ts === "number" &&
       Number.isFinite(ts) &&
       ts > 0 &&
-      ts <= Date.now() + PRICE_FUTURE_SKEW_MS;
+      ts <= now() + PRICE_FUTURE_SKEW_MS;
     if (!isValidTs) {
       reasons.push(
         "Price snapshot timestamp is invalid or implausibly in the future — the snapshot cannot be treated as live market data.",
       );
-    } else if (Date.now() - ts > PRICE_STALE_MS) {
+    } else if (now() - ts > PRICE_STALE_MS) {
       reasons.push(
         `Price snapshot is older than ${PRICE_STALE_MS / 60000} minutes — treating it as stale rather than live.`,
       );
@@ -1329,10 +1330,10 @@ function decideTrade(
       Array.isArray(input.calendarData?.events) &&
       input.calendarData!.events.length > 0
     ) {
-      const now = Date.now();
-      const cutoff = now + styleProfile.eventRiskWindowHours! * 3600e3;
+      const currentTime = now();
+      const cutoff = currentTime + styleProfile.eventRiskWindowHours! * 3600e3;
       const imminent = input.calendarData.events.some(
-        (e) => e.status === "upcoming" && e.importance === 3 && e.datetime > now && e.datetime <= cutoff,
+        (e) => e.status === "upcoming" && e.importance === 3 && e.datetime > currentTime && e.datetime <= cutoff,
       );
       if (imminent) {
         reasons.push(
@@ -2920,7 +2921,13 @@ function generateRiskNote(
 
 // ── Main Analysis Function ────────────────────────────────────────
 
-export function runAnalysis(input: AnalysisInput): AnalysisResult {
+export function runAnalysis(
+  input: AnalysisInput,
+  options: { now?: () => number } = {},
+): AnalysisResult {
+  // Deterministic replay supplies the historical candle-close clock. Live callers
+  // keep wall-clock freshness enforcement by using the default clock.
+  const now = options.now ?? Date.now;
   const { completeness, flags } = assessDataCompleteness(input);
   const styleProfile = resolveStyle(input.tradingStyle);
 
@@ -2992,6 +2999,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     alignment,
     mtf,
     structuralVetoReason,
+    now,
   );
 
   // Phase 8 P4 — DECISIVE derivation is STRUCTURED, never string-matched:
@@ -3318,7 +3326,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
   const decisionFingerprint = computeDecisionFingerprint(decisionTrace);
 
   const result: AnalysisResult = {
-    id: `analysis-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    id: `analysis-${now()}-${Math.random().toString(36).slice(2, 8)}`,
     instrument: typeof input.instrument === "string" ? input.instrument.toUpperCase() : "",
     instrumentType: input.instrumentType ?? "forex",
     timeframe: input.timeframe,
@@ -3352,7 +3360,7 @@ export function runAnalysis(input: AnalysisInput): AnalysisResult {
     positionSizing,
     dataCompleteness: completeness,
     dataFlags: flags,
-    timestamp: Date.now(),
+    timestamp: now(),
     priceSnapshot: input.marketData?.price,
     technicalData: input.technicalData,
     candles: input.marketData?.candles?.slice(-120),
