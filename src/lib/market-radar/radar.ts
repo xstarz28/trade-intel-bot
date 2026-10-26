@@ -79,6 +79,10 @@ const RADAR_HORIZON_TIMEFRAMES: Record<TradingMode | InvestorHorizon, string[]> 
   "3+_YEARS": ["W1", "D1"],
 };
 
+function isTradingHorizon(horizon: TradingMode | InvestorHorizon): boolean {
+  return horizon === "SCALPING" || horizon === "INTRADAY" || horizon === "SWING";
+}
+
 const RADAR_KNOWN_TIMEFRAMES = ["M1", "M5", "M15", "H1", "H4", "D1", "W1"];
 const RADAR_TIMEFRAME_MS: Record<string, number> = {
   M1: 60_000,
@@ -241,6 +245,19 @@ function scoreOpportunity(
     } else if (setupAdjustment < 0) {
       conflicting.push(`weak ${source.setupDirection} setup evidence (${confirmations} confirmations)`);
     }
+  }
+
+  // ── Conditional setup feasibility ──
+  // A bounded ranking bonus requires an observed target, valid invalidation,
+  // and at least 1.5R. It is evidence quality, not a probability of profit.
+  if (isTradingHorizon(horizon) && source.conditionalScenarios?.some((scenario) =>
+    scenario.ready &&
+    scenario.target !== undefined &&
+    Number.isFinite(scenario.riskReward) &&
+    (scenario.riskReward ?? 0) >= 1.5
+  )) {
+    score += 5;
+    supporting.push("observed conditional setup meets minimum 1.5R");
   }
 
   // ── Asset-class-specific scoring ──
@@ -529,6 +546,12 @@ export function scanRadar(
         assetClass: source.universe.assetClass,
         region: source.universe.region,
         marketTimeframe: normalizeRadarTimeframe(source.snapshot?.availableTimeframes?.[0]),
+        ...(source.snapshot && Number.isFinite(source.snapshot.price) && source.snapshot.price > 0
+          ? { currentPrice: source.snapshot.price }
+          : {}),
+        ...(isTradingHorizon(horizon) && source.conditionalScenarios?.length
+          ? { conditionalScenarios: source.conditionalScenarios }
+          : {}),
         lifecycle,
         qualityTier,
         score: scored.score,

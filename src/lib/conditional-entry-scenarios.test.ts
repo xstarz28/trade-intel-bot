@@ -22,7 +22,7 @@ function resultFixture(overrides: Partial<AnalysisResult> = {}): AnalysisResult 
     dataFlags: [],
     timestamp: 1,
     candles: Array.from({ length: 30 }, (_, i) => ({
-      timestamp: i * 60_000,
+      timestamp: (i + 1) * 60_000,
       open: 100,
       high: 102,
       low: 98,
@@ -50,6 +50,34 @@ describe("buildConditionalEntryScenarios", () => {
     expect(scenarios[0]).toMatchObject({ id: "bullish-breakout", direction: "long", trigger: 110.2, invalidation: 90, target: 120, ready: false });
     expect(scenarios[1]).toMatchObject({ id: "bearish-breakdown", direction: "short", trigger: 89.8, invalidation: 110, target: 80, ready: false });
     expect(scenarios.every((scenario) => (scenario.riskReward ?? 0) < 1.5)).toBe(true);
+  });
+
+  it("selects the nearest farther observed swing that meets the 1.5R minimum", () => {
+    const fixture = resultFixture({
+      technicalData: {
+        dataPoints: 30,
+        structure: "range",
+        swingHighs: [110, 120, 145],
+        swingLows: [90, 80, 50],
+        resistanceLevels: [110, 120, 145],
+        supportLevels: [90, 80, 50],
+        volumeTrend: "stable",
+        atr14: 2,
+      },
+    });
+    const scenarios = buildConditionalEntryScenarios(fixture);
+    const long = scenarios.find((scenario) => scenario.direction === "long")!;
+    const short = scenarios.find((scenario) => scenario.direction === "short")!;
+
+    expect(long.target).toBe(145);
+    expect(long.riskReward).toBeGreaterThanOrEqual(1.5);
+    expect(long.ready).toBe(true);
+    expect(long.targetBasis).toContain("memenuhi minimum R:R");
+
+    expect(short.target).toBe(50);
+    expect(short.riskReward).toBeGreaterThanOrEqual(1.5);
+    expect(short.ready).toBe(true);
+    expect(short.targetBasis).toContain("memenuhi minimum R:R");
   });
 
   it("labels mathematical target projections when no farther observed swing exists", () => {
@@ -96,6 +124,34 @@ describe("buildConditionalEntryScenarios", () => {
     expect(scenarios[0].targetBasis).toContain("bukan resistance terkonfirmasi");
     expect(scenarios[1].targetBasis).toContain("bukan support terkonfirmasi");
     expect(scenarios.every((scenario) => scenario.reason.includes("Tunggu struktur"))).toBe(true);
+  });
+
+  it("rejects malformed latest OHLC instead of producing plausible levels", () => {
+    const fixture = resultFixture({
+      candles: Array.from({ length: 30 }, (_, i) => ({
+        timestamp: (i + 1) * 60_000,
+        open: 100,
+        high: i === 29 ? 99 : 102,
+        low: 98,
+        close: 100,
+        volume: 10,
+      })),
+    });
+    expect(buildConditionalEntryScenarios(fixture)).toEqual([]);
+  });
+
+  it("rejects non-monotonic candle timestamps", () => {
+    const fixture = resultFixture({
+      candles: Array.from({ length: 30 }, (_, i) => ({
+        timestamp: (i === 25 ? 24 : i + 1) * 60_000,
+        open: 100,
+        high: 102,
+        low: 98,
+        close: 100,
+        volume: 10,
+      })),
+    });
+    expect(buildConditionalEntryScenarios(fixture)).toEqual([]);
   });
 
   it("refuses to derive scenarios from insufficient candles", () => {

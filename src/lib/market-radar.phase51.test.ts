@@ -212,6 +212,80 @@ function makeIDXSource(): RadarCandidateSource {
 // A. EMPTY ANALYSIS HISTORY
 // ═══════════════════════════════════════════════════════════════
 
+describe("Radar conditional setups", () => {
+  it("derives and ranks conditional entry levels from the exact live candle snapshot for trading horizons only", () => {
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      timestamp: NOW - (30 - i) * 60_000,
+      time: NOW - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const technical = {
+      dataPoints: 30,
+      structure: "range",
+      swingHighs: [110, 120, 145],
+      swingLows: [90, 80, 50],
+      resistanceLevels: [110, 120, 145],
+      supportLevels: [90, 80, 50],
+      volumeTrend: "stable",
+      atr14: 2,
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 100, timestamp: NOW, source: "test-provider" },
+        candles,
+        timeframe: "M5",
+        dataFreshness: "realtime",
+      },
+    };
+
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.conditionalScenarios).toHaveLength(2);
+    expect(source.conditionalScenarios?.find((scenario) => scenario.direction === "long")).toMatchObject({
+      target: 145,
+      ready: true,
+    });
+    expect(source.conditionalScenarios?.find((scenario) => scenario.direction === "short")).toMatchObject({
+      target: 50,
+      ready: true,
+    });
+
+    const result = scanRadar(
+      [source],
+      { horizons: ["SCALPING", "1-3_MONTHS"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    const withoutSetups = { ...source, conditionalScenarios: undefined };
+    const baseline = scanRadar(
+      [withoutSetups],
+      { horizons: ["SCALPING", "1-3_MONTHS"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    const trading = result.results.get("SCALPING")?.[0];
+    const investing = result.results.get("1-3_MONTHS")?.[0];
+    const baselineTrading = baseline.results.get("SCALPING")?.[0];
+    const baselineInvesting = baseline.results.get("1-3_MONTHS")?.[0];
+    expect(trading?.currentPrice).toBe(100);
+    expect(trading?.conditionalScenarios).toHaveLength(2);
+    expect(trading?.score).toBeGreaterThan(baselineTrading?.score ?? 0);
+    expect(trading?.supportingEvidence).toContain("observed conditional setup meets minimum 1.5R");
+    expect(investing).not.toHaveProperty("conditionalScenarios");
+    expect(investing?.score).toBe(baselineInvesting?.score);
+  });
+});
+
 describe("A — Empty Analysis History", () => {
   it("radar produces results with zero analysis history", () => {
     const sources = [makeSource()];

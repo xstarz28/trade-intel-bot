@@ -6,6 +6,7 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
+import type { ConditionalEntryScenario } from "@/lib/conditional-entry-scenarios";
 import type { TradingMode, InvestorHorizon } from "@/lib/recommendation-engine";
 
 // ═══════════════════════════════════════════════════════════════
@@ -196,6 +197,10 @@ export interface RadarOpportunity {
   region?: string;
   /** Actual observed timeframe used to rank this horizon. */
   marketTimeframe?: string;
+  /** Current provider price from the same snapshot used for ranking. */
+  currentPrice?: number;
+  /** Conditional trading setups; never executable signals. Omitted for investing horizons. */
+  conditionalScenarios?: ConditionalEntryScenario[];
   /** Lifecycle state. */
   lifecycle: OpportunityLifecycle;
   /** Quality tier. */

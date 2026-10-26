@@ -200,7 +200,7 @@ interface MarketOpportunitiesProps {
 // RANKED CARD
 // ═══════════════════════════════════════════════════════════════
 
-function RankedCard({ item }: { item: RankedInstrument }) {
+function RankedCard({ item, radarOpp }: { item: RankedInstrument; radarOpp?: RadarOpportunity }) {
   const { locale, t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
 
@@ -258,6 +258,15 @@ function RankedCard({ item }: { item: RankedInstrument }) {
           </Badge>
         </div>
       </div>
+
+      {radarOpp?.conditionalScenarios?.length ? (
+        <div className="mt-2 rounded-md border border-border/30 bg-background/30 p-2">
+          <p className="text-[9px] font-sans text-muted-foreground/70">Conditional forward scenarios · reference {radarOpp.currentPrice?.toLocaleString()}</p>
+          {radarOpp.conditionalScenarios.map((scenario) => (
+            <p key={scenario.id} className="mt-1 text-[9px] font-sans">{scenario.direction.toUpperCase()} · Trigger {scenario.trigger} · Invalidation {scenario.invalidation} · Target {scenario.target ?? "unavailable"} · R:R {scenario.riskReward?.toFixed(2) ?? "n/a"}R · {scenario.ready ? "conditional, wait for confirmation" : "not qualified"}</p>
+          ))}
+        </div>
+      ) : null}
 
       {item.primaryReasons.length > 0 && (
         <div className="mt-2 space-y-0.5">
@@ -319,6 +328,7 @@ function RankedCard({ item }: { item: RankedInstrument }) {
 function RadarCard({ opp }: { opp: RadarOpportunity }) {
   const { t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const formatPrice = (value: number) => value.toLocaleString(undefined, { maximumFractionDigits: 8 });
 
   return (
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
@@ -365,6 +375,45 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
         </div>
       </div>
 
+      {opp.currentPrice !== undefined && (
+        <p className="mt-1 text-[9px] font-sans text-muted-foreground/70">
+          Reference price {formatPrice(opp.currentPrice)}{opp.marketTimeframe ? ` · ${opp.marketTimeframe}` : ""}
+        </p>
+      )}
+
+      {opp.conditionalScenarios && opp.conditionalScenarios.length > 0 && (
+        <div className="mt-2 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-2 text-[9px] font-sans text-muted-foreground/70">
+            <span className="font-semibold">CONDITIONAL SETUPS · NOT ENTRY SIGNALS</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {opp.conditionalScenarios.map((scenario) => (
+              <div key={scenario.id} className="rounded-md border border-border/30 bg-background/40 p-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[9px] font-sans font-bold">
+                    {scenario.direction === "long" ? "LONG · BREAKOUT" : "SHORT · BREAKDOWN"}
+                  </span>
+                  <Badge variant="outline" className={cn(
+                    "text-[8px] font-sans",
+                    scenario.ready ? "border-emerald-500/40 text-emerald-400" : "border-amber-500/40 text-amber-400"
+                  )}>
+                    {scenario.ready ? "R:R threshold met · confirm" : "Not qualified"}
+                  </Badge>
+                </div>
+                <p className="mt-1 text-[9px] font-sans text-foreground/80">
+                  Trigger {formatPrice(scenario.trigger)} · Invalidation {formatPrice(scenario.invalidation)}
+                </p>
+                <p className="text-[9px] font-sans text-foreground/80">
+                  Target {scenario.target !== undefined ? formatPrice(scenario.target) : "unavailable"} · Gross R:R {scenario.riskReward !== undefined ? `${scenario.riskReward.toFixed(2)}R` : "unavailable"}
+                </p>
+                <p className="mt-0.5 text-[8px] font-sans text-muted-foreground/70">{scenario.targetBasis ?? scenario.reason}</p>
+                <p className="text-[8px] font-sans text-muted-foreground/60">{scenario.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {opp.primaryReasons.length > 0 && (
         <div className="mt-2 space-y-0.5">
           {opp.primaryReasons.slice(0, 3).map((r, i) => (
@@ -405,6 +454,17 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
               {opp.invalidationConditions.map((c, i) => (
                 <p key={i} className="text-[9px] font-sans text-red-300/60">{c}</p>
               ))}
+            </div>
+          )}
+          {opp.analyticalContext && (
+            <div>
+              <p className="text-[9px] font-sans font-semibold text-sky-400/80 mb-0.5">Forward thesis context</p>
+              {opp.analyticalContext.regime && <p className="text-[9px] font-sans text-muted-foreground/70">Regime: {opp.analyticalContext.regime}</p>}
+              {opp.analyticalContext.relativeValue && <p className="text-[9px] font-sans text-muted-foreground/70">Relative value: {opp.analyticalContext.relativeValue}</p>}
+              {opp.analyticalContext.primarySupport && <p className="text-[9px] font-sans text-emerald-300/60">Support: {opp.analyticalContext.primarySupport}</p>}
+              {opp.analyticalContext.primaryConflict && <p className="text-[9px] font-sans text-amber-300/60">Conflict: {opp.analyticalContext.primaryConflict}</p>}
+              {opp.analyticalContext.keyRisk && <p className="text-[9px] font-sans text-red-300/60">Key risk: {opp.analyticalContext.keyRisk}</p>}
+              {opp.analyticalContext.missingCritical && <p className="text-[9px] font-sans text-muted-foreground/50">Missing: {opp.analyticalContext.missingCritical}</p>}
             </div>
           )}
           <div className="text-[9px] font-sans text-muted-foreground/60">
@@ -803,7 +863,7 @@ export function MarketOpportunities({
           filteredRanked.length > 0 ? (
             <div data-testid="market-ranked-list" className="space-y-2">
               {filteredRanked.map((item) => (
-                <RankedCard key={item.instrument} item={item} />
+                <RankedCard key={item.instrument} item={item} radarOpp={radarOpps.find((opp) => opp.instrument.toUpperCase() === item.instrument.toUpperCase())} />
               ))}
             </div>
           ) : monitoringRanked.length > 0 ? (
@@ -817,7 +877,7 @@ export function MarketOpportunities({
                 </p>
               </div>
               {monitoringRanked.map((item) => (
-                <RankedCard key={item.instrument} item={item} />
+                <RankedCard key={item.instrument} item={item} radarOpp={radarOpps.find((opp) => opp.instrument.toUpperCase() === item.instrument.toUpperCase())} />
               ))}
             </div>
           ) : (
