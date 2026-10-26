@@ -70,6 +70,16 @@ export interface WalkForwardInput {
   analyzeAtClose: (visibleCandles: readonly OhlcvCandle[], signalIndex: number) => BacktestSignal;
 }
 
+const TIMEFRAME_DURATION_MS: Record<Timeframe, number> = {
+  M1: 60_000,
+  M5: 300_000,
+  M15: 900_000,
+  H1: 3_600_000,
+  H4: 14_400_000,
+  D1: 86_400_000,
+  W1: 604_800_000,
+};
+
 const finitePositive = (n: number): boolean => Number.isFinite(n) && n > 0;
 const parsePrice = (value: string): number => Number(value);
 
@@ -315,12 +325,14 @@ export function runProductionWalkForwardBacktest(args: {
     options: args.options,
     analyzeAtClose: (visibleCandles) => {
       const latest = visibleCandles[visibleCandles.length - 1];
+      // Candle timestamps mark opens; the replay observes the completed close.
+      const replayNow = latest.timestamp + TIMEFRAME_DURATION_MS[args.timeframe] - 1;
       const marketData: MarketData = {
         instrument: args.instrument,
         instrumentType: args.instrumentType,
         provider: "historical-walk-forward",
-        fetchTimestamp: latest.timestamp,
-        price: { price: latest.close, timestamp: latest.timestamp, source: "historical-OHLCV" },
+        fetchTimestamp: replayNow,
+        price: { price: latest.close, timestamp: replayNow, source: "historical-OHLCV" },
         candles: [...visibleCandles],
         timeframe: args.timeframe,
         dataFreshness: "delayed",
@@ -335,7 +347,7 @@ export function runProductionWalkForwardBacktest(args: {
         marketData,
         technicalData,
       };
-      const result: AnalysisResult = runAnalysis(analysisInput, { now: () => latest.timestamp });
+      const result: AnalysisResult = runAnalysis(analysisInput, { now: () => replayNow });
       return {
         recommendation: result.recommendation,
         tradePlan: result.tradePlan,
