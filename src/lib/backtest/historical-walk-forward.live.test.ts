@@ -148,6 +148,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
         },
         maxHoldingBars: 20,
         execution: "signal at completed candle close; next candle open entry; conservative stop-first same-bar ordering",
+        shortSide: "synthetic directional exposure on spot reference prices; not executable spot shorting or a derivative execution model",
       },
       coverage: report.providerCoverage.map((item) => ({
         provider: item.provider,
@@ -205,8 +206,11 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
         warnings: fold.report.warnings,
         trades: fold.report.trades,
       })),
-      limitations: report.limitations,
-      interpretation: "Historical, descriptive evidence only. This report is not a forecast or a guarantee of future profitability. Cost sensitivity uses explicit 15, 20 and 25 bps per-side assumptions; real venue fee, spread and fill assumptions still require validation.",
+      limitations: [
+        ...report.limitations,
+        "Although the price source is Binance Spot, short-side trades are synthetic directional exposure, not executable spot shorts. This is not a derivatives backtest because funding, margin, liquidation, borrow, basis, and contract specifications are not modeled.",
+      ],
+      interpretation: "Historical, descriptive evidence only. This report is not a forecast or a guarantee of future profitability. Cost sensitivity uses explicit 15, 20 and 25 bps per-side assumptions; short trades are synthetic against spot reference prices, and real venue fee, spread and fill assumptions still require validation.",
     };
 
     await mkdir("artifacts", { recursive: true });
@@ -227,7 +231,7 @@ describe("real historical Binance Spot walk-forward evaluation", () => {
       "- Walk-forward: expanding anchored training, six consecutive 250-bar out-of-sample folds per asset (subject to available source data).",
       "- Execution model: signal after candle close, entry at next candle open, stop-first when stop and target touch the same OHLC bar.",
       "- Cost model per side: 10 bps fee assumption + 2 bps half-spread assumption + 3/8/13 bps slippage stress assumptions = 15/20/25 bps total per side. Spread and slippage are explicit assumptions, not reconstructed historical quotes; verify actual account fee tier and fills.",
-      "- Funding/borrow is not applicable to this Binance Spot test; results must not be generalized to perpetuals, margin, or borrowed shorts.",
+      "- Short-side trades are synthetic directional exposure against the spot reference series, not executable spot shorts. Funding, borrow, margin, liquidation, basis, and derivative contract specifications are not modeled; this is neither an executable spot-short nor a derivatives backtest.",
       "- Same-bar stop/target collisions are stop-first; stops crossed at a bar open use the worse open fill (adverse gap handling).",
       "",
       "## Data coverage",
