@@ -64,6 +64,8 @@ export interface HistoricalOhlcvDataset {
 export interface HistoricalOhlcvDependencies {
   fetchImpl?: typeof fetch;
   now?: () => number;
+  /** Public market-data mirrors used when a host is geo-restricted or unavailable. */
+  baseUrls?: string[];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -158,17 +160,38 @@ export async function fetchHistoricalBinanceSpotOhlcv(
   let pageIndex = 0;
 
   while (cursor <= request.endTime) {
-    const url = new URL("https://api.binance.com/api/v3/klines");
-    url.searchParams.set("symbol", request.symbol);
-    url.searchParams.set("interval", request.interval);
-    url.searchParams.set("startTime", String(cursor));
-    url.searchParams.set("endTime", String(request.endTime));
-    url.searchParams.set("limit", "1000");
-
-    const response = await fetchImpl(url.toString(), { headers: { Accept: "application/json" } });
-    if (!response.ok) {
-      throw new Error(`Binance historical OHLCV request failed with HTTP ${response.status}.`);
+    const baseUrls = dependencies.baseUrls ?? [
+      "https://api.binance.com",
+      "https://data-api.binance.vision",
+      "https://api1.binance.com",
+      "https://api2.binance.com",
+    ];
+    let response: Response | undefined;
+    let lastFailure: Error | undefined;
+    for (const baseUrl of baseUrls) {
+      const url = new URL("/api/v3/klines", baseUrl);
+      url.searchParams.set("symbol", request.symbol);
+      url.searchParams.set("interval", request.interval);
+      url.searchParams.set("startTime", String(cursor));
+      url.searchParams.set("endTime", String(request.endTime));
+      url.searchParams.set("limit", "1000");
+      try {
+        const candidate = await fetchImpl(url.toString(), { headers: { Accept: "application/json" } });
+        if (candidate.ok) {
+          response = candidate;
+          break;
+        }
+        lastFailure = new Error(`Binance historical OHLCV request failed with HTTP ${candidate.status}.`);
+        // Rate-limit responses must not be amplified by trying more hosts.
+        if (candidate.status === 418 || candidate.status === 429) throw lastFailure;
+        // Some regions block api.binance.com (HTTP 451). Retry public market-data mirrors.
+        if (candidate.status < 500 && candidate.status !== 403 && candidate.status !== 451) throw lastFailure;
+      } catch (error) {
+        if (error instanceof Error && /HTTP (418|429|400|401|404)/.test(error.message)) throw error;
+        lastFailure = error instanceof Error ? error : new Error("Binance public market-data host request failed.");
+      }
     }
+    if (!response) throw lastFailure ?? new Error("No Binance public market-data host was available.");
     const payload: unknown = await response.json();
     if (!Array.isArray(payload)) {
       const message = isRecord(payload) && typeof payload.msg === "string" ? payload.msg : "Unexpected response.";
