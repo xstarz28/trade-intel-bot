@@ -100,17 +100,22 @@ function calculateStochastic(candles: readonly OhlcvCandle[], period = 14, smoot
     const highest = Math.max(...window.map((candle) => candle.high));
     const lowest = Math.min(...window.map((candle) => candle.low));
     const width = highest - lowest;
-    if (!(width > 0)) return undefined;
-    rawK.push((candles[index].close - lowest) / width * 100);
+    // A flat lookback makes that individual %K undefined; it must not erase
+    // a later valid stochastic once the rolling window has regained range.
+    rawK.push(width > 0 ? (candles[index].close - lowest) / width * 100 : Number.NaN);
   }
   const smoothedK: number[] = [];
   for (let index = smoothK - 1; index < rawK.length; index += 1) {
     const window = rawK.slice(index - smoothK + 1, index + 1);
-    smoothedK.push(window.reduce((sum, value) => sum + value, 0) / smoothK);
+    smoothedK.push(window.every(Number.isFinite)
+      ? window.reduce((sum, value) => sum + value, 0) / smoothK
+      : Number.NaN);
   }
   if (smoothedK.length < smoothD) return undefined;
   const latestK = smoothedK[smoothedK.length - 1];
-  const latestD = smoothedK.slice(-smoothD).reduce((sum, value) => sum + value, 0) / smoothD;
+  const latestDWindow = smoothedK.slice(-smoothD);
+  if (!Number.isFinite(latestK) || !latestDWindow.every(Number.isFinite)) return undefined;
+  const latestD = latestDWindow.reduce((sum, value) => sum + value, 0) / smoothD;
   return { percentK: latestK, percentD: latestD };
 }
 
@@ -130,7 +135,9 @@ function calculateDonchian(candles: readonly OhlcvCandle[], period = 20): Advanc
 }
 
 function calculateVolumeFlow(candles: readonly OhlcvCandle[], period = 14): AdvancedTechnicalIndicators["volumeFlow"] {
-  if (candles.length < 2 || !candles.some((candle) => candle.volume > 0)) return undefined;
+  // OBV change is explicitly a 20-bar metric; do not substitute a shorter
+  // since-start delta when the input window contains fewer than 21 candles.
+  if (candles.length < 21 || !candles.some((candle) => candle.volume > 0)) return undefined;
   const obvSeries = [0];
   for (let index = 1; index < candles.length; index += 1) {
     const previous = candles[index - 1].close;
