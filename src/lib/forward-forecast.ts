@@ -131,7 +131,9 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
   const horizon = traderHorizon(result, snapshot?.timestamp ?? result.timestamp);
   const blocked = dataStatus(result);
   const plan = result.tradePlan ?? result.projectedTradePlan;
-  const direction: ForecastDirection = plan?.direction ?? (result.bias === "Bullish" ? "bullish" : result.bias === "Bearish" ? "bearish" : "neutral");
+  const direction: ForecastDirection = plan
+    ? plan.direction === "long" ? "bullish" : "bearish"
+    : result.bias === "Bullish" ? "bullish" : result.bias === "Bearish" ? "bearish" : "neutral";
   const evidence: string[] = [];
   const limitations = [
     "Structural scenario only; predictive accuracy and profitability have not been calibrated.",
