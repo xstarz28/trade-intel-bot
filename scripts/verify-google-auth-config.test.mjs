@@ -14,7 +14,7 @@ test("reports missing auth variable names without values", () => {
   const result = classifyGoogleAuthConfig({});
   assert.equal(result.state, "NOT_CONFIGURED");
   assert.deepEqual(result.missing, [
-    "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET", "CONVEX_SITE_URL", "SITE_URL", "VITE_CONVEX_URL",
+    "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET", "CONVEX_SITE_URL", "SITE_URL",
   ]);
 });
 
