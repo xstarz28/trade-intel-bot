@@ -1786,21 +1786,21 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2.5">
+              <div data-testid="analysis-trade-plan-entry" className="rounded-lg bg-muted/20 border border-border/50 px-3 py-2.5">
                 <p className="text-[10px] font-mono font-medium text-muted-foreground uppercase tracking-wider mb-1">
                   entry
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.entry}</p>
                 <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5">market price</p>
               </div>
-              <div className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2.5">
+              <div data-testid="analysis-trade-plan-stop-loss" className="rounded-lg bg-red-500/5 border border-red-500/15 px-3 py-2.5">
                 <p className="text-[10px] font-mono font-medium text-red-400 uppercase tracking-wider mb-1">
                   stop loss
                 </p>
                 <p className="text-sm font-bold font-mono tabular-nums">{result.tradePlan.stopLoss}</p>
                 <p className="text-[9px] font-mono text-muted-foreground/60 mt-0.5 break-words">{result.tradePlan.slBasis}</p>
               </div>
-              <div className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2.5">
+              <div data-testid="analysis-trade-plan-take-profit" className="rounded-lg bg-emerald-500/5 border border-emerald-500/15 px-3 py-2.5">
                 <p className="text-[10px] font-mono font-medium text-emerald-400 uppercase tracking-wider mb-1">
                   take profit
                 </p>
