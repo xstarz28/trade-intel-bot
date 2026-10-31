@@ -61,6 +61,19 @@ export interface ScenarioNode {
   outcome: string;
 }
 
+/** Market-derived forward setup with explicit risk/reward geometry. */
+export interface ForwardOpportunityPlan {
+  status: "ACTIONABLE" | "CONDITIONAL";
+  direction: "long" | "short";
+  entry: string;
+  stopLoss: string;
+  takeProfit: string;
+  riskReward: number;
+  entryBasis: string;
+  stopBasis: string;
+  targetBasis: string;
+}
+
 export interface ForwardMarketPathContext {
   /** Current market state summary. */
   currentState: string;
@@ -86,6 +99,8 @@ export interface ForwardMarketPathContext {
   triggerLevels: TriggerLevel[];
   /** Levels to watch for future context. */
   watchLevels: TriggerLevel[];
+  /** Directional future setup and its market-derived R:R, when valid levels exist. */
+  forwardOpportunity?: ForwardOpportunityPlan;
   /** What the market should do if the primary path is correct. */
   expectedMarketBehavior: string;
   /** What the market should do if the primary path is wrong. */
@@ -781,6 +796,21 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
     investorView = "No clear HTF structural direction — wait for directional alignment and confirmation.";
   }
 
+  const opportunitySource = result.tradePlan ?? result.projectedTradePlan;
+  const forwardOpportunity: ForwardOpportunityPlan | undefined = opportunitySource
+    ? {
+        status: result.tradePlan ? "ACTIONABLE" : "CONDITIONAL",
+        direction: opportunitySource.direction,
+        entry: opportunitySource.entry,
+        stopLoss: opportunitySource.stopLoss,
+        takeProfit: opportunitySource.takeProfit,
+        riskReward: opportunitySource.riskReward,
+        entryBasis: opportunitySource.entryBasis,
+        stopBasis: opportunitySource.slBasis,
+        targetBasis: opportunitySource.tpBasis,
+      }
+    : undefined;
+
   return {
     currentState,
     primaryPath,
@@ -794,6 +824,7 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
     invalidationConditions,
     triggerLevels,
     watchLevels,
+    forwardOpportunity,
     expectedMarketBehavior,
     failureBehavior,
     pathRisks,
