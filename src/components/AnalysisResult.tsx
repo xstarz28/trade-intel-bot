@@ -1465,6 +1465,41 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </div>
               )}
 
+              {/* Phase 46 — distinct trader and investor forward forecasts. */}
+              {result.forwardForecast && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" data-testid="forward-forecast-contract">
+                  {([
+                    ["trader forecast", result.forwardForecast.trader],
+                    ["investor forecast", result.forwardForecast.investor],
+                  ] as const).map(([label, forecast]) => (
+                    <div key={label} className="rounded-md border border-border/40 p-2 space-y-1.5 text-[10px] font-mono">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold text-foreground">{label}</span>
+                        <Badge variant="outline" className="text-[9px] border-border/50">
+                          {forecast.status.replace(/_/g, " ")} · {forecast.calibration.toLowerCase()}
+                        </Badge>
+                      </div>
+                      <p className="text-muted-foreground">
+                        direction: <span className="text-foreground">{forecast.direction}</span> · horizon: <span className="text-foreground">{forecast.horizon.label}</span>
+                      </p>
+                      <p className="text-muted-foreground">
+                        window: {new Date(forecast.horizon.startsAt).toLocaleString()} – {new Date(forecast.horizon.endsAt).toLocaleString()}
+                      </p>
+                      {forecast.entry && <p>entry: <span className="text-foreground tabular-nums">{forecast.entry.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.entry.meaning, locale)})</span></p>}
+                      {forecast.objective && <p>objective: <span className="text-foreground tabular-nums">{forecast.objective.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.objective.meaning, locale)})</span></p>}
+                      {forecast.invalidation && <p>invalidation/downside: <span className="text-foreground tabular-nums">{forecast.invalidation.price}</span></p>}
+                      {"rewardRisk" in forecast && forecast.rewardRisk !== undefined && <p>reward : risk: <span className="font-semibold text-primary">1 : {forecast.rewardRisk.toFixed(2)}</span></p>}
+                      {"structuralUpsideDownsideRatio" in forecast && forecast.structuralUpsideDownsideRatio !== undefined && <p>structural upside/downside: <span className="font-semibold text-primary">1 : {forecast.structuralUpsideDownsideRatio.toFixed(2)}</span></p>}
+                      {"valuationStatus" in forecast && <p className="text-muted-foreground">valuation: unavailable · no fair-value target asserted</p>}
+                      {forecast.dataAsOf && <p className="text-muted-foreground/70">source data as of: {new Date(forecast.dataAsOf).toLocaleString()}</p>}
+                      {forecast.evidence.map((item, i) => <p key={i} className="text-emerald-400/80">• {localizeAnalysisText(item, locale)}</p>)}
+                      {forecast.limitations.map((item, i) => <p key={i} className="text-muted-foreground/70">! {localizeAnalysisText(item, locale)}</p>)}
+                      <p className="text-muted-foreground/70">Horizon: {localizeAnalysisText(forecast.horizon.basis, locale)}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Future opportunity watch levels are informational only under NO_TRADE. */}
               {result.recommendation === "NO_TRADE" && fp.watchLevels.length > 0 && (
                 <div className="rounded-md border border-primary/20 p-2 space-y-1.5" data-testid="future-opportunity-watch-levels">
