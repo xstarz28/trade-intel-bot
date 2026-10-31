@@ -104,4 +104,10 @@ describe("advanced technical indicators", () => {
     expect(technical.advancedIndicators?.donchian20).toBeDefined();
     expect(technical.advancedIndicators?.volumeFlow).toBeDefined();
   });
+  it("rejects duplicate or descending candle timestamps", () => {
+    const history = trendCandles(40);
+    history[20] = { ...history[20], timestamp: history[19].timestamp };
+    expect(calculateAdvancedTechnicalIndicators(history)).toBeUndefined();
+  });
+
 });
