@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { sma, rsi, macd, detectSwings, analyzeStructure, detectBos, detectChoch, findKeyLevels, atr, analyzeVolume, fibonacciLevels, calculateTechnical } from "./technical";
+import { sma, ema, rsi, macd, detectSwings, analyzeStructure, detectBos, detectChoch, findKeyLevels, atr, analyzeVolume, fibonacciLevels, calculateTechnical } from "./technical";
 import type { OhlcvCandle } from "./market-types";
 
 /** Helper: generate n ascending candles for testing. */
@@ -32,14 +32,28 @@ describe("SMA", () => {
     expect(sma(data, 3)).toBeCloseTo(13);
   });
 
-  it("returns undefined for insufficient data", () => {
+  it("returns undefined for insufficient data or an invalid period", () => {
     expect(sma([1, 2], 5)).toBeUndefined();
+    expect(sma([1, 2], 0)).toBeUndefined();
+    expect(sma([1, 2], -1)).toBeUndefined();
+    expect(sma([1, Number.NaN], 2)).toBeUndefined();
+  });
+});
+
+describe("EMA", () => {
+  it("returns an empty array for invalid periods or non-finite prices", () => {
+    expect(ema([1, 2, 3], 0)).toEqual([]);
+    expect(ema([1, 2, 3], -1)).toEqual([]);
+    expect(ema([1, Number.NaN, 3], 2)).toEqual([]);
   });
 });
 
 describe("RSI", () => {
-  it("returns undefined for insufficient data", () => {
+  it("returns undefined for insufficient data and invalid inputs", () => {
     expect(rsi([50, 51, 52], 14)).toBeUndefined();
+    expect(rsi([50, 51, 52], 0)).toBeUndefined();
+    expect(rsi([50, 51, 52], -2)).toBeUndefined();
+    expect(rsi([50, Number.NaN, 52], 2)).toBeUndefined();
   });
 
   it("returns 100 for all-up data", () => {
@@ -80,6 +94,12 @@ describe("MACD", () => {
 });
 
 describe("detectSwings", () => {
+  it("returns no swings for invalid lookback values", () => {
+    const candles = ascendingCandles(10);
+    expect(detectSwings(candles, 0)).toEqual({ highs: [], lows: [] });
+    expect(detectSwings(candles, -1)).toEqual({ highs: [], lows: [] });
+    expect(detectSwings(candles, 1.5)).toEqual({ highs: [], lows: [] });
+  });
   it("finds swing highs and lows in ascending data", () => {
     const candles = ascendingCandles(20);
     const { highs, lows } = detectSwings(candles, 3);
@@ -173,6 +193,12 @@ describe("findKeyLevels", () => {
 });
 
 describe("ATR", () => {
+  it("returns undefined for invalid periods", () => {
+    const candles = ascendingCandles(20);
+    expect(atr(candles, 0)).toBeUndefined();
+    expect(atr(candles, -1)).toBeUndefined();
+    expect(atr(candles, 1.5)).toBeUndefined();
+  });
   it("returns undefined for insufficient data", () => {
     expect(atr([{ timestamp: 0, open: 1, high: 2, low: 0, close: 1.5, volume: 100 }])).toBeUndefined();
   });
