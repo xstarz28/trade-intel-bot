@@ -2,15 +2,19 @@ import type { AdvancedTechnicalIndicators, OhlcvCandle } from "./market-types";
 
 
 function validCandles(candles: readonly OhlcvCandle[]): boolean {
-  return candles.every((candle) =>
-    [candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume]
-      .every(Number.isFinite) &&
-    candle.timestamp > 0 &&
-    candle.open > 0 && candle.high > 0 && candle.low > 0 && candle.close > 0 &&
-    candle.volume >= 0 &&
-    candle.high >= Math.max(candle.open, candle.close, candle.low) &&
-    candle.low <= Math.min(candle.open, candle.close, candle.high)
-  );
+  for (let index = 0; index < candles.length; index += 1) {
+    const candle = candles[index];
+    if (
+      ![candle.timestamp, candle.open, candle.high, candle.low, candle.close, candle.volume].every(Number.isFinite) ||
+      candle.timestamp <= 0 ||
+      candle.open <= 0 || candle.high <= 0 || candle.low <= 0 || candle.close <= 0 ||
+      candle.volume < 0 ||
+      candle.high < Math.max(candle.open, candle.close, candle.low) ||
+      candle.low > Math.min(candle.open, candle.close, candle.high) ||
+      (index > 0 && candle.timestamp <= candles[index - 1].timestamp)
+    ) return false;
+  }
+  return true;
 }
 
 function calculateAdxDmi(candles: readonly OhlcvCandle[], period = 14): AdvancedTechnicalIndicators["adx14"] {
