@@ -57,6 +57,8 @@ export interface ForwardForecastOutcome {
   actualDirection: EvaluationDirection;
   predictedDirection: EvaluationDirection;
   baselineDirection: EvaluationDirection;
+  baselineTrainingEndTime: number;
+  baselineMethod: string;
   forecastCorrect: boolean;
   baselineCorrect: boolean;
   event: ForecastEvent;
@@ -100,8 +102,6 @@ export interface ForwardForecastEvaluationReport {
 
 interface ValidatedObservation {
   observation: ForwardForecastObservation;
-  signalIndex: number;
-  horizonIndex: number;
   futureCandles: OhlcvCandle[];
 }
 
@@ -299,7 +299,7 @@ export function evaluateForwardForecastOutcomes(
       recordExcluded(excludedReasons, "empty_future_window");
       continue;
     }
-    validated.push({ observation, signalIndex, horizonIndex, futureCandles });
+    validated.push({ observation, futureCandles });
     previousHorizonEnd = observation.horizonEndsAt;
   }
 
@@ -319,6 +319,8 @@ export function evaluateForwardForecastOutcomes(
       actualDirection,
       predictedDirection: observation.direction,
       baselineDirection: observation.baselineDirection,
+      baselineTrainingEndTime: observation.baselineTrainingEndTime,
+      baselineMethod: observation.baselineMethod,
       forecastCorrect: directionMatches(actualDirection, observation.direction),
       baselineCorrect: directionMatches(actualDirection, observation.baselineDirection),
       event: exit.event,
