@@ -145,9 +145,8 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
     const entry = positive(plan.entry);
     const stop = positive(plan.stopLoss);
     const target = positive(plan.takeProfit);
-    const geometryValid = entry !== undefined && stop !== undefined && target !== undefined &&
-      (plan.direction === "long" ? stop < entry && target > entry : target < entry && stop > entry);
-    if (geometryValid) {
+    if (entry !== undefined && stop !== undefined && target !== undefined &&
+      (plan.direction === "long" ? stop < entry && target > entry : target < entry && stop > entry)) {
       const risk = plan.direction === "long" ? entry - stop : stop - entry;
       const reward = plan.direction === "long" ? target - entry : entry - target;
       const rewardRisk = reward / risk;
