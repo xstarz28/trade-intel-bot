@@ -148,7 +148,6 @@ function buildObservations(
   const observations: ForwardForecastObservation[] = [];
 
   for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += step) {
-    const historyEnd = index;
     const baselineLookback = horizon === "investor" ? 180 : timeframe === "D1" ? 100 : 100;
     if (historyEnd < baselineLookback + 1) continue;
     const priorHistory = candles.slice(index - baselineLookback, index);
@@ -212,9 +211,17 @@ describe("real historical forward forecast outcome evaluation", () => {
         sha256: createHash("sha256").update(JSON.stringify(canonical)).digest("hex"),
       };
     });
-    const sourceSnapshots = sourceDatasets.map(({ candles: _candles, gaps, ...summary }) => ({
-      ...summary,
-      gapCount: gaps.length,
+    const sourceSnapshots = sourceDatasets.map((dataset) => ({
+      provider: dataset.provider,
+      instrument: dataset.instrumentId,
+      timeframe: dataset.timeframe,
+      requestedRange: dataset.requestedRange,
+      actualRange: dataset.actualRange,
+      retrievedAt: dataset.retrievedAt,
+      candleCount: dataset.candleCount,
+      gapCount: dataset.gaps.length,
+      warnings: dataset.warnings,
+      sha256: dataset.sha256,
     }));
 
     for (const dataset of datasets) {
