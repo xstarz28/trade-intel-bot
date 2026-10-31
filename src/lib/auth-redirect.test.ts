@@ -24,4 +24,9 @@ describe("resolveAuthRedirect", () => {
   it("supports a safe caller-provided fallback", () => {
     expect(resolveAuthRedirect("https://attacker.example", "/journal")).toBe("/journal");
   });
+
+  it("rejects an unsafe caller-provided fallback", () => {
+    expect(resolveAuthRedirect(null, "//attacker.example")).toBe("/dashboard");
+    expect(resolveAuthRedirect(null, "/\\\\attacker.example")).toBe("/dashboard");
+  });
 });
