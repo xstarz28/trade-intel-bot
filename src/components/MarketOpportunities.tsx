@@ -240,7 +240,11 @@ function RankedCard({ item, radarOpp }: { item: RankedInstrument; radarOpp?: Rad
             {item.analyticalScore}
           </p>
         </div>
-        <div className="text-center">
+        <div
+          className="text-center"
+          title="Analytical confidence reflects evidence confluence; it is not a calibrated probability of profit."
+          aria-label="Analytical confidence, not a probability of profit"
+        >
           <p className="text-[9px] font-sans text-muted-foreground">{tx("marketPanel.confidenceLabel")}</p>
           <p className="text-sm font-bold font-sans tabular-nums text-foreground">{item.confidence}</p>
         </div>
