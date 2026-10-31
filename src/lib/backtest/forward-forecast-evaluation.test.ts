@@ -85,8 +85,8 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
   it("fills an adverse stop gap at the candle open rather than the stop price", () => {
     const candles = [
       candle(T0, 100, 101, 99, 100),
-      candle(T0 + DAY, 90, 96, 89, 92),
-      candle(T0 + 2 * DAY, 92, 93, 91, 92),
+      candle(T0 + DAY, 100, 101, 99, 100),
+      candle(T0 + 2 * DAY, 90, 96, 89, 92),
       candle(T0 + 3 * DAY, 92, 93, 91, 92),
     ];
     const report = evaluateForwardForecastOutcomes([observation()], candles, {
