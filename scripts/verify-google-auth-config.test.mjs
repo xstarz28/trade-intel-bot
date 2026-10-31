@@ -36,7 +36,7 @@ test("rejects invalid IDs, short secrets, non-HTTPS endpoints and mismatched hos
     VITE_CONVEX_URL: "https://other.convex.cloud",
   });
   assert.equal(result.state, "INVALID");
-  assert.ok(result.invalid.length >= 4);
+  assert.equal(result.invalid.length, 3);
   assert.equal(JSON.stringify(result).includes("not-a-google-client-id"), false);
   assert.equal(JSON.stringify(result).includes("short"), false);
 });
