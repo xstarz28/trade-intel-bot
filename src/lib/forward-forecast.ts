@@ -98,9 +98,11 @@ function dataStatus(result: AnalysisResult): ForecastStatus | undefined {
 
 function marketSnapshot(result: AnalysisResult): { price: number; timestamp: number } | undefined {
   const candle = result.candles?.[result.candles.length - 1];
-  const price = positive(result.priceSnapshot?.price) ?? positive(candle?.close);
-  const timestamp = result.priceSnapshot?.timestamp ?? candle?.timestamp;
+  const snapshotPrice = positive(result.priceSnapshot?.price);
+  const price = snapshotPrice ?? positive(candle?.close);
+  const timestamp = snapshotPrice !== undefined ? result.priceSnapshot?.timestamp : candle?.timestamp;
   if (price === undefined || typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp <= 0) return undefined;
+  if (Number.isFinite(result.timestamp) && timestamp > result.timestamp) return undefined;
   return { price, timestamp };
 }
 
