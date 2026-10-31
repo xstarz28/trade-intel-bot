@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { formatInstrumentPrice } from "@/lib/price-format";
 import {
   generateRecommendation,
   filterCandidatesWithObservedMarketData,
@@ -203,6 +204,9 @@ interface MarketOpportunitiesProps {
 function RankedCard({ item, radarOpp }: { item: RankedInstrument; radarOpp?: RadarOpportunity }) {
   const { locale, t, tx, txi } = useI18n();
   const [expanded, setExpanded] = useState(false);
+  const conditionalScenarios = item.conditionalScenarios ?? radarOpp?.conditionalScenarios ?? [];
+  const referencePrice = item.currentPrice ?? radarOpp?.currentPrice;
+  const formatPrice = (value: number) => formatInstrumentPrice(value, item.assetClass, item.instrument);
 
   return (
     <div className="rounded-lg border border-border/40 bg-muted/20 p-3">
@@ -236,7 +240,11 @@ function RankedCard({ item, radarOpp }: { item: RankedInstrument; radarOpp?: Rad
             {item.analyticalScore}
           </p>
         </div>
-        <div className="text-center">
+        <div
+          className="text-center"
+          title="Analytical confidence reflects evidence confluence; it is not a calibrated probability of profit."
+          aria-label="Analytical confidence, not a probability of profit"
+        >
           <p className="text-[9px] font-sans text-muted-foreground">{tx("marketPanel.confidenceLabel")}</p>
           <p className="text-sm font-bold font-sans tabular-nums text-foreground">{item.confidence}</p>
         </div>
@@ -259,14 +267,39 @@ function RankedCard({ item, radarOpp }: { item: RankedInstrument; radarOpp?: Rad
         </div>
       </div>
 
-      {radarOpp?.conditionalScenarios?.length ? (
+      {conditionalScenarios.length > 0 && (
         <div className="mt-2 rounded-md border border-border/30 bg-background/30 p-2">
-          <p className="text-[9px] font-sans text-muted-foreground/70">Conditional forward scenarios · reference {radarOpp.currentPrice?.toLocaleString()}</p>
-          {radarOpp.conditionalScenarios.map((scenario) => (
-            <p key={scenario.id} className="mt-1 text-[9px] font-sans">{scenario.direction.toUpperCase()} · Trigger {scenario.trigger} · Invalidation {scenario.invalidation} · Target {scenario.target ?? "unavailable"} · R:R {scenario.riskReward?.toFixed(2) ?? "n/a"}R · {scenario.ready ? "conditional, wait for confirmation" : "not qualified"}</p>
-          ))}
+          <p className="text-[9px] font-sans font-semibold text-muted-foreground/80">
+            CONDITIONAL FORWARD SETUPS · NOT ENTRY SIGNALS
+            {referencePrice !== undefined ? ` · reference ${formatPrice(referencePrice)}` : ""}
+          </p>
+          <div className="mt-1.5 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {conditionalScenarios.map((scenario) => (
+              <div key={scenario.id} className="rounded-md border border-border/30 p-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[9px] font-sans font-bold">
+                    {scenario.direction === "long" ? "LONG · BREAKOUT" : "SHORT · BREAKDOWN"}
+                  </span>
+                  <Badge variant="outline" className={cn(
+                    "text-[8px] font-sans",
+                    scenario.ready ? "border-emerald-500/40 text-emerald-400" : "border-amber-500/40 text-amber-400"
+                  )}>
+                    {scenario.ready ? "R:R threshold met · confirm" : "Conditional · not qualified"}
+                  </Badge>
+                </div>
+                <div className="mt-1 grid grid-cols-2 gap-1 text-[9px] font-sans">
+                  <p>Trigger <span className="font-semibold tabular-nums">{formatPrice(scenario.trigger)}</span></p>
+                  <p>Invalidation <span className="font-semibold tabular-nums">{formatPrice(scenario.invalidation)}</span></p>
+                  <p>{scenario.targetBasis?.toLowerCase().includes("proyeksi") || scenario.targetBasis?.toLowerCase().includes("matematis") || scenario.targetBasis?.toLowerCase().includes("bukan") ? "Projected target" : "Structural target"} <span className="font-semibold tabular-nums">{scenario.target !== undefined ? formatPrice(scenario.target) : "unavailable"}</span></p>
+                  <p>Gross R:R <span className="font-semibold tabular-nums">{scenario.riskReward !== undefined ? `${scenario.riskReward.toFixed(2)}R` : "unavailable"}</span></p>
+                </div>
+                {scenario.targetBasis && <p className="mt-1 text-[8px] font-sans text-muted-foreground/70">{scenario.targetBasis}. R:R excludes spread, fees, funding, and slippage.</p>}
+                <p className="text-[8px] font-sans text-muted-foreground/60">{scenario.reason}</p>
+              </div>
+            ))}
+          </div>
         </div>
-      ) : null}
+      )}
 
       {item.primaryReasons.length > 0 && (
         <div className="mt-2 space-y-0.5">

@@ -15,6 +15,7 @@
  */
 
 import type { AssetClass } from "./data/universal/types";
+import type { ConditionalEntryScenario } from "./conditional-entry-scenarios";
 import { getAllInstruments, getProviderSymbol, type ResolutionStatus } from "./data/universal/instruments";
 
 // ═══════════════════════════════════════════════════════════════
@@ -160,6 +161,8 @@ export interface CandidateInput {
   fundamentalEvidenceAvailable?: boolean;
   /** True when positioning/sentiment is backed by available provider measurements. */
   positioningEvidenceAvailable?: boolean;
+  /** Read-only future entry scenarios derived from this exact live candle snapshot. */
+  conditionalScenarios?: ConditionalEntryScenario[];
 }
 
 /**
@@ -218,6 +221,10 @@ export interface RankedInstrument {
   recommendedAnalysisType: string;
   /** Provider coverage level. */
   providerCoverage: string;
+  /** Exact observed spot used for the candidate ranking. */
+  currentPrice?: number;
+  /** Conditional entry/SL/TP/R:R levels for trading horizons only. */
+  conditionalScenarios?: ConditionalEntryScenario[];
 }
 
 export interface HorizonWeights {
@@ -1131,6 +1138,8 @@ export function generateRecommendation(
       executionQuality: c.spreadBps,
       recommendedAnalysisType: recommendedType,
       providerCoverage: c.providerCoverage,
+      ...(Number.isFinite(c.currentPrice) && c.currentPrice > 0 ? { currentPrice: c.currentPrice } : {}),
+      ...(isTradingMode && c.conditionalScenarios?.length ? { conditionalScenarios: c.conditionalScenarios } : {}),
     });
   }
 

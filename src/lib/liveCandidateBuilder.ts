@@ -22,6 +22,7 @@ import { deriveMacroYieldEvidence, type TreasuryData } from "./data/treasury";
 import type { CotData } from "./data/cot";
 import type { EiaData } from "./data/eia";
 import { calculateTechnical } from "./data/technical";
+import { buildConditionalEntryScenariosFromMarketData } from "./conditional-entry-scenarios";
 import { matchesDerivativeSymbol } from "./data/derivatives-symbol";
 
 // ═══════════════════════════════════════════════════════════════
@@ -475,16 +476,26 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
   const orderedHigherTimeframeCandles = source.marketData?.higherTimeframeCandles
     ?.slice()
     .sort((a, b) => a.timestamp - b.timestamp);
-  const tech = source.technicalData ?? (
-    orderedCandles && orderedCandles.length > 0
-      ? calculateTechnical(
-          orderedCandles,
-          orderedHigherTimeframeCandles,
-          source.marketData?.higherTimeframe ?? "HTF",
-        )
-      : undefined
-  );
+  const candleDerivedTechnical = orderedCandles && orderedCandles.length > 0
+    ? calculateTechnical(
+        orderedCandles,
+        orderedHigherTimeframeCandles,
+        source.marketData?.higherTimeframe ?? "HTF",
+      )
+    : undefined;
+  const tech = source.technicalData ?? candleDerivedTechnical;
   const ar = source.analysisResult;
+  // Reuse precomputed structure for forward levels only when its complete
+  // observation identity matches this candidate. Otherwise derive levels from
+  // this candidate's own OHLCV; never borrow another symbol/timeframe/snapshot.
+  // The builder has already removed analyses with mismatched instrument,
+  // timeframe, price, or observation timestamp. Also require asset-class
+  // identity when both sides provide it.
+  const sameAnalysisSnapshot = Boolean(
+    ar && (!ar.instrumentType || !source.marketData?.instrumentType ||
+      ar.instrumentType === source.marketData.instrumentType)
+  );
+  const scenarioTechnical = sameAnalysisSnapshot ? ar?.technicalData ?? candleDerivedTechnical : candleDerivedTechnical;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
 
   // Freshness must describe when the market observation occurred, not when we fetched it.
@@ -512,6 +523,17 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
 
   // Live data availability
   const hasLiveData = freshness === "FRESH" || freshness === "DELAYED";
+  // Forward setups are derived from this exact ordered candle series and its
+  // technical context. They remain informational and never alter candidate score.
+  const candleFreshness = constrainByProviderFreshness(
+    assessFreshness(latestCandleTimestamp, now, source.marketData?.timeframe ?? ar?.timeframe),
+    source.marketData?.dataFreshness,
+  );
+  const conditionalScenarios = buildConditionalEntryScenariosFromMarketData({
+    candles: orderedCandles,
+    technicalData: scenarioTechnical,
+    primaryQuality: candleFreshness,
+  });
 
   // Provider coverage
   const providerCoverage = dataPoints > 0 ? "PARTIAL" : "MINIMAL";
@@ -582,6 +604,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     hasExecutionQuality: extractSpreadBps(source) !== undefined,
 
     ...extractSetupEvidence(tech, price),
+    ...(conditionalScenarios.length > 0 ? { conditionalScenarios } : {}),
 
     // Directional evidence bridge: use the analysis engine's signed
     // fundamental/positioning factors instead of reconstructing them in UI.

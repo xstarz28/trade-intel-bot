@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { AnalysisResult } from "@/types/analysis";
+import type { TechnicalData } from "./data/market-types";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument } from "./liveCandidateBuilder";
 import { buildRadarCandidate, toRadarCandidateSource } from "./market-radar/candidate-builder";
 
@@ -733,6 +735,287 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     const radar = buildRadarCandidate(toRadarCandidateSource(source), now);
     expect(live.fundamentalEvidenceAvailable).toBe(false);
     expect(radar.fundamentalEvidenceAvailable).toBe(false);
+  });
+
+  it("attaches conditional future trigger, invalidation, target, and R:R from the exact fresh candle snapshot", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      time: now - (30 - i) * 60_000,
+      timestamp: now - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "XAU/USD",
+        timeframe: "H1",
+        priceSnapshot: { price: 100, timestamp: now },
+        technicalData: {
+          dataPoints: 30,
+          structure: "range",
+          swingHighs: [102, 110],
+          swingLows: [98, 90],
+          resistanceLevels: [101, 102, 110],
+          supportLevels: [99, 98, 90],
+          atr14: 2,
+          volumeTrend: "stable",
+        } as TechnicalData,
+      } as unknown as AnalysisResult,
+    }, now);
+
+    expect(candidate.conditionalScenarios).toHaveLength(2);
+    expect(candidate.conditionalScenarios?.[0]).toMatchObject({
+      id: "bullish-breakout",
+      trigger: 101.2,
+      invalidation: 99,
+      target: 110,
+      ready: true,
+    });
+    expect(candidate.conditionalScenarios?.[0]?.riskReward).toBeGreaterThanOrEqual(1.5);
+    expect(candidate.conditionalScenarios?.[1]).toMatchObject({
+      id: "bearish-breakdown",
+      trigger: 98.8,
+      invalidation: 101,
+      target: 90,
+      ready: true,
+    });
+    expect(candidate.conditionalScenarios?.[1]?.riskReward).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it("does not attach future scenarios when the provider marks the exact snapshot stale", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      time: now - (30 - i) * 60_000,
+      timestamp: now - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "stale",
+      },
+      analysisResult: {
+        instrument: "XAU/USD",
+        timeframe: "H1",
+        priceSnapshot: { price: 100, timestamp: now },
+        technicalData: {
+          dataPoints: 30,
+          structure: "range",
+          swingHighs: [102, 110],
+          swingLows: [98, 90],
+          resistanceLevels: [101, 102, 110],
+          supportLevels: [99, 98, 90],
+          atr14: 2,
+          volumeTrend: "stable",
+        } as TechnicalData,
+      } as unknown as AnalysisResult,
+    }, now);
+
+    expect(candidate.freshness).toBe("STALE");
+    expect(candidate.conditionalScenarios).toBeUndefined();
+  });
+
+  it("rejects stale OHLCV setups even when the accompanying quote timestamp is current", () => {
+    const now = Date.now();
+    const staleCandleEnd = now - 30 * 60 * 60_000;
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      time: staleCandleEnd - (30 - i) * 60_000,
+      timestamp: staleCandleEnd - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "XAU/USD",
+        timeframe: "H1",
+        priceSnapshot: { price: 100, timestamp: now },
+        technicalData: {
+          dataPoints: 30,
+          structure: "range",
+          swingHighs: [102, 110],
+          swingLows: [98, 90],
+          resistanceLevels: [101, 102, 110],
+          supportLevels: [99, 98, 90],
+          atr14: 2,
+          volumeTrend: "stable",
+        } as TechnicalData,
+      } as unknown as AnalysisResult,
+    }, now);
+
+    expect(candidate.hasLiveData).toBe(true);
+    expect(candidate.conditionalScenarios).toBeUndefined();
+  });
+
+  it("does not borrow technical levels from a mismatched instrument or timeframe", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      time: now - (30 - i) * 60_000,
+      timestamp: now - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "XAG/USD",
+        instrumentType: "commodity",
+        timeframe: "D1",
+        priceSnapshot: { price: 100, timestamp: now, source: "twelve-data" },
+        technicalData: {
+          dataPoints: 30,
+          structure: "range",
+          swingHighs: [102, 110],
+          swingLows: [98, 90],
+          resistanceLevels: [101, 102, 110],
+          supportLevels: [99, 98, 90],
+          atr14: 2,
+          volumeTrend: "stable",
+        } as TechnicalData,
+      } as unknown as AnalysisResult,
+    }, now);
+
+    expect(candidate.conditionalScenarios?.some((scenario) => scenario.target === 110 || scenario.target === 90)).toBe(false);
+  });
+
+  it("does not manufacture target or R:R when no opposing structural swing is observed", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      time: now - (30 - i) * 60_000,
+      timestamp: now - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        timeframe: "H1",
+        priceSnapshot: { price: 100, timestamp: now, source: "twelve-data" },
+        technicalData: {
+          dataPoints: 30,
+          structure: "range",
+          swingHighs: [101],
+          swingLows: [99],
+          resistanceLevels: [101],
+          supportLevels: [99],
+          atr14: 2,
+          volumeTrend: "stable",
+        } as TechnicalData,
+      } as unknown as AnalysisResult,
+    }, now);
+
+    expect(candidate.conditionalScenarios).toHaveLength(2);
+    for (const scenario of candidate.conditionalScenarios ?? []) {
+      expect(scenario.target).toBeUndefined();
+      expect(scenario.riskReward).toBeUndefined();
+      expect(scenario.ready).toBe(false);
+    }
+  });
+
+  it("rejects prior analysis belonging to a different instrument", () => {
+    const now = Date.now();
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles: Array.from({ length: 30 }, (_, i) => ({
+          time: now - (30 - i) * 60_000,
+          timestamp: now - (30 - i) * 60_000,
+          open: 100,
+          high: 102,
+          low: 98,
+          close: 100,
+          volume: 10,
+        })),
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "XAG/USD",
+        instrumentType: "commodity",
+        timeframe: "H1",
+        recommendation: "LONG",
+        priceSnapshot: { price: 100, timestamp: now, source: "twelve-data" },
+      } as unknown as AnalysisResult,
+    }, now);
+
+    expect(candidate.analysisDecision).toBeUndefined();
   });
 
 });

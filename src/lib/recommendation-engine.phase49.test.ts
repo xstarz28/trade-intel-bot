@@ -275,6 +275,36 @@ describe("B — Universe Scanning", () => {
   });
 });
 
+
+  it("carries future setups into trading cards without changing ranking and omits them for investor horizons", () => {
+    const scenarios = [{
+      id: "bullish-breakout" as const,
+      direction: "long" as const,
+      trigger: 101.2,
+      invalidation: 99,
+      target: 110,
+      riskReward: 4,
+      triggerBasis: "Observed resistance plus ATR buffer",
+      invalidationBasis: "Observed support",
+      targetBasis: "Observed opposing swing meeting minimum R:R",
+      ready: true,
+      reason: "Wait for candle close and MTF confirmation.",
+    }];
+    const candidate = makeCandidate({ conditionalScenarios: scenarios });
+    const withoutScenarios = makeCandidate();
+    const scoredWith = scoreCandidate(candidate, "INTRADAY");
+    const scoredWithout = scoreCandidate(withoutScenarios, "INTRADAY");
+    expect(scoredWith.analyticalScore).toBe(scoredWithout.analyticalScore);
+    expect(scoredWith.confidence).toBe(scoredWithout.confidence);
+
+    const trading = generateRecommendation([candidate], "INTRADAY");
+    expect(trading.rankedInstruments[0]?.currentPrice).toBe(candidate.currentPrice);
+    expect(trading.rankedInstruments[0]?.conditionalScenarios).toEqual(scenarios);
+
+    const investing = generateRecommendation([candidate], "1-3_MONTHS");
+    expect(investing.rankedInstruments[0]?.conditionalScenarios).toBeUndefined();
+  });
+
 // ═══════════════════════════════════════════════════════════════
 // C. SCALPING RANKING
 // ═══════════════════════════════════════════════════════════════

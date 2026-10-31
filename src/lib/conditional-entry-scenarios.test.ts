@@ -80,7 +80,7 @@ describe("buildConditionalEntryScenarios", () => {
     expect(short.targetBasis).toContain("memenuhi minimum R:R");
   });
 
-  it("labels mathematical target projections when no farther observed swing exists", () => {
+  it("leaves target and R:R unavailable when no farther observed swing exists", () => {
     const fixture = resultFixture({
       technicalData: {
         dataPoints: 30,
@@ -95,11 +95,10 @@ describe("buildConditionalEntryScenarios", () => {
     });
     const scenarios = buildConditionalEntryScenarios(fixture);
     expect(scenarios).toHaveLength(2);
-    expect(scenarios.every((scenario) => scenario.target !== undefined && (scenario.riskReward ?? 0) >= 1.5 && !scenario.ready)).toBe(true);
-    expect(scenarios.every((scenario) => scenario.targetBasis?.includes("bukan swing terkonfirmasi"))).toBe(true);
+    expect(scenarios.every((scenario) => scenario.target === undefined && scenario.riskReward === undefined && !scenario.ready)).toBe(true);
   });
 
-  it("provides labeled range/volatility projections when structural levels are missing", () => {
+  it("uses observed range extremes for fallback triggers but does not fabricate a target or R:R", () => {
     const fixture = resultFixture({
       technicalData: {
         dataPoints: 30,
@@ -117,13 +116,14 @@ describe("buildConditionalEntryScenarios", () => {
     expect(scenarios[0]).toMatchObject({
       id: "bullish-breakout",
       trigger: 102.2,
-      invalidation: 97.8,
+      invalidation: 98,
       ready: false,
     });
-    expect(scenarios[0].target).toBeCloseTo(108.8, 8);
-    expect(scenarios[0].targetBasis).toContain("bukan resistance terkonfirmasi");
-    expect(scenarios[1].targetBasis).toContain("bukan support terkonfirmasi");
-    expect(scenarios.every((scenario) => scenario.reason.includes("Tunggu struktur"))).toBe(true);
+    expect(scenarios[0].target).toBeUndefined();
+    expect(scenarios[0].riskReward).toBeUndefined();
+    expect(scenarios[1].target).toBeUndefined();
+    expect(scenarios[1].riskReward).toBeUndefined();
+    expect(scenarios.every((scenario) => scenario.reason.includes("no opposing structural target is verified"))).toBe(true);
   });
 
   it("rejects malformed latest OHLC instead of producing plausible levels", () => {

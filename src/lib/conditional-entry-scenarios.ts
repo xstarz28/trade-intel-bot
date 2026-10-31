@@ -126,10 +126,9 @@ export function buildConditionalEntryScenariosFromMarketData(input: {
       reason: !atr ? "ATR tidak tersedia; konfirmasi buffer belum dapat dihitung." : !target ? "Belum ada swing low teramati di bawah pemicu untuk target yang valid." : !ready ? "R:R berbasis level teramati di bawah minimum 1,5." : "Tunggu candle tutup di bawah pemicu dan struktur/MTF mengonfirmasi.",
     });
   }
-  // If swing/support/resistance detection has no usable levels, still give
-  // the trader a transparent watch framework from the observed recent range.
-  // These are explicitly mathematical projections, never confirmed S/R or
-  // executable plans. Stale/unavailable primary data was rejected above.
+  // When no structural support/resistance is available, use only the
+  // observed 20-bar range for conditional trigger/invalidation watch levels.
+  // Do not manufacture a target or R:R: those require an observed objective.
   if (scenarios.length === 0) {
     const windowCandles = candles.slice(-20).filter((candle) =>
       Number.isFinite(candle.high) && candle.high > 0 &&
@@ -141,73 +140,29 @@ export function buildConditionalEntryScenariosFromMarketData(input: {
       const rangeLow = Math.min(...windowCandles.map((candle) => candle.low));
       const rangeWidth = rangeHigh - rangeLow;
       if (Number.isFinite(rangeWidth) && rangeWidth > 0) {
-        const projectionBuffer = atr ? atr * 0.1 : rangeWidth * 0.01;
-        const longTrigger = rangeHigh + projectionBuffer;
-        const longInvalidation = rangeLow - projectionBuffer;
-        const longRisk = longTrigger - longInvalidation;
-        const longReward = Math.max(rangeWidth, atr ? atr * 2 : 0, longRisk * 1.5);
-        const longTarget = longTrigger + longReward;
-        const longRr = longRisk > 0 ? longReward / longRisk : undefined;
-        const shortTrigger = rangeLow - projectionBuffer;
-        const shortInvalidation = rangeHigh + projectionBuffer;
-        const shortRisk = shortInvalidation - shortTrigger;
-        const shortReward = Math.max(rangeWidth, atr ? atr * 2 : 0, shortRisk * 1.5);
-        const shortTarget = shortTrigger - shortReward;
-        const shortRr = shortRisk > 0 ? shortReward / shortRisk : undefined;
+        const buffer = atr ? atr * 0.1 : rangeWidth * 0.01;
         scenarios.push({
           id: "bullish-breakout",
           direction: "long",
-          trigger: longTrigger,
-          invalidation: longInvalidation,
-          target: longTarget,
-          ...(longRr !== undefined ? { riskReward: longRr } : {}),
-          triggerBasis: "High rentang 20 candle teramati + buffer volatilitas",
-          invalidationBasis: "Low rentang 20 candle teramati − buffer volatilitas",
-          targetBasis: "Proyeksi 1× rentang teramati atau 2 ATR (mana yang lebih besar), bukan resistance terkonfirmasi",
+          trigger: rangeHigh + buffer,
+          invalidation: rangeLow,
+          triggerBasis: "High 20-bar observed range + 0.1 ATR confirmation buffer",
+          invalidationBasis: "Observed low of the 20-bar range",
           ready: false,
-          reason: "Skenario proyeksi tersedia, tetapi swing/resistance terkonfirmasi belum tersedia. Tunggu struktur dan target pasar nyata sebelum mempertimbangkan entry.",
+          reason: "Observed range levels are available, but no opposing structural target is verified; target and R:R remain unavailable.",
         });
         scenarios.push({
           id: "bearish-breakdown",
           direction: "short",
-          trigger: shortTrigger,
-          invalidation: shortInvalidation,
-          target: shortTarget,
-          ...(shortRr !== undefined ? { riskReward: shortRr } : {}),
-          triggerBasis: "Low rentang 20 candle teramati − buffer volatilitas",
-          invalidationBasis: "High rentang 20 candle teramati + buffer volatilitas",
-          targetBasis: "Proyeksi 1× rentang teramati atau 2 ATR (mana yang lebih besar), bukan support terkonfirmasi",
+          trigger: rangeLow - buffer,
+          invalidation: rangeHigh,
+          triggerBasis: "Low 20-bar observed range − 0.1 ATR confirmation buffer",
+          invalidationBasis: "Observed high of the 20-bar range",
           ready: false,
-          reason: "Skenario proyeksi tersedia, tetapi swing/support terkonfirmasi belum tersedia. Tunggu struktur dan target pasar nyata sebelum mempertimbangkan entry.",
+          reason: "Observed range levels are available, but no opposing structural target is verified; target and R:R remain unavailable.",
         });
       }
     }
-  }
-  // If a structural trigger exists but no farther opposing swing is known,
-  // fill the target field with a clearly labeled mathematical projection.
-  // This prevents an empty target cell without presenting it as market structure.
-  const recentWindow = candles.slice(-20).filter((candle) =>
-    Number.isFinite(candle.high) && candle.high > 0 &&
-    Number.isFinite(candle.low) && candle.low > 0 &&
-    candle.high >= candle.low
-  );
-  const observedRangeWidth = recentWindow.length >= 10
-    ? Math.max(...recentWindow.map((candle) => candle.high)) - Math.min(...recentWindow.map((candle) => candle.low))
-    : 0;
-  for (const scenario of scenarios) {
-    if (scenario.target !== undefined) continue;
-    const risk = Math.abs(scenario.trigger - scenario.invalidation);
-    if (!(risk > 0) || !Number.isFinite(risk)) continue;
-    const projectionDistance = Math.max(observedRangeWidth, atr ? atr * 2 : 0, risk * 1.5);
-    const projectedTarget = scenario.direction === "long"
-      ? scenario.trigger + projectionDistance
-      : scenario.trigger - projectionDistance;
-    if (!Number.isFinite(projectedTarget) || projectedTarget <= 0) continue;
-    scenario.target = projectedTarget;
-    scenario.riskReward = projectionDistance / risk;
-    scenario.targetBasis = "Proyeksi matematis ≥1,5R / 2 ATR atau rentang teramati (mana lebih besar), bukan swing terkonfirmasi";
-    scenario.ready = false;
-    scenario.reason = "Target matematis ditampilkan agar level tidak kosong, tetapi bukan level swing teramati. Tunggu target struktur nyata sebelum mempertimbangkan entry.";
   }
   return scenarios;
 }
