@@ -26,10 +26,19 @@ export interface ForecastLevel {
   meaning: string;
 }
 
+export interface AlternateForecastScenario {
+  direction: "bullish" | "bearish";
+  status: "CONDITIONAL" | "UNAVAILABLE";
+  objective?: ForecastLevel;
+  invalidation?: ForecastLevel;
+  condition: string;
+}
+
 export interface TraderForwardForecast {
   status: ForecastStatus;
   direction: ForecastDirection;
   horizon: ForecastHorizon;
+  alternateScenarios?: AlternateForecastScenario[];
   entry?: ForecastLevel;
   objective?: ForecastLevel;
   invalidation?: ForecastLevel;
@@ -44,6 +53,7 @@ export interface InvestorForwardForecast {
   status: ForecastStatus;
   direction: ForecastDirection;
   horizon: ForecastHorizon;
+  alternateScenarios?: AlternateForecastScenario[];
   objective?: ForecastLevel;
   invalidation?: ForecastLevel;
   /** Structural distance ratio only; never a valuation or expected-return estimate. */
@@ -129,6 +139,35 @@ function investorHorizon(result: AnalysisResult, asOf: number): ForecastHorizon 
   };
 }
 
+function alternateScenarios(
+  primary: ForecastDirection,
+  spot: number,
+  upsideLevel: number | undefined,
+  downsideLevel: number | undefined,
+  source: string,
+  context: "trader" | "investor",
+): AlternateForecastScenario[] {
+  const directions: Array<"bullish" | "bearish"> = primary === "bullish"
+    ? ["bearish"]
+    : primary === "bearish"
+      ? ["bullish"]
+      : ["bullish", "bearish"];
+  return directions.flatMap((direction) => {
+    const objective = direction === "bullish" ? upsideLevel : downsideLevel;
+    const invalidation = direction === "bullish" ? downsideLevel : upsideLevel;
+    if (objective === undefined) return [];
+    return [{
+      direction,
+      status: "CONDITIONAL" as const,
+      objective: { price: objective, source, meaning: "Observed opposing structural objective" },
+      invalidation: invalidation === undefined ? undefined : { price: invalidation, source, meaning: "Observed opposing structural invalidation" },
+      condition: context === "trader"
+        ? direction === "bullish" ? "Bullish breakout and retest scenario if the primary path fails." : "Bearish breakdown and retest scenario if the primary path fails."
+        : direction === "bullish" ? "Bullish higher-timeframe recovery scenario." : "Bearish higher-timeframe deterioration scenario.",
+    }];
+  });
+}
+
 function traderForecast(result: AnalysisResult, snapshot: { price: number; timestamp: number } | undefined): TraderForwardForecast {
   const horizon = traderHorizon(result, snapshot?.timestamp ?? result.timestamp);
   const blocked = dataStatus(result);
@@ -145,6 +184,10 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
   if (blocked) return { status: blocked, direction, horizon, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary data quality is not GOOD; numeric forecast levels are suppressed."] };
   if (!snapshot) return { status: "UNAVAILABLE", direction: "neutral", horizon, calibration: "UNVALIDATED", evidence, limitations: [...limitations, "A valid spot price and source timestamp are required."] };
 
+  const traderUp = snapshot ? validLevel(result.keyLevels?.resistance, snapshot.price, "above") : undefined;
+  const traderDown = snapshot ? validLevel(result.keyLevels?.support, snapshot.price, "below") : undefined;
+  const alternate = snapshot ? alternateScenarios(direction, snapshot.price, traderUp, traderDown, "keyLevels", "trader") : [];
+
   if (plan) {
     const entry = positive(plan.entry);
     const stop = positive(plan.stopLoss);
@@ -160,6 +203,7 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
           status: "CONDITIONAL",
           direction,
           horizon,
+          alternateScenarios: alternate,
           entry: { price: entry, source: result.tradePlan ? "tradePlan" : "projectedTradePlan", meaning: result.tradePlan ? "Engine-approved entry level" : "Watch-only candidate entry; not executable" },
           objective: { price: target, source: result.tradePlan ? "tradePlan.tpBasis" : "projectedTradePlan.tpBasis", meaning: plan.tpBasis },
           invalidation: { price: stop, source: result.tradePlan ? "tradePlan.slBasis" : "projectedTradePlan.slBasis", meaning: plan.slBasis },
@@ -191,6 +235,7 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
     status: direction !== "neutral" && objectivePrice !== undefined ? "CONDITIONAL" : "UNAVAILABLE",
     direction,
     horizon,
+    alternateScenarios: alternate,
     objective: objectivePrice === undefined ? undefined : { price: objectivePrice, source: "keyLevels", meaning: "Nearest observed structural objective" },
     invalidation: invalidationPrice === undefined ? undefined : { price: invalidationPrice, source: "keyLevels", meaning: "Observed structural invalidation" },
     calibration: "UNVALIDATED",
@@ -218,7 +263,10 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
   if (blocked) return { status: blocked, direction, horizon, valuationStatus: "NOT_AVAILABLE", calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary data quality is not GOOD; numeric forecast levels are suppressed."] };
   if (!snapshot) return { status: "UNAVAILABLE", direction: "neutral", horizon, valuationStatus: "NOT_AVAILABLE", calibration: "UNVALIDATED", evidence, limitations: [...limitations, "A valid spot price and source timestamp are required."] };
 
-  const high = direction === "bullish" ? validLevel(structure?.lastSwingHigh, snapshot.price, "above") : undefined;
+  const htfUp = validLevel(structure?.lastSwingHigh, snapshot.price, "above");
+  const htfDown = validLevel(structure?.lastSwingLow, snapshot.price, "below");
+  const alternate = alternateScenarios(direction, snapshot.price, htfUp, htfDown, "higher-timeframe external swing", "investor");
+  const high = direction === "bullish" ? htfUp : undefined;
   const low = direction === "bearish" ? validLevel(structure?.lastSwingLow, snapshot.price, "below") : undefined;
   const downside = direction === "bullish" ? validLevel(structure?.lastSwingLow, snapshot.price, "below") : undefined;
   const upside = direction === "bearish" ? validLevel(structure?.lastSwingHigh, snapshot.price, "above") : undefined;
@@ -238,6 +286,7 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
     status: direction !== "neutral" && objective !== undefined ? "CONDITIONAL" : "UNAVAILABLE",
     direction,
     horizon,
+    alternateScenarios: alternate,
     objective: objective === undefined ? undefined : { price: objective, source: "higher-timeframe external swing", meaning: "Observed structural objective; not fair value" },
     invalidation: invalidation === undefined ? undefined : { price: invalidation, source: "higher-timeframe external swing", meaning: "Observed structural downside/invalidation" },
     structuralUpsideDownsideRatio: ratio,
