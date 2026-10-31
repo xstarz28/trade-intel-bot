@@ -23,7 +23,7 @@ function errorMessage(error: unknown): string {
 
 import { action } from "./_generated/server";
 import { v } from "convex/values";
-import { normalizeTwelveDataQuotePayload, normalizeYahooFinanceQuotePayload } from "./provider-quote-validation";
+import { normalizeTwelveDataQuotePayload, normalizeYahooFinanceQuotePayload } from "./providerQuoteValidation";
 
 // ═══════════════════════════════════════════════════════════════
 // COINGECKO — AUTHENTICATED WHEN CONFIGURED, RATE-LIMIT-AWARE FALLBACK
