@@ -1489,7 +1489,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       {forecast.objective && <p>objective: <span className="text-foreground tabular-nums">{forecast.objective.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.objective.meaning, locale)})</span></p>}
                       {forecast.invalidation && <p>invalidation/downside: <span className="text-foreground tabular-nums">{forecast.invalidation.price}</span></p>}
                       {"rewardRisk" in forecast && forecast.rewardRisk !== undefined && <p>reward : risk: <span className="font-semibold text-primary">1 : {forecast.rewardRisk.toFixed(2)}</span></p>}
-                      {"structuralUpsideDownsideRatio" in forecast && forecast.structuralUpsideDownsideRatio !== undefined && <p>structural upside/downside: <span className="font-semibold text-primary">1 : {forecast.structuralUpsideDownsideRatio.toFixed(2)}</span></p>}
+                      {"structuralUpsideDownsideRatio" in forecast && forecast.structuralUpsideDownsideRatio !== undefined && <p>structural upside/downside: <span className="font-semibold text-primary">{forecast.structuralUpsideDownsideRatio.toFixed(2)} : 1</span></p>}
                       {"valuationStatus" in forecast && <p className="text-muted-foreground">valuation: unavailable · no fair-value target asserted</p>}
                       {forecast.dataAsOf && <p className="text-muted-foreground/70">source data as of: {new Date(forecast.dataAsOf).toLocaleString()}</p>}
                       {forecast.evidence.map((item, i) => <p key={i} className="text-emerald-400/80">• {localizeAnalysisText(item, locale)}</p>)}
