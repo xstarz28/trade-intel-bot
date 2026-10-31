@@ -433,4 +433,47 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
   });
 
+  it("respects provider-declared stale valuation even when its retrieval timestamp is recent", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      universalIntelligenceContext: {
+        instrument: "AAPL",
+        assetClass: "equity",
+        assembledAt: timestamp - 500,
+        equity: {
+          instrument: "AAPL",
+          instrumentType: "equity",
+          assembledAt: timestamp - 500,
+          valuation: {
+            provider: "Verified Valuation Provider",
+            observedAt: timestamp - 60_000,
+            freshness: "STALE",
+            quality: "STALE",
+            available: true,
+            availableDatasets: 1,
+            totalDatasets: 1,
+            intrinsicValue: 120,
+          },
+          evidence: [],
+          overallAvailability: "PARTIAL",
+          overallQuality: "STALE",
+          missingInformation: [],
+          analystSummary: "Provider marked valuation stale.",
+        },
+        evidence: [],
+        overallAvailability: "PARTIAL",
+        overallQuality: "STALE",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Stale equity valuation.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    }));
+    expect(forecast.investor.valuationStatus).toBe("STALE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
 });
