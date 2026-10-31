@@ -322,18 +322,18 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
           independentSignalCount: number;
           signalCoveragePct: number;
           evaluationStatus: string;
-          costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
+          costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; expectancyBlockBootstrap95R: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
         };
         const lines = [
           `## ${entry.instrument} · ${entry.timeframe}`,
           `Opportunities: ${entry.opportunityCount} · raw signals: ${entry.signalCount} · independent OOS signals: ${entry.independentSignalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}% · status: ${entry.evaluationStatus}`,
           "",
-          "| Cost bps/side | Signal N | Accuracy | Baseline | Lift | Lift 95% CI | Expectancy R | Exp. 95% CI | PF | Status |",
+          "| Cost bps/side | Signal N | Accuracy | Baseline | Lift | Lift block 95% CI | Expectancy R | Exp. block 95% CI | PF | Status |",
           "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
         ];
         for (const scenario of entry.costSensitivity) {
           const r = scenario.report;
-          lines.push(`| ${scenario.costBpsPerSide} | ${r.evaluatedCount} | ${r.directionalAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.baselineAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.accuracyLiftPct?.toFixed(1) ?? "n/a"}pp | ${r.accuracyLift95Pct ? `${r.accuracyLift95Pct.lowerPct.toFixed(1)} to ${r.accuracyLift95Pct.upperPct.toFixed(1)}pp` : "n/a"} | ${r.expectancyR?.toFixed(2) ?? "n/a"} | ${r.expectancyR95 ? `${r.expectancyR95.lower.toFixed(2)} to ${r.expectancyR95.upper.toFixed(2)}R` : "n/a"} | ${r.profitFactor?.toFixed(2) ?? "n/a"} | ${r.status} |`);
+          lines.push(`| ${scenario.costBpsPerSide} | ${r.evaluatedCount} | ${r.directionalAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.baselineAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.accuracyLiftPct?.toFixed(1) ?? "n/a"}pp | ${r.accuracyLiftBlockBootstrap95Pct ? `${r.accuracyLiftBlockBootstrap95Pct.lowerPct.toFixed(1)} to ${r.accuracyLiftBlockBootstrap95Pct.upperPct.toFixed(1)}pp` : "n/a"} | ${r.expectancyR?.toFixed(2) ?? "n/a"} | ${r.expectancyBlockBootstrap95R ? `${r.expectancyBlockBootstrap95R.lower.toFixed(2)} to ${r.expectancyBlockBootstrap95R.upper.toFixed(2)}R` : "n/a"} | ${r.profitFactor?.toFixed(2) ?? "n/a"} | ${r.status} |`);
         }
         lines.push("");
         return lines;
