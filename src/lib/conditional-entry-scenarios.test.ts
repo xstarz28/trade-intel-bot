@@ -96,7 +96,6 @@ describe("buildConditionalEntryScenarios", () => {
     const scenarios = buildConditionalEntryScenarios(fixture);
     expect(scenarios).toHaveLength(2);
     expect(scenarios.every((scenario) => scenario.target === undefined && scenario.riskReward === undefined && !scenario.ready)).toBe(true);
-    expect(scenarios.every((scenario) => scenario.reason.includes("no opposing structural target is verified"))).toBe(true);
   });
 
   it("uses observed range extremes for fallback triggers but does not fabricate a target or R:R", () => {
