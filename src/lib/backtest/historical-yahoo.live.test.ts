@@ -87,6 +87,7 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
     });
     const providerCoverage = evaluationGroups.flatMap((group) => group.costScenarios[0].report.providerCoverage);
     const totalFolds = evaluationGroups.reduce((sum, group) => sum + group.costScenarios[0].report.folds.length, 0);
+    const primary = evaluationGroups[0].costScenarios[0].report;
     expect(providerCoverage).toHaveLength(instruments.length * intervals.length);
     expect(totalFolds).toBeGreaterThanOrEqual(instruments.length * intervals.length);
 
