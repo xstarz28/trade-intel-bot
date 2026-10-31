@@ -54,6 +54,17 @@ describe("buildForwardMarketPath future opportunity watchlist", () => {
       expect.objectContaining({ level: "67900", type: "resistance", source: "projectedTradePlan" }),
     ]));
     expect(path.scenarioTree[0].label).toContain("not executable");
+    expect(path.forwardOpportunity).toEqual({
+      status: "CONDITIONAL",
+      direction: "long",
+      entry: "66100",
+      stopLoss: "65200",
+      takeProfit: "67900",
+      riskReward: 2,
+      entryBasis: "H1 close above resistance followed by a successful retest",
+      stopBasis: "Below the retest swing low",
+      targetBasis: "Next opposing structural liquidity",
+    });
   });
 
   it("provides numeric breakout and breakdown watch conditions without inventing an entry", () => {
