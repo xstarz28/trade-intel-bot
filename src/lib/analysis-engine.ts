@@ -48,6 +48,7 @@ import { buildAnalystThesis } from "@/lib/analyst-thesis";
 import { buildMarketScenario } from "@/lib/market-scenario";
 import { buildProfessionalThesis } from "@/lib/professional-thesis";
 import { buildForwardMarketPath } from "@/lib/forward-market-path";
+import { buildForwardForecast } from "@/lib/forward-forecast";
 import { buildLongHorizonThesis } from "@/lib/long-horizon-thesis";
 import { buildEvidenceChallenge } from "@/lib/evidence-challenge";
 import type {
@@ -3411,6 +3412,9 @@ export function runAnalysis(
   // Phase 35 — long-horizon thesis (pure derivation).
   const longHorizonThesis = buildLongHorizonThesis(result as AnalysisResult);
   result.longHorizonThesis = longHorizonThesis;
+
+  // Phase 46 — explicit horizon-bound structural forecast; never changes the decision.
+  result.forwardForecast = buildForwardForecast(result as AnalysisResult);
 
   // Phase 36 — evidence & thesis challenge audit (informational only).
   const evidenceChallenge = buildEvidenceChallenge(result as AnalysisResult);
