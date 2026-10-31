@@ -97,7 +97,8 @@ export async function fetchHistoricalYahooFinanceOhlcv(
       url.searchParams.set("period1", String(Math.floor(request.startTime / 1000)));
       // Yahoo period2 is exclusive; include the requested final candle interval.
       url.searchParams.set("period2", String(Math.ceil((request.endTime + intervalMs) / 1000)));
-      url.searchParams.set("interval", request.interval);
+      const yahooInterval = request.interval === "1h" ? "60m" : request.interval === "1w" ? "1wk" : "1d";
+      url.searchParams.set("interval", yahooInterval);
       url.searchParams.set("events", "div,splits");
 
       const response = await fetchImpl(url.toString(), {
