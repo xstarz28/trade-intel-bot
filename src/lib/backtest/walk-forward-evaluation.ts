@@ -6,10 +6,18 @@ import {
   type WalkForwardReport,
 } from "./walk-forward";
 
+export type HistoricalTimestampAlignment = "UTC_INTERVAL" | "PROVIDER_SESSION";
+
 export interface HistoricalEvaluationDataset {
   provider: string;
+  /** Exact symbol used by the source provider when it differs from the canonical instrument. */
+  providerInstrumentId?: string;
   instrument: string;
   instrumentType: InstrumentType;
+  /** Session-based exchanges/OTC feeds need not align bars to UTC clock boundaries. */
+  timestampAlignment?: HistoricalTimestampAlignment;
+  /** Named provider calendar/session convention; null means no verified calendar. */
+  sessionCalendar?: string;
   timeframe: Timeframe;
   requestedRange: { startTime: number; endTime: number };
   actualRange: { startTime: number; endTime: number } | null;
@@ -22,7 +30,12 @@ export interface HistoricalEvaluationDataset {
 
 export interface HistoricalSpotDatasetLike {
   provider: string;
+  /** Canonical instrument ID, not necessarily the provider-native ticker. */
   instrumentId: string;
+  providerInstrumentId?: string;
+  instrumentType?: InstrumentType;
+  timestampAlignment?: HistoricalTimestampAlignment;
+  sessionCalendar?: string;
   timeframe: string;
   requestedRange: { startTime: number; endTime: number };
   actualRange: { startTime: number; endTime: number } | null;
@@ -54,8 +67,11 @@ export function adaptHistoricalSpotDataset(
   }
   return {
     provider: dataset.provider,
+    providerInstrumentId: dataset.providerInstrumentId,
     instrument: dataset.instrumentId,
-    instrumentType,
+    instrumentType: dataset.instrumentType ?? instrumentType,
+    timestampAlignment: dataset.timestampAlignment ?? "UTC_INTERVAL",
+    sessionCalendar: dataset.sessionCalendar,
     timeframe,
     requestedRange: dataset.requestedRange,
     actualRange: dataset.actualRange,
@@ -73,7 +89,9 @@ export type HistoricalSpotInterval =
   | "1d" | "3d" | "1w";
 
 export interface HistoricalSpotRequest {
+  /** Canonical instrument ID. Provider-native ticker is stored separately in the response. */
   symbol: string;
+  instrumentType?: InstrumentType;
   interval: HistoricalSpotInterval;
   startTime: number;
   endTime: number;
@@ -143,7 +161,11 @@ export interface MultiAssetWalkForwardReport {
   generatedAt: number;
   providerCoverage: Array<{
     provider: string;
+    providerInstrumentId?: string;
     instrument: string;
+    instrumentType: InstrumentType;
+    timestampAlignment: HistoricalTimestampAlignment;
+    sessionCalendar?: string;
     timeframe: Timeframe;
     requestedRange: { startTime: number; endTime: number };
     actualRange: { startTime: number; endTime: number } | null;
@@ -215,22 +237,32 @@ function assertDataset(dataset: HistoricalEvaluationDataset, allowGaps: boolean)
     }
   }
   const intervalMs = TIMEFRAME_MS[dataset.timeframe];
+  const sessionBased = dataset.timestampAlignment === "PROVIDER_SESSION";
+  if (sessionBased && dataset.instrumentType === "crypto") {
+    throw new Error(`Provider-session timestamp alignment is not allowed for continuous crypto market ${dataset.instrument}.`);
+  }
   for (let index = 0; index < dataset.candles.length; index += 1) {
     const candle = dataset.candles[index];
-    if (!Number.isSafeInteger(candle.timestamp) || !isTimeframeAligned(candle.timestamp, dataset.timeframe)) {
+    if (!Number.isSafeInteger(candle.timestamp)) {
+      throw new Error(`Candle timestamp is invalid for ${dataset.instrument}.`);
+    }
+    if (!sessionBased && !isTimeframeAligned(candle.timestamp, dataset.timeframe)) {
       throw new Error(`Candle timestamp is not aligned to the declared ${dataset.timeframe} UTC interval for ${dataset.instrument}.`);
     }
     if (index > 0) {
       const delta = candle.timestamp - dataset.candles[index - 1].timestamp;
-      if (delta <= 0 || delta % intervalMs !== 0) {
+      if (delta <= 0 || (!sessionBased && delta % intervalMs !== 0)) {
         throw new Error(`Candle timestamps are duplicate, descending, or misaligned for ${dataset.instrument}.`);
       }
-      if (delta !== intervalMs && !allowGaps) {
+      if (!sessionBased && delta !== intervalMs && !allowGaps) {
         throw new Error(`Candle timestamps contain an unreported gap for ${dataset.instrument}; evaluation is blocked.`);
       }
     }
   }
-  if (dataset.gaps.length > 0 && !allowGaps) {
+  // Provider-session datasets retain overnight/weekend/holiday breaks instead
+  // of treating them as missing crypto bars. The source must disclose that no
+  // exchange calendar has been independently verified when sessionCalendar is absent.
+  if (dataset.gaps.length > 0 && !allowGaps && !sessionBased) {
     throw new Error(`Dataset ${dataset.instrument} contains ${dataset.gaps.length} reported gap(s); evaluation is blocked rather than filling missing bars.`);
   }
 }
@@ -324,10 +356,13 @@ export async function runHistoricalWalkForwardEvaluation(
     if (source.instrumentId !== request.symbol || source.timeframe !== request.interval) {
       throw new Error(`Historical provider response identity does not match request ${request.symbol}/${request.interval}.`);
     }
+    if (request.instrumentType && source.instrumentType !== request.instrumentType) {
+      throw new Error(`Historical provider asset class does not match request ${request.symbol}: expected ${request.instrumentType}, received ${source.instrumentType ?? "unspecified"}.`);
+    }
     if (source.requestedRange.startTime !== request.startTime || source.requestedRange.endTime !== request.endTime) {
       throw new Error(`Historical provider range does not match request ${request.symbol}/${request.interval}.`);
     }
-    datasets.push(adaptHistoricalSpotDataset(source));
+    datasets.push(adaptHistoricalSpotDataset(source, request.instrumentType ?? source.instrumentType ?? "crypto"));
   }
   return evaluateMultiAssetWalkForward(datasets, options, dependencies);
 }
@@ -367,7 +402,11 @@ export function evaluateMultiAssetWalkForward(
     }
     providerCoverage.push({
       provider: dataset.provider,
+      providerInstrumentId: dataset.providerInstrumentId,
       instrument: dataset.instrument,
+      instrumentType: dataset.instrumentType,
+      timestampAlignment: dataset.timestampAlignment ?? "UTC_INTERVAL",
+      sessionCalendar: dataset.sessionCalendar,
       timeframe: dataset.timeframe,
       requestedRange: dataset.requestedRange,
       actualRange: dataset.actualRange,
@@ -444,6 +483,7 @@ export function evaluateMultiAssetWalkForward(
       "Samples with fewer than 30 trades are marked insufficient_sample; larger samples remain descriptive without a confidence interval.",
       "totalNetReturnPct compounds each trade's unlevered price return as if full notional were reused; it is not an account-equity or portfolio return. riskBudgetReturnPct separately illustrates 1% fixed-fraction risk per trade using net R, without a cross-asset allocator, concurrency/correlation model, margin model, or portfolio-level capital constraints.",
       "Persist the returned JSON together with the source dataset to make the evaluation auditable and reproducible.",
+      "Provider-session datasets retain exchange/OTC session breaks without synthesizing bars. Unless a verified sessionCalendar is supplied, missing trading sessions cannot be distinguished from legitimate holidays or provider omissions; session-based research remains provisional.",
     ],
   };
 }
