@@ -168,7 +168,7 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
   it("rejects duplicate observation IDs and duplicate timestamps", () => {
     expect(() => evaluateForwardForecastOutcomes([
       observation({ id: "same" }),
-      observation({ id: "same", dataAsOf: T0 + 3 * DAY, horizonEndsAt: T0 + 5 * DAY, baselineTrainingEndTime: T0 + 2 * DAY }),
+      observation({ id: "same", dataAsOf: T0 + DAY, horizonEndsAt: T0 + 5 * DAY, baselineTrainingEndTime: T0 }),
     ], simpleCandles(), { costBpsPerSide: 5 })).toThrow(/duplicate forecast observation timestamps/i);
   });
 
