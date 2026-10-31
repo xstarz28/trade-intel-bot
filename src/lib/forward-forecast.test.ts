@@ -49,6 +49,11 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(result.recommendation).toBe("NO_TRADE");
     expect(forecast.trader.limitations.join(" ")).toMatch(/not an order/i);
     expect(forecast.trader.calibration).toBe("UNVALIDATED");
+    expect(forecast.trader.alternateScenarios?.[0]).toMatchObject({
+      direction: "bearish",
+      objective: { price: 98_000 },
+      invalidation: { price: 105_000 },
+    });
   });
 
   it("creates explicit future time windows from the observed data timestamp", () => {
@@ -83,6 +88,11 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.invalidation?.price).toBe(94_000);
     expect(forecast.investor.structuralUpsideDownsideRatio).toBeCloseTo(12_000 / 6_000);
     expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
+    expect(forecast.investor.alternateScenarios?.[0]).toMatchObject({
+      direction: "bearish",
+      objective: { price: 94_000 },
+      invalidation: { price: 112_000 },
+    });
   });
 
   it("suppresses numeric forecasts when primary data quality is stale", () => {
