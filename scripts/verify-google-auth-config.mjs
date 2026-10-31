@@ -38,12 +38,12 @@ export function classifyGoogleAuthConfig(env = process.env) {
   }
 
   const googleId = env.AUTH_GOOGLE_ID?.trim() ?? "";
-  if (googleId && !/^[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com$/.test(googleId)) {
+  if (googleId && !/^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(googleId)) {
     invalid.push("AUTH_GOOGLE_ID must be a Google OAuth client ID");
   }
 
   const googleSecret = env.AUTH_GOOGLE_SECRET?.trim() ?? "";
-  if (googleSecret && (googleSecret.length < 16 || /\\s/.test(googleSecret))) {
+  if (googleSecret && (googleSecret.length < 16 || /\s/.test(googleSecret))) {
     invalid.push("AUTH_GOOGLE_SECRET must be a non-empty secret without whitespace");
   }
 
@@ -57,7 +57,7 @@ export function classifyGoogleAuthConfig(env = process.env) {
     invalid.push("VITE_CONVEX_URL must be an HTTPS origin on *.convex.cloud");
   }
   if (convexSite && convexCloud) {
-    const expectedSiteHost = convexCloud.hostname.replace(/\\.convex\\.cloud$/i, ".convex.site");
+    const expectedSiteHost = convexCloud.hostname.replace(/\.convex\.cloud$/i, ".convex.site");
     if (convexSite.hostname !== expectedSiteHost) {
       invalid.push("CONVEX_SITE_URL and VITE_CONVEX_URL must identify the same deployment");
     }
@@ -80,13 +80,13 @@ export function classifyGoogleAuthConfig(env = process.env) {
 function main() {
   const result = classifyGoogleAuthConfig(process.env);
   if (process.argv.includes("--json")) {
-    process.stdout.write(JSON.stringify(result, null, 2) + "\\n");
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } else {
-    process.stdout.write(`Google OAuth configuration: ${result.state}\\n`);
-    if (result.missing.length) process.stdout.write(`Missing variables: ${result.missing.join(", ")}\\n`);
-    if (result.invalid.length) process.stdout.write(`Invalid configuration: ${result.invalid.join("; ")}\\n`);
-    if (result.callbackUrl) process.stdout.write(`Expected Google callback URL: ${result.callbackUrl}\\n`);
-    process.stdout.write("Configuration shape only; this does not prove browser sign-in.\\n");
+    process.stdout.write(`Google OAuth configuration: ${result.state}\n`);
+    if (result.missing.length) process.stdout.write(`Missing variables: ${result.missing.join(", ")}\n`);
+    if (result.invalid.length) process.stdout.write(`Invalid configuration: ${result.invalid.join("; ")}\n`);
+    if (result.callbackUrl) process.stdout.write(`Expected Google callback URL: ${result.callbackUrl}\n`);
+    process.stdout.write("Configuration shape only; this does not prove browser sign-in.\n");
   }
   if (result.state === "NOT_CONFIGURED") process.exitCode = 1;
   if (result.state === "INVALID") process.exitCode = 2;
