@@ -277,15 +277,23 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     if ((await executablePlan.count()) !== 1) {
       throw new Error(`${instrument} is ${recommendation} but has no unique executable trade plan`);
     }
-    const planFields = await executablePlan.locator(".grid > div").allInnerTexts();
-    if (planFields.length !== 3) {
-      throw new Error(`${instrument} trade plan does not render Entry, Stop Loss and Take Profit`);
-    }
-    const planPrices = planFields.map((field) => {
-      const lines = field.split("\n").map((line) => line.trim()).filter(Boolean);
+    const planFieldSpecs = [
+      { label: "entry", testId: "analysis-trade-plan-entry" },
+      { label: "stop loss", testId: "analysis-trade-plan-stop-loss" },
+      { label: "take profit", testId: "analysis-trade-plan-take-profit" },
+    ];
+    const planPrices = await Promise.all(planFieldSpecs.map(async ({ label, testId }) => {
+      const field = executablePlan.getByTestId(testId);
+      if (await field.count() !== 1) {
+        throw new Error(`${instrument} executable trade plan is missing its unique ${label} field`);
+      }
+      const lines = (await field.innerText()).split("\n").map((line) => line.trim()).filter(Boolean);
+      if ((lines[0] ?? "").toLowerCase() !== label) {
+        throw new Error(`${instrument} trade plan field ${testId} has an unexpected label: ${lines[0] ?? "empty"}`);
+      }
       const match = (lines[1] ?? "").replace(/,/g, "").match(/-?\d+(?:\.\d+)?/);
       return match ? Number(match[0]) : Number.NaN;
-    });
+    }));
     const [entry, stop, target] = planPrices;
     if (![entry, stop, target].every((price) => Number.isFinite(price) && price > 0)) {
       throw new Error(`${instrument} trade plan contains a missing or invalid Entry/SL/TP price`);
