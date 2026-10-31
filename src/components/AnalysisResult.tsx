@@ -1485,7 +1485,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       <p className="text-muted-foreground">
                         window: {new Date(forecast.horizon.startsAt).toLocaleString()} – {new Date(forecast.horizon.endsAt).toLocaleString()}
                       </p>
-                      {forecast.entry && <p>entry: <span className="text-foreground tabular-nums">{forecast.entry.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.entry.meaning, locale)})</span></p>}
+                      {"entry" in forecast && forecast.entry && <p>entry: <span className="text-foreground tabular-nums">{forecast.entry.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.entry.meaning, locale)})</span></p>}
                       {forecast.objective && <p>objective: <span className="text-foreground tabular-nums">{forecast.objective.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.objective.meaning, locale)})</span></p>}
                       {forecast.invalidation && <p>invalidation/downside: <span className="text-foreground tabular-nums">{forecast.invalidation.price}</span></p>}
                       {"rewardRisk" in forecast && forecast.rewardRisk !== undefined && <p>reward : risk: <span className="font-semibold text-primary">1 : {forecast.rewardRisk.toFixed(2)}</span></p>}
