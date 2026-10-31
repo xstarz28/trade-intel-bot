@@ -122,7 +122,7 @@ function cryptoEvidenceAsOf(result: AnalysisResult, item: CryptoEvidenceItem): n
   const observedAt = category.startsWith("DERIVATIVES")
     ? context.derivatives?.observedAt
     : category.startsWith("DEFI") || category === "ON_CHAIN" || category === "LIQUIDITY"
-      ? context.defi?.observedAt ?? context.derivatives?.observedAt
+      ? context.defi?.observedAt
       : category.startsWith("TOKENOMICS") || category === "SUPPLY_DYNAMICS"
         ? context.tokenomics?.observedAt
         : undefined;
