@@ -72,13 +72,19 @@ function universalEvidenceAsOf(result: AnalysisResult, item: UniversalEvidenceIt
   const category = item.category;
   const observedAt =
     category === "VALUATION" ? context.equity?.valuation?.observedAt ?? context.equity?.fundamentals?.observedAt :
+    category === "FUNDAMENTALS" ? context.equity?.fundamentals?.observedAt :
     category === "EARNINGS" ? context.equity?.earnings?.observedAt :
+    category === "DIVIDENDS" ? context.equity?.corporateActions?.observedAt :
     category === "INVENTORY" ? context.commodity?.inventory?.observedAt :
     category === "SUPPLY_DEMAND" ? context.commodity?.supplyDemand?.observedAt :
     category === "FUTURES_STRUCTURE" ? context.commodity?.futuresStructure?.observedAt :
+    category === "POSITIONING" ? context.forex?.positioning?.observedAt ?? context.commodity?.positioning?.observedAt :
     category === "RATES" || category === "CARRY" || category === "MONETARY_POLICY"
-      ? context.forex?.rates?.observedAt ?? context.forex?.yields?.observedAt ?? context.forex?.positioning?.observedAt ?? context.forex?.macro?.observedAt
-      : context.assembledAt;
+      ? context.forex?.rates?.observedAt ?? context.forex?.yields?.observedAt ?? context.forex?.macro?.observedAt
+      : category === "RISK_REGIME" ? context.crossAsset?.riskRegime?.observedAt :
+      category === "MACRO" || category === "CROSS_ASSET"
+        ? context.crossAsset?.treasury?.observedAt ?? context.crossAsset?.dxy?.observedAt ?? context.crossAsset?.centralBanks?.observedAt ?? context.crossAsset?.globalLiquidity?.observedAt
+        : undefined;
   return validTimestamp(observedAt, result.timestamp);
 }
 
@@ -115,11 +121,11 @@ function cryptoEvidenceAsOf(result: AnalysisResult, item: CryptoEvidenceItem): n
   const category = item.category;
   const observedAt = category.startsWith("DERIVATIVES")
     ? context.derivatives?.observedAt
-    : category.startsWith("DEFI")
-      ? context.defi?.observedAt
-      : category.startsWith("TOKENOMICS")
+    : category.startsWith("DEFI") || category === "ON_CHAIN" || category === "LIQUIDITY"
+      ? context.defi?.observedAt ?? context.derivatives?.observedAt
+      : category.startsWith("TOKENOMICS") || category === "SUPPLY_DYNAMICS"
         ? context.tokenomics?.observedAt
-        : context.assembledAt;
+        : undefined;
   return validTimestamp(observedAt, result.timestamp);
 }
 
