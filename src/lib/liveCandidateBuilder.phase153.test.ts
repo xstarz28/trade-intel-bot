@@ -888,4 +888,30 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.conditionalScenarios).toBeUndefined();
   });
 
+  it("rejects prior analysis belonging to a different instrument", () => {
+    const now = Date.now();
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "XAG/USD",
+        instrumentType: "commodity",
+        timeframe: "H1",
+        recommendation: "LONG",
+        priceSnapshot: { price: 100, timestamp: now, source: "twelve-data" },
+      } as unknown as AnalysisResult,
+    }, now);
+
+    expect(candidate.analysisDecision).toBeUndefined();
+  });
+
 });
