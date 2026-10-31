@@ -219,10 +219,12 @@ describe("real Donchian + SMA true-range forward forecast OOS evaluation", () =>
 
     const reports: Array<Record<string, unknown>> = [];
     for (const dataset of datasets) {
-      const minimumBars = MINIMUM_BARS_BY_INTERVAL[dataset.timeframe];
+      const timeframe = dataset.timeframe === "1d" ? "D1" : "H1";
+      const minimumBars = timeframe === "D1"
+        ? MINIMUM_BARS_BY_INTERVAL["1d"]
+        : MINIMUM_BARS_BY_INTERVAL["1h"];
       expect(dataset.candleCount).toBeGreaterThanOrEqual(minimumBars);
       expect(dataset.gaps).toHaveLength(0);
-      const timeframe = dataset.timeframe === "1d" ? "D1" : "H1";
       const warmupBars = timeframe === "D1" ? 600 : 300;
       const { observations, signalCount } = buildDonchianObservations(
         dataset.instrumentId,
