@@ -1507,7 +1507,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                             </p>
                           )}
                           <p className="text-muted-foreground">
-                            asset-class fundamental evidence: {forecast.fundamentalOutlook.evidenceStatus.toLowerCase()} · {forecast.fundamentalOutlook.evidence.length} eligible source items
+                            asset-class intelligence evidence: {forecast.fundamentalOutlook.evidenceStatus.toLowerCase()} · {forecast.fundamentalOutlook.evidence.length} eligible source items
                           </p>
                           {forecast.fundamentalOutlook.evidence.map((item, i) => (
                             <p key={i} className="text-sky-400/80">
