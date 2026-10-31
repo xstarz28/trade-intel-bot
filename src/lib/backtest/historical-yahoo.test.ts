@@ -91,26 +91,29 @@ describe("fetchHistoricalYahooFinanceOhlcv", () => {
   it("drops unfinished candles and records provider-session breaks without filling them", async () => {
     const first = 1_700_000_000_000;
     const second = first + 72 * 60 * 60_000;
+    const third = second + 24 * 60 * 60_000;
     const dataset = await fetchHistoricalYahooFinanceOhlcv({
       symbol: "AAPL",
       instrumentType: "stock",
       interval: "1d",
       startTime: first,
-      endTime: second,
+      endTime: third,
     }, {
-      now: () => second + 12 * 60 * 60_000,
+      now: () => third + 12 * 60 * 60_000,
       fetchImpl: async () => new Response(JSON.stringify(yahooPayload([
         Math.floor(first / 1000),
         Math.floor(second / 1000),
+        Math.floor(third / 1000),
       ])), {
         status: 200,
         headers: { "content-type": "application/json" },
       }),
     });
 
-    expect(dataset.candleCount).toBe(1);
-    expect(dataset.candles[0].timestamp).toBe(first);
-    expect(dataset.gaps).toHaveLength(0);
+    expect(dataset.candleCount).toBe(2);
+    expect(dataset.candles.map((candle) => candle.timestamp)).toEqual([first, second]);
+    expect(dataset.gaps).toHaveLength(1);
+    expect(dataset.gaps[0].missingBars).toBe(2);
   });
 
   it("fails closed for unsupported provider instruments and timeframes", async () => {
