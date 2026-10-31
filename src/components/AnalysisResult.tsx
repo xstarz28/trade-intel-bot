@@ -1503,6 +1503,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                               <span className="text-foreground tabular-nums">{formatPrice(forecast.fundamentalOutlook.valuationReference.price, result.instrumentType, result.instrument)}</span>
                               {" "}· {forecast.fundamentalOutlook.valuationReference.upsidePct >= 0 ? "+" : ""}{forecast.fundamentalOutlook.valuationReference.upsidePct.toFixed(1)}%
                               {" "}· {forecast.fundamentalOutlook.valuationReference.source}
+                              <span className="text-muted-foreground"> · as of {new Date(forecast.fundamentalOutlook.valuationReference.asOf).toLocaleString()}</span>
                             </p>
                           )}
                           <p className="text-muted-foreground">
