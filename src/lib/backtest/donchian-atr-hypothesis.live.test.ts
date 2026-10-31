@@ -168,7 +168,7 @@ function buildDonchianObservations(
   return { observations, signalCount };
 }
 
-describe("real Donchian + ATR forward forecast OOS evaluation", () => {
+describe("real Donchian + SMA true-range forward forecast OOS evaluation", () => {
   it.skipIf(!enabled)("evaluates a pre-registered breakout hypothesis on untouched assets and archives source provenance", async () => {
     const datasets = [];
     for (const symbol of SYMBOLS) {
@@ -276,7 +276,7 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
 
     const report = {
       schemaVersion: 1,
-      title: "Trade Intel Bot — Donchian + ATR Forward Hypothesis OOS Evaluation",
+      title: "Trade Intel Bot — Donchian + SMA True-Range Forward Hypothesis OOS Evaluation",
       generatedAtIso: new Date().toISOString(),
       provider: "Binance Spot public OHLCV",
       assets: [...SYMBOLS],
@@ -305,7 +305,7 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
     await mkdir(artifactDir, { recursive: true });
     await writeFile(join(artifactDir, "donchian-atr-oos-report.json"), JSON.stringify(report, null, 2), "utf8");
     const markdown = [
-      "# Donchian + ATR Forward Hypothesis OOS Evaluation",
+      "# Donchian + SMA True-Range Forward Hypothesis OOS Evaluation",
       "",
       `Generated: ${report.generatedAtIso}`,
       "",
