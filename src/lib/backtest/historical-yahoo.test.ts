@@ -42,6 +42,7 @@ describe("fetchHistoricalYahooFinanceOhlcv", () => {
     });
 
     expect(requestedUrl).toContain("EURUSD%3DX");
+    expect(requestedUrl).toContain("interval=60m");
     expect(requestedUrl).toContain("period1=");
     expect(requestedUrl).toContain("period2=");
     expect(dataset).toMatchObject({
