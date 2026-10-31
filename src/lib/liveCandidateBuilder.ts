@@ -515,10 +515,14 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
   const hasLiveData = freshness === "FRESH" || freshness === "DELAYED";
   // Forward setups are derived from this exact ordered candle series and its
   // technical context. They remain informational and never alter candidate score.
+  const candleFreshness = constrainByProviderFreshness(
+    assessFreshness(latestCandleTimestamp, now, source.marketData?.timeframe ?? ar?.timeframe),
+    source.marketData?.dataFreshness,
+  );
   const conditionalScenarios = buildConditionalEntryScenariosFromMarketData({
     candles: orderedCandles,
     technicalData: tech,
-    primaryQuality: freshness,
+    primaryQuality: candleFreshness,
   });
 
   // Provider coverage
