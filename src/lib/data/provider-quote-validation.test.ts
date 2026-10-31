@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeTwelveDataQuotePayload, normalizeYahooFinanceQuotePayload } from "./provider-quote-validation";
+import { normalizeTwelveDataQuotePayload, normalizeYahooFinanceQuotePayload } from "../../convex/providerQuoteValidation";
 
 describe("normalizeTwelveDataQuotePayload", () => {
   it("accepts a finite positive close without inventing missing bid/ask", () => {
