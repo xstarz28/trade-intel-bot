@@ -9,6 +9,7 @@
  */
 
 import type { AnalysisResult } from "@/types/analysis";
+import { buildInvestorFundamentalOutlook, type InvestorFundamentalOutlook, type InvestorValuationStatus } from "@/lib/investor-fundamental-outlook";
 
 export type ForecastDirection = "bullish" | "bearish" | "neutral";
 export type ForecastStatus = "CONDITIONAL" | "UNAVAILABLE" | "BLOCKED_DATA_QUALITY";
@@ -58,7 +59,8 @@ export interface InvestorForwardForecast {
   invalidation?: ForecastLevel;
   /** Structural distance ratio only; never a valuation or expected-return estimate. */
   structuralUpsideDownsideRatio?: number;
-  valuationStatus: "NOT_AVAILABLE";
+  valuationStatus: InvestorValuationStatus;
+  fundamentalOutlook: InvestorFundamentalOutlook;
   calibration: "UNVALIDATED";
   dataAsOf?: number;
   evidence: string[];
@@ -248,6 +250,7 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
 function investorForecast(result: AnalysisResult, snapshot: { price: number; timestamp: number } | undefined): InvestorForwardForecast {
   const horizon = investorHorizon(result, snapshot?.timestamp ?? result.timestamp);
   const blocked = dataStatus(result);
+  const fundamentalOutlook = buildInvestorFundamentalOutlook(result, snapshot?.price);
   const structure = result.technicalData?.htfContext ?? result.technicalData?.smc?.internalExternal?.external;
   const direction: ForecastDirection = result.htfAlignment?.htfStructure === "HH/HL" || structure?.structure === "HH/HL"
     ? "bullish"
@@ -257,11 +260,10 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
   const evidence: string[] = [];
   const limitations = [
     "This is a higher-timeframe structural thesis, not a calibrated long-term price prediction.",
-    "No fair value, discounted-cash-flow estimate, or fundamental price target is available from this contract.",
     "Spot structural levels do not model leverage, funding, borrow, liquidation, dividends, or corporate actions.",
   ];
-  if (blocked) return { status: blocked, direction, horizon, valuationStatus: "NOT_AVAILABLE", calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary data quality is not GOOD; numeric forecast levels are suppressed."] };
-  if (!snapshot) return { status: "UNAVAILABLE", direction: "neutral", horizon, valuationStatus: "NOT_AVAILABLE", calibration: "UNVALIDATED", evidence, limitations: [...limitations, "A valid spot price and source timestamp are required."] };
+  if (blocked) return { status: blocked, direction, horizon, valuationStatus: fundamentalOutlook.valuationStatus, fundamentalOutlook, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary data quality is not GOOD; numeric forecast levels are suppressed."] };
+  if (!snapshot) return { status: "UNAVAILABLE", direction: "neutral", horizon, valuationStatus: fundamentalOutlook.valuationStatus, fundamentalOutlook, calibration: "UNVALIDATED", evidence, limitations: [...limitations, "A valid spot price and source timestamp are required."] };
 
   const htfUp = validLevel(structure?.lastSwingHigh, snapshot.price, "above");
   const htfDown = validLevel(structure?.lastSwingLow, snapshot.price, "below");
@@ -290,7 +292,8 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
     objective: objective === undefined ? undefined : { price: objective, source: "higher-timeframe external swing", meaning: "Observed structural objective; not fair value" },
     invalidation: invalidation === undefined ? undefined : { price: invalidation, source: "higher-timeframe external swing", meaning: "Observed structural downside/invalidation" },
     structuralUpsideDownsideRatio: ratio,
-    valuationStatus: "NOT_AVAILABLE",
+    valuationStatus: fundamentalOutlook.valuationStatus,
+    fundamentalOutlook,
     calibration: "UNVALIDATED",
     dataAsOf: snapshot.timestamp,
     evidence,
