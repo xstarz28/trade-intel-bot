@@ -93,6 +93,7 @@ function mapUniversalEvidence(result: AnalysisResult): InvestorFundamentalEviden
   return context.evidence.flatMap((item) => {
     if (
       !item.providerAvailable ||
+      item.assetClass !== context.assetClass ||
       normalizeInstrument(item.instrument) !== normalizeInstrument(result.instrument) ||
       (item.freshness !== "FRESH" && item.freshness !== "DELAYED") ||
       (item.quality !== "VERIFIED" && item.quality !== "DEGRADED") ||
