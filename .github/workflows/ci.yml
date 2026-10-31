@@ -42,6 +42,8 @@ jobs:
         run: npm test
       - name: Strict lint for market-execution integrity modules
         run: npx eslint src/lib/execution-quality.ts src/lib/execution-quality.test.ts src/convex/okx.ts
+      - name: Strict lint for authentication modules changed in this PR
+        run: npx eslint src/lib/auth-provider-mode.ts src/lib/auth-provider-mode.test.ts src/lib/auth-redirect.ts src/lib/auth-redirect.test.ts src/pages/Auth.tsx
       - name: Lint (advisory)
         continue-on-error: true
         run: npm run lint
