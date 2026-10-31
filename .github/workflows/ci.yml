@@ -34,12 +34,16 @@ jobs:
         run: node scripts/verify-frontend-release.mjs --dist dist --expect-commit "$GITHUB_SHA" --expect-branch "$GITHUB_REF_NAME"
       - name: Test release verifier lazy-chunk discovery
         run: node --test scripts/verify-frontend-release.smoke.test.mjs
+      - name: Test Google OAuth configuration validator
+        run: node --test scripts/verify-google-auth-config.test.mjs
       - name: Syntax-check production runtime smoke
         run: node --check scripts/production-runtime-smoke.mjs
       - name: Test suite
         run: npm test
       - name: Strict lint for market-execution integrity modules
         run: npx eslint src/lib/execution-quality.ts src/lib/execution-quality.test.ts src/convex/okx.ts
+      - name: Strict lint for authentication modules changed in this PR
+        run: npx eslint src/lib/auth-provider-mode.ts src/lib/auth-provider-mode.test.ts src/lib/auth-redirect.ts src/lib/auth-redirect.test.ts src/pages/Auth.tsx
       - name: Lint (advisory)
         continue-on-error: true
         run: npm run lint
