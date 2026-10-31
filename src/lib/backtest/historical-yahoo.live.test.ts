@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { fetchHistoricalYahooFinanceOhlcv } from "./historical-yahoo";
-import { adaptHistoricalSpotDataset, evaluateMultiAssetWalkForward } from "./walk-forward-evaluation";
+import { adaptHistoricalSpotDataset, evaluateMultiAssetWalkForward, type HistoricalEvaluationDataset } from "./walk-forward-evaluation";
 
 const enabled = process.env.RUN_REAL_MULTI_ASSET_YAHOO_EVALUATION === "1";
 
@@ -19,7 +19,7 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
     const testBars = 100;
     const maxFolds = 2;
     const minimumBars = trainingBars + testBars * maxFolds;
-    const datasets = [];
+    const datasets: HistoricalEvaluationDataset[] = [];
     const sourceSnapshots = [];
 
     for (const instrument of instruments) {
