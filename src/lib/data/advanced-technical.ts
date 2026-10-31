@@ -1,41 +1,5 @@
-import type { OhlcvCandle } from "./market-types";
+import type { AdvancedTechnicalIndicators, OhlcvCandle } from "./market-types";
 
-export interface AdvancedTechnicalIndicators {
-  /** Wilder DMI/ADX: trend strength and directional movement, not a trade signal. */
-  adx14?: {
-    value: number;
-    plusDi: number;
-    minusDi: number;
-    strength: "WEAK" | "DEVELOPING" | "STRONG";
-  };
-  /** 20-period, 2 population-standard-deviation Bollinger envelope. */
-  bollinger20?: {
-    upper: number;
-    middle: number;
-    lower: number;
-    bandwidthPct: number;
-    percentB?: number;
-  };
-  /** 14-period stochastic with 3-period smoothing for %K and %D. */
-  stochastic14?: {
-    percentK: number;
-    percentD: number;
-  };
-  /** Previous 20 completed bars; current bar is excluded to prevent look-ahead. */
-  donchian20?: {
-    upper: number;
-    lower: number;
-    middle: number;
-    breakout: "ABOVE" | "BELOW" | "INSIDE";
-  };
-  /** Volume-derived flow. Omitted when source volume is unavailable/zero. */
-  volumeFlow?: {
-    obv: number;
-    obvChange20: number;
-    obvDirection: "RISING" | "FALLING" | "FLAT";
-    mfi14?: number;
-  };
-}
 
 function validCandles(candles: readonly OhlcvCandle[]): boolean {
   return candles.every((candle) =>
