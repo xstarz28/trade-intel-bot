@@ -99,7 +99,7 @@ describe("Step 7: determinism for identical snapshots", () => {
     // nested provider timestamps that are regenerated for each fixture build.
     const { id, timestamp, priceSnapshot, ...rest } = r;
     void id; void timestamp; void priceSnapshot;
-    const temporalKeys = /^(timestamp|fetchedAt|snapshotTs|observedAt|acquiredAt|createdAt|updatedAt)$/i;
+    const temporalKeys = /^(timestamp|fetchedAt|snapshotTs|observedAt|acquiredAt|createdAt|updatedAt|generatedAt|startsAt|endsAt|dataAsOf)$/i;
     return JSON.stringify(rest, (key, v) => {
       if (temporalKeys.test(key)) return undefined;
       return typeof v === "number" && !Number.isFinite(v) ? String(v) : v;
