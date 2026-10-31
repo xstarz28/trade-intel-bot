@@ -137,7 +137,7 @@ function wilson95(successes: number, total: number): { lowerPct: number; upperPc
 }
 
 function normal95(values: number[]): { lower: number; upper: number } | null {
-  if (values.length < 2) return null;
+  if (values.length < 30) return null;
   const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
   const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
   const standardError = Math.sqrt(variance / values.length);
