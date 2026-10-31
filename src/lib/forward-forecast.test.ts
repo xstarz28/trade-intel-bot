@@ -476,4 +476,74 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
   });
 
+  it("includes fresh instrument-matched FX rates and carry evidence with source timestamps", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "EUR/USD",
+      instrumentType: "forex",
+      timestamp,
+      priceSnapshot: { price: 1.08, timestamp: timestamp - 1_000, source: "test-provider" },
+      universalIntelligenceContext: {
+        instrument: "EUR/USD",
+        assetClass: "forex",
+        assembledAt: timestamp - 30_000,
+        forex: {
+          instrument: "EUR/USD",
+          instrumentType: "forex",
+          assembledAt: timestamp - 30_000,
+          rates: { provider: "Central Bank Data", observedAt: timestamp - 60_000, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, rateDifferential: 0.5 },
+          evidence: [],
+          overallAvailability: "PARTIAL",
+          overallQuality: "VERIFIED",
+          missingInformation: [],
+          analystSummary: "FX rate differential available.",
+        },
+        evidence: [{ source: "Central Bank Data", category: "RATES", direction: "SUPPORTING", strength: "MODERATE", quality: "VERIFIED", freshness: "FRESH", dependencyGroup: "MACRO_RATES", explanation: "Observed rate differential.", providerAvailable: true, assetClass: "forex", instrument: "EUR/USD" }],
+        overallAvailability: "PARTIAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "EUR/USD macro intelligence available.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    }));
+    expect(forecast.investor.fundamentalOutlook.evidence).toMatchObject([{ category: "RATES", source: "Central Bank Data", asOf: timestamp - 60_000 }]);
+    expect(forecast.investor.fundamentalOutlook.evidenceStatus).toBe("VERIFIED");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
+  it("includes fresh instrument-matched commodity inventory and supply-demand evidence", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "XAU/USD",
+      instrumentType: "commodity",
+      timestamp,
+      priceSnapshot: { price: 2_700, timestamp: timestamp - 1_000, source: "test-provider" },
+      universalIntelligenceContext: {
+        instrument: "XAU/USD",
+        assetClass: "commodity",
+        assembledAt: timestamp - 30_000,
+        commodity: {
+          instrument: "XAU/USD",
+          instrumentType: "commodity",
+          assembledAt: timestamp - 30_000,
+          inventory: { provider: "Commodity Data", observedAt: timestamp - 90_000, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, currentInventory: 100 },
+          evidence: [],
+          overallAvailability: "PARTIAL",
+          overallQuality: "VERIFIED",
+          missingInformation: [],
+          analystSummary: "Commodity inventory available.",
+        },
+        evidence: [{ source: "Commodity Data", category: "INVENTORY", direction: "SUPPORTING", strength: "MODERATE", quality: "VERIFIED", freshness: "FRESH", dependencyGroup: "COMMODITY_INVENTORY", explanation: "Observed inventory data.", providerAvailable: true, assetClass: "commodity", instrument: "XAU/USD" }],
+        overallAvailability: "PARTIAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Gold fundamental intelligence available.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    }));
+    expect(forecast.investor.fundamentalOutlook.evidence).toMatchObject([{ category: "INVENTORY", source: "Commodity Data", asOf: timestamp - 90_000 }]);
+    expect(forecast.investor.fundamentalOutlook.evidenceStatus).toBe("VERIFIED");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
 });
