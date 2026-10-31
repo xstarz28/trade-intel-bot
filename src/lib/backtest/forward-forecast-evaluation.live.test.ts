@@ -77,7 +77,6 @@ function createHistoricalForecast(
       : "Neutral";
 
   const prior20 = history.slice(-20);
-  const prior60 = history.slice(-60);
   const prior90 = history.slice(-90);
   const support = minLow(prior20);
   const resistance = maxHigh(prior20);
@@ -195,7 +194,7 @@ describe("real historical forward forecast outcome evaluation", () => {
     }
 
     const reports: Array<Record<string, unknown>> = [];
-    const sourceSnapshots = datasets.map((dataset) => {
+    const sourceDatasets = datasets.map((dataset) => {
       const canonical = {
         provider: dataset.provider,
         instrumentId: dataset.instrumentId,
@@ -209,16 +208,14 @@ describe("real historical forward forecast outcome evaluation", () => {
         candles: dataset.candles,
       };
       return {
-        provider: dataset.provider,
-        instrument: dataset.instrumentId,
-        timeframe: dataset.timeframe,
-        requestedRange: dataset.requestedRange,
-        actualRange: dataset.actualRange,
-        candleCount: dataset.candleCount,
-        gapCount: dataset.gaps.length,
+        ...canonical,
         sha256: createHash("sha256").update(JSON.stringify(canonical)).digest("hex"),
       };
     });
+    const sourceSnapshots = sourceDatasets.map(({ candles: _candles, gaps, ...summary }) => ({
+      ...summary,
+      gapCount: gaps.length,
+    }));
 
     for (const dataset of datasets) {
       expect(dataset.candleCount).toBeGreaterThanOrEqual(1_500);
@@ -283,7 +280,10 @@ describe("real historical forward forecast outcome evaluation", () => {
       warmupAndOOS: "First 300 H1 / 600 D1 bars are warm-up only. No parameter optimization is performed on the OOS windows. All forecast levels are computed from candles available at or before each signal close.",
       costScenariosBpsPerSide: COST_SCENARIOS,
       hypothesisVersion: "ema-structure-forward-v1",
+      hypothesisRegisteredAt: "2026-10-31",
+      noParameterOptimization: true,
       sourceSnapshots,
+      sourceDatasets,
       reports,
       limitations: [
         "This is a pre-registered technical research proxy, not the complete multi-factor production analysis engine.",
