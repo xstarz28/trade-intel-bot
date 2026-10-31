@@ -9,16 +9,24 @@ const enabled = process.env.RUN_REAL_MULTI_ASSET_YAHOO_EVALUATION === "1";
 describe("real multi-asset Yahoo Finance historical walk-forward evaluation", () => {
   it.skipIf(!enabled)("fetches real FX, equity, and commodity candles and writes an auditable cross-asset report", async () => {
     const now = Date.now();
+    // A small diversified basket is used to avoid mistaking one ticker's
+    // behavior for an asset-class edge. Symbols are explicit and provider
+    // fallbacks remain visible in each source snapshot.
     const instruments = [
       { symbol: "EUR/USD", instrumentType: "forex" as const },
+      { symbol: "GBP/USD", instrumentType: "forex" as const },
+      { symbol: "USD/JPY", instrumentType: "forex" as const },
       { symbol: "AAPL", instrumentType: "stock" as const },
+      { symbol: "MSFT", instrumentType: "stock" as const },
+      { symbol: "SPY", instrumentType: "stock" as const },
       { symbol: "XAU/USD", instrumentType: "commodity" as const },
+      { symbol: "XAG/USD", instrumentType: "commodity" as const },
     ];
     const intervals = ["1h", "1d"] as const;
-    const trainingBars = 220;
-    const testBars = 100;
-    const maxFolds = 2;
-    const minimumBars = trainingBars + testBars * maxFolds;
+    const evaluationConfig = {
+      "1h": { trainingBars: 300, testBars: 80, maxFolds: 10, minimumHistory: 300, maxHoldingBars: 20 },
+      "1d": { trainingBars: 180, testBars: 40, maxFolds: 7, minimumHistory: 180, maxHoldingBars: 20 },
+    } as const;
     const datasets: HistoricalEvaluationDataset[] = [];
     const sourceSnapshots = [];
 
@@ -35,6 +43,8 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
           startTime,
           endTime,
         });
+        const config = evaluationConfig[interval];
+        const minimumBars = config.trainingBars + config.testBars * config.maxFolds;
         expect(source.candleCount).toBeGreaterThanOrEqual(minimumBars);
         const dataset = adaptHistoricalSpotDataset(source);
         datasets.push(dataset);
@@ -61,20 +71,24 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
       }
     }
 
-    const costScenarios = [15, 20, 25].map((costBpsPerSide) => ({
-      costBpsPerSide,
-      report: evaluateMultiAssetWalkForward(datasets, {
-        trainingBars,
-        testBars,
-        maxFolds,
-        minimumHistory: 220,
-        maxHoldingBars: 20,
+    const evaluationGroups = intervals.map((interval) => {
+      const config = evaluationConfig[interval];
+      const timeframe = interval === "1h" ? "H1" : "D1";
+      const intervalDatasets = datasets.filter((dataset) => dataset.timeframe === timeframe);
+      expect(intervalDatasets).toHaveLength(instruments.length);
+      const costScenarios = [15, 20, 25].map((costBpsPerSide) => ({
         costBpsPerSide,
-      }),
-    }));
-    const primary = costScenarios[0].report;
-    expect(primary.providerCoverage).toHaveLength(instruments.length * intervals.length);
-    expect(primary.folds.length).toBeGreaterThanOrEqual(instruments.length * intervals.length);
+        report: evaluateMultiAssetWalkForward(intervalDatasets, {
+          ...config,
+          costBpsPerSide,
+        }),
+      }));
+      return { timeframe, config, costScenarios };
+    });
+    const providerCoverage = evaluationGroups.flatMap((group) => group.costScenarios[0].report.providerCoverage);
+    const totalFolds = evaluationGroups.reduce((sum, group) => sum + group.costScenarios[0].report.folds.length, 0);
+    expect(providerCoverage).toHaveLength(instruments.length * intervals.length);
+    expect(totalFolds).toBeGreaterThanOrEqual(instruments.length * intervals.length);
 
     const report = {
       title: "Trade Intel Bot — Cross-Asset Historical Walk-forward Research",
@@ -82,10 +96,13 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
       provider: "Yahoo Finance public chart history",
       assets: instruments,
       intervals,
-      methodology: primary.methodology,
-      parameters: { trainingBars, testBars, maxFolds, minimumBars, minimumHistory: 220, maxHoldingBars: 20 },
+      methodology: evaluationGroups[0].costScenarios[0].report.methodology,
+      parameters: evaluationGroups.map((group) => ({ timeframe: group.timeframe, ...group.config })),
       sourceSnapshots,
-      reports: costScenarios.map((scenario) => ({
+      reports: evaluationGroups.map((group) => ({
+        timeframe: group.timeframe,
+        parameters: group.config,
+        costScenarios: group.costScenarios.map((scenario) => ({
         costBpsPerSide: scenario.costBpsPerSide,
         providerCoverage: scenario.report.providerCoverage,
         byAsset: scenario.report.byAsset,
@@ -110,6 +127,7 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
           warnings: fold.report.warnings,
           trades: fold.report.trades,
         })),
+        })),
       })),
       limitations: [
         ...primary.limitations,
@@ -130,23 +148,27 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
       "",
       `Generated: ${report.generatedAtIso}`,
       "",
-      "Assets: EUR/USD (FX), AAPL (equity), XAU/USD (commodity); H1 and D1.",
+      `Assets: ${instruments.map((item) => `${item.symbol} (${item.instrumentType})`).join(", ")}; H1 and D1.`,
       "",
       "## Provider coverage",
       "",
       "| Instrument | Asset class | Provider ticker | Timeframe | Bars | Session breaks | Warnings |",
       "|---|---|---|---|---:|---:|---|",
-      ...primary.providerCoverage.map((item) => `| ${item.instrument} | ${item.instrumentType} | ${item.providerInstrumentId ?? "n/a"} | ${item.timeframe} | ${item.candleCount} | ${item.gaps} | ${item.sourceWarnings.join("; ") || "none"} |`),
+      ...providerCoverage.map((item) => `| ${item.instrument} | ${item.instrumentType} | ${item.providerInstrumentId ?? "n/a"} | ${item.timeframe} | ${item.candleCount} | ${item.gaps} | ${item.sourceWarnings.join("; ") || "none"} |`),
       "",
       "## OOS summary by cost assumption",
       "",
-      ...costScenarios.flatMap((scenario) => [
-        `### ${scenario.costBpsPerSide} bps per side`,
+      ...evaluationGroups.flatMap((group) => [
+        `### ${group.timeframe} · ${group.config.trainingBars} training bars · ${group.config.testBars} test bars · ${group.config.maxFolds} folds`,
         "",
-        "| Instrument | Folds | Trades | Win rate % | Expectancy R | Profit factor | Max DD R | Evidence |",
-        "|---|---:|---:|---:|---:|---:|---:|---|",
-        ...scenario.report.byAsset.map((item) => `| ${item.instrument} | ${item.folds} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR)} | ${fmt(item.profitFactor)} | ${fmt(item.maxDrawdownR)} | ${item.uncertainty} |`),
-        "",
+        ...group.costScenarios.flatMap((scenario) => [
+          `#### ${scenario.costBpsPerSide} bps per side`,
+          "",
+          "| Instrument | Folds | Trades | Win rate % | Expectancy R | Profit factor | Max DD R | Evidence |",
+          "|---|---:|---:|---:|---:|---:|---:|---|",
+          ...scenario.report.byAsset.map((item) => `| ${item.instrument} | ${item.folds} | ${item.trades} | ${fmt(item.winRatePct)} | ${fmt(item.expectancyR)} | ${fmt(item.profitFactor)} | ${fmt(item.maxDrawdownR)} | ${item.uncertainty} |`),
+          "",
+        ]),
       ]),
       "## Limitations",
       "",
