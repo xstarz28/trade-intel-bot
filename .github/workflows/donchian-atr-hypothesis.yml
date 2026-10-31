@@ -1,0 +1,43 @@
+name: Donchian ATR forward hypothesis OOS evaluation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/lib/backtest/donchian-atr-hypothesis.live.test.ts"
+      - "src/lib/backtest/forward-forecast-evaluation.ts"
+      - ".github/workflows/donchian-atr-hypothesis.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: donchian-atr-oos-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    name: Replay fixed Donchian ATR hypothesis on untouched Binance Spot assets
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Run real Donchian ATR outcome replay
+        env:
+          RUN_REAL_DONCHIAN_ATR_EVALUATION: "1"
+        run: npx vitest run src/lib/backtest/donchian-atr-hypothesis.live.test.ts --testTimeout=900000
+      - name: Upload reproducible Donchian ATR report and OHLCV snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trade-intel-donchian-atr-oos-report
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30
