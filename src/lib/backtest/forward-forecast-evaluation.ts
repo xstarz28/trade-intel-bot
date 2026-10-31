@@ -94,7 +94,7 @@ export interface ForwardForecastEvaluationReport {
   accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null;
   expectancyBlockBootstrap95R: { lower: number; upper: number } | null;
   blockBootstrap: {
-    method: "moving-block-bootstrap";
+    method: "circular-moving-block-bootstrap";
     replicates: number;
     accuracyBlockLength: number | null;
     expectancyBlockLength: number | null;
@@ -491,7 +491,7 @@ export function evaluateForwardForecastOutcomes(
       upper: expectancyBootstrap.upper,
     },
     blockBootstrap: {
-      method: "moving-block-bootstrap",
+      method: "circular-moving-block-bootstrap",
       replicates: 2_000,
       accuracyBlockLength: accuracyLiftBootstrap?.blockLength ?? null,
       expectancyBlockLength: expectancyBootstrap?.blockLength ?? null,
@@ -510,7 +510,7 @@ export function evaluateForwardForecastOutcomes(
     limitations: [
       "This is outcome replay, not probability calibration; no probability or confidence-of-profit is produced.",
       "The baseline direction must be computed only from the prior training window recorded on each observation.",
-      "Normal-approximation intervals are retained for comparison; positive outcome status requires deterministic moving-block bootstrap lower bounds above zero for paired accuracy lift and net expectancy. This does not eliminate non-stationarity or regime-shift risk.",
+      "Normal-approximation intervals are retained for comparison; positive outcome status requires deterministic circular moving-block bootstrap lower bounds above zero for paired accuracy lift and net expectancy. This does not eliminate non-stationarity or regime-shift risk.",
       "Overlapping forecast horizons are excluded by default to reduce dependence between observations.",
       "If target and invalidation are both touched in one candle, invalidation is assumed first; adverse stop gaps fill at the candle open.",
       "R metrics are reported only when both observed objective and invalidation form valid geometry from the next candle open.",
