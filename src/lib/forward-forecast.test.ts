@@ -217,8 +217,8 @@ describe("Phase 46 — forward forecast contract", () => {
       kind: "PROVIDER_INTRINSIC_VALUE",
       price: 120,
       source: "Verified Valuation Provider",
-      upsidePct: 20,
     });
+    expect(forecast.investor.fundamentalOutlook.valuationReference?.upsidePct).toBeCloseTo(20);
     expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(1);
     expect(forecast.investor.direction).toBe("bullish");
     expect(result.recommendation).toBe("NO_TRADE");
@@ -335,8 +335,8 @@ describe("Phase 46 — forward forecast contract", () => {
       kind: "ANALYST_CONSENSUS_TARGET",
       price: 115,
       source: "Alpha Vantage",
-      upsidePct: 15,
     });
+    expect(forecast.investor.fundamentalOutlook.valuationReference?.upsidePct).toBeCloseTo(15);
     expect(forecast.investor.fundamentalOutlook.valuationReference?.description).toMatch(/not intrinsic value/i);
   });
 
