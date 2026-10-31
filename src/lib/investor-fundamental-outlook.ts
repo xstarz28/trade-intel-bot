@@ -74,7 +74,6 @@ function universalEvidenceAsOf(result: AnalysisResult, item: UniversalEvidenceIt
     category === "VALUATION" ? context.equity?.valuation?.observedAt ?? context.equity?.fundamentals?.observedAt :
     category === "FUNDAMENTALS" ? context.equity?.fundamentals?.observedAt :
     category === "EARNINGS" ? context.equity?.earnings?.observedAt :
-    category === "DIVIDENDS" ? context.equity?.corporateActions?.observedAt :
     category === "INVENTORY" ? context.commodity?.inventory?.observedAt :
     category === "SUPPLY_DEMAND" ? context.commodity?.supplyDemand?.observedAt :
     category === "FUTURES_STRUCTURE" ? context.commodity?.futuresStructure?.observedAt :
