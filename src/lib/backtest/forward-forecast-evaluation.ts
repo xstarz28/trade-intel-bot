@@ -87,6 +87,9 @@ export interface ForwardForecastEvaluationReport {
   baselineAccuracyPct: number | null;
   accuracyLiftPct: number | null;
   accuracyWilson95: { lowerPct: number; upperPct: number } | null;
+  baselineAccuracyWilson95: { lowerPct: number; upperPct: number } | null;
+  accuracyLift95Pct: { lowerPct: number; upperPct: number } | null;
+  expectancyR95: { lower: number; upper: number } | null;
   targetHitPct: number | null;
   invalidationHitPct: number | null;
   timeExitPct: number | null;
