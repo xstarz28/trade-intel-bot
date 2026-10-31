@@ -19,7 +19,6 @@ jobs:
     env:
       XSTARZ_SMOKE_URL: https://xstarzanalysis.vercel.app
       XSTARZ_SMOKE_TIMEOUT_MS: "120000"
-      XSTARZ_SMOKE_STORAGE_STATE: ${{ runner.temp }}/xstarz-auth-storage-state.json
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,6 +35,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo "XSTARZ_SMOKE_STORAGE_STATE=$RUNNER_TEMP/xstarz-auth-storage-state.json" >> "$GITHUB_ENV"
           if [ -z "${STORAGE_STATE_B64:-}" ]; then
             echo "::error::Missing production environment secret XSTARZ_SMOKE_STORAGE_STATE_B64. Add a Playwright storage-state JSON for an authorized test account; never commit it to the repository."
             exit 1
