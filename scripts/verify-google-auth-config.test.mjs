@@ -27,6 +27,13 @@ test("accepts structurally plausible OAuth configuration and derives callback", 
   assert.equal(JSON.stringify(result).includes(configured.AUTH_GOOGLE_SECRET), false);
 });
 
+test("does not require the frontend build URL when classifying Convex auth environment variables", () => {
+  const { VITE_CONVEX_URL: _frontendBuildUrl, ...convexAuthEnvironment } = configured;
+  const result = classifyGoogleAuthConfig(convexAuthEnvironment);
+  assert.equal(result.state, "CONFIGURED");
+  assert.deepEqual(result.missing, []);
+});
+
 test("rejects invalid IDs, short secrets, non-HTTPS endpoints and mismatched hosts", () => {
   const result = classifyGoogleAuthConfig({
     ...configured,
