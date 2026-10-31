@@ -735,4 +735,97 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(radar.fundamentalEvidenceAvailable).toBe(false);
   });
 
+  it("attaches conditional future trigger, invalidation, target, and R:R from the exact fresh candle snapshot", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      time: now - (30 - i) * 60_000,
+      timestamp: now - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      technicalData: {
+        dataPoints: 30,
+        structure: "range",
+        swingHighs: [102, 110],
+        swingLows: [98, 90],
+        resistanceLevels: [101, 102, 110],
+        supportLevels: [99, 98, 90],
+        atr14: 2,
+        volumeTrend: "stable",
+      } as any,
+    }, now);
+
+    expect(candidate.conditionalScenarios).toHaveLength(2);
+    expect(candidate.conditionalScenarios?.[0]).toMatchObject({
+      id: "bullish-breakout",
+      trigger: 101.2,
+      invalidation: 99,
+      target: 110,
+      ready: true,
+    });
+    expect(candidate.conditionalScenarios?.[0]?.riskReward).toBeGreaterThanOrEqual(1.5);
+    expect(candidate.conditionalScenarios?.[1]).toMatchObject({
+      id: "bearish-breakdown",
+      trigger: 98.8,
+      invalidation: 101,
+      target: 90,
+      ready: true,
+    });
+    expect(candidate.conditionalScenarios?.[1]?.riskReward).toBeGreaterThanOrEqual(1.5);
+  });
+
+  it("does not attach future scenarios when the provider marks the exact snapshot stale", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      time: now - (30 - i) * 60_000,
+      timestamp: now - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "stale",
+      },
+      technicalData: {
+        dataPoints: 30,
+        swingHighs: [102, 110],
+        swingLows: [98, 90],
+        resistanceLevels: [101, 102, 110],
+        supportLevels: [99, 98, 90],
+        atr14: 2,
+      } as any,
+    }, now);
+
+    expect(candidate.freshness).toBe("STALE");
+    expect(candidate.conditionalScenarios).toBeUndefined();
+  });
+
 });
