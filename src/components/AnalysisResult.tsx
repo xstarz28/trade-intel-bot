@@ -1437,6 +1437,34 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </div>
               )}
 
+              {/* Forward projection includes market-derived target geometry and R:R. */}
+              {fp.forwardOpportunity && (
+                <div className="rounded-md border border-primary/20 p-2 space-y-1.5" data-testid="forward-opportunity-plan">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-[10px] font-mono font-semibold text-primary/80">
+                      forward-opportunity · {fp.forwardOpportunity.direction.toUpperCase()}
+                    </span>
+                    <Badge variant="outline" className="text-[9px] font-mono border-border/50">
+                      {fp.forwardOpportunity.status === "ACTIONABLE" ? "validated plan" : "conditional · not executable"}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono">
+                    <div><span className="block text-muted-foreground">entry</span><span className="tabular-nums">{fp.forwardOpportunity.entry}</span></div>
+                    <div><span className="block text-muted-foreground">invalidation / SL</span><span className="tabular-nums">{fp.forwardOpportunity.stopLoss}</span></div>
+                    <div><span className="block text-muted-foreground">objective / TP</span><span className="tabular-nums">{fp.forwardOpportunity.takeProfit}</span></div>
+                    <div><span className="block text-muted-foreground">reward : risk</span><span className="tabular-nums font-semibold text-primary">1 : {fp.forwardOpportunity.riskReward.toFixed(2)}</span></div>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground">
+                    Entry: {localizeAnalysisText(fp.forwardOpportunity.entryBasis, locale)} · Stop: {localizeAnalysisText(fp.forwardOpportunity.stopBasis, locale)} · Target: {localizeAnalysisText(fp.forwardOpportunity.targetBasis, locale)}
+                  </p>
+                  {fp.forwardOpportunity.status === "CONDITIONAL" && (
+                    <p className="text-[9px] text-muted-foreground">
+                      Conditional future scenario only. Wait for the stated confirmation and re-run all existing data-quality, execution, and risk gates before considering an order.
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Future opportunity watch levels are informational only under NO_TRADE. */}
               {result.recommendation === "NO_TRADE" && fp.watchLevels.length > 0 && (
                 <div className="rounded-md border border-primary/20 p-2 space-y-1.5" data-testid="future-opportunity-watch-levels">
