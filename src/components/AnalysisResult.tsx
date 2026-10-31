@@ -1437,6 +1437,24 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </div>
               )}
 
+              {/* Future opportunity watch levels are informational only under NO_TRADE. */}
+              {result.recommendation === "NO_TRADE" && fp.watchLevels.length > 0 && (
+                <div className="rounded-md border border-primary/20 p-2 space-y-1.5" data-testid="future-opportunity-watch-levels">
+                  <div className="text-[10px] font-mono font-semibold text-primary/80">
+                    future-opportunity-watchlist · non-executable
+                  </div>
+                  {fp.watchLevels.map((watch, i) => (
+                    <div key={i} className="grid grid-cols-[auto_1fr] gap-x-2 text-[10px] font-mono">
+                      <span className="text-muted-foreground">{watch.type}: <span className="text-foreground tabular-nums">{watch.level}</span></span>
+                      <span className="text-muted-foreground/80">{localizeAnalysisText(watch.description, locale)}</span>
+                    </div>
+                  ))}
+                  <p className="text-[9px] text-muted-foreground">
+                    Watch levels describe a conditional future scenario; they are not active orders, guaranteed targets, or permission to bypass existing data, risk, and execution gates.
+                  </p>
+                </div>
+              )}
+
               {/* Scenario Tree */}
               {fp.scenarioTree.length > 0 && (
                 <div className="text-[10px] font-mono space-y-1">
