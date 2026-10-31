@@ -148,6 +148,8 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
     expect(report.outcomes[0].netR).toBeUndefined();
     expect(report.rEvaluatedCount).toBe(0);
     expect(report.expectancyR).toBeNull();
+    expect(report.accuracyLift95Pct).toBeNull();
+    expect(report.expectancyR95).toBeNull();
     expect(report.status).toBe("INCONCLUSIVE");
   });
 
@@ -199,13 +201,13 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
   });
 
   it("requires enough independent samples and only reports positive evidence when accuracy beats the prior-only baseline with positive net R", () => {
-    const candles = Array.from({ length: 61 }, (_, index) =>
+    const candles = Array.from({ length: 121 }, (_, index) =>
       candle(T0 + index * DAY, 100, 101, 99, 100),
     );
     const observations: ForwardForecastObservation[] = [];
-    for (let i = 0; i < 20; i += 1) {
+    for (let i = 0; i < 40; i += 1) {
       const signalIndex = i * 3;
-      const win = i < 18;
+      const win = i < 38;
       candles[signalIndex] = candle(T0 + signalIndex * DAY, 100, 101, 99, 100);
       candles[signalIndex + 1] = candle(T0 + (signalIndex + 1) * DAY, 100, 101, 99, 100.5);
       candles[signalIndex + 2] = win
@@ -225,9 +227,9 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
       costBpsPerSide: 5,
       minimumSampleCount: 20,
     });
-    expect(report.evaluatedCount).toBe(20);
-    expect(report.directionalAccuracyPct).toBe(90);
-    expect(report.baselineAccuracyPct).toBe(10);
+    expect(report.evaluatedCount).toBe(40);
+    expect(report.directionalAccuracyPct).toBe(95);
+    expect(report.baselineAccuracyPct).toBe(5);
     expect(report.accuracyWilson95?.lowerPct).toBeGreaterThan(report.baselineAccuracyPct!);
     expect(report.baselineAccuracyWilson95).not.toBeNull();
     expect(report.accuracyLift95Pct?.lowerPct).toBeGreaterThan(0);
