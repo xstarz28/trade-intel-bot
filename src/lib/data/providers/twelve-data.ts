@@ -22,17 +22,15 @@ interface TwelveDataCandle {
   volume: string;
 }
 
-interface TwelveDataQuote {
-  symbol: string;
-  name: string;
-  exchange: string;
-  close: string;
-  previous_close: string;
-  change: string;
-  percent_change: string;
-  volume: string;
-  bid: string;
-  ask: string;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseProviderNumber(value: unknown): number | undefined {
+  if (typeof value !== "string" && typeof value !== "number") return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 export class TwelveDataProvider implements MarketDataProvider {
@@ -81,14 +79,38 @@ export class TwelveDataProvider implements MarketDataProvider {
       throw new Error(`No candle data returned for ${symbol}`);
     }
 
-    return values.reverse().map((c) => ({
-      timestamp: new Date(c.datetime).getTime(),
-      open: parseFloat(c.open),
-      high: parseFloat(c.high),
-      low: parseFloat(c.low),
-      close: parseFloat(c.close),
-      volume: parseFloat(c.volume) || 0,
-    }));
+    const candles = values.reverse().flatMap((c): OhlcvCandle[] => {
+      const timestamp = new Date(c.datetime).getTime();
+      const open = parseProviderNumber(c.open);
+      const high = parseProviderNumber(c.high);
+      const low = parseProviderNumber(c.low);
+      const close = parseProviderNumber(c.close);
+      const parsedVolume = parseProviderNumber(c.volume);
+      const volume = parsedVolume ?? (c.volume.trim() === "" ? 0 : undefined);
+
+      // Reject malformed OHLC rows instead of letting NaN/Infinity or
+      // impossible candle ranges contaminate downstream indicators.
+      if (
+        !Number.isFinite(timestamp) || timestamp <= 0 ||
+        open === undefined || open <= 0 ||
+        high === undefined || high <= 0 ||
+        low === undefined || low <= 0 ||
+        close === undefined || close <= 0 ||
+        volume === undefined || volume < 0 ||
+        low > Math.min(open, close) ||
+        high < Math.max(open, close)
+      ) {
+        return [];
+      }
+
+      return [{ timestamp, open, high, low, close, volume }];
+    });
+
+    if (candles.length === 0) {
+      throw new Error(`No valid OHLCV candles returned for ${symbol}`);
+    }
+
+    return candles;
   }
 
   async fetchPrice(symbol: string): Promise<PriceSnapshot> {
@@ -100,17 +122,35 @@ export class TwelveDataProvider implements MarketDataProvider {
       throw new Error(`Twelve Data API error ${res.status}: ${body}`);
     }
 
-    const json: any = await res.json();
-    if (json.code) {
-      throw new Error(`Twelve Data error ${json.code}: ${json.message}`);
+    const payload: unknown = await res.json();
+    if (!isRecord(payload)) {
+      throw new Error("Twelve Data returned an invalid quote payload");
+    }
+    if (payload.code) {
+      throw new Error(`Twelve Data error ${String(payload.code)}: ${String(payload.message ?? "")}`);
+    }
+
+    const price = parseProviderNumber(payload.close);
+    if (price === undefined || price <= 0) {
+      throw new Error("Twelve Data returned an invalid closing price");
+    }
+
+    const rawTimestamp = parseProviderNumber(payload.timestamp);
+    const timestamp = rawTimestamp === undefined
+      ? undefined
+      : rawTimestamp < 1_000_000_000_000
+        ? rawTimestamp * 1000
+        : rawTimestamp;
+    if (timestamp === undefined || !Number.isFinite(timestamp) || timestamp <= 0) {
+      throw new Error("Twelve Data returned an invalid quote timestamp");
     }
 
     return {
-      price: parseFloat(json.close),
-      timestamp: Date.now(),
+      price,
+      timestamp,
       source: this.name,
-      bid: json.bid ? parseFloat(json.bid) : undefined,
-      ask: json.ask ? parseFloat(json.ask) : undefined,
+      bid: parseProviderNumber(payload.bid),
+      ask: parseProviderNumber(payload.ask),
     };
   }
 
