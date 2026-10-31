@@ -90,6 +90,15 @@ export interface ForwardForecastEvaluationReport {
   baselineAccuracyWilson95: { lowerPct: number; upperPct: number } | null;
   accuracyLift95Pct: { lowerPct: number; upperPct: number } | null;
   expectancyR95: { lower: number; upper: number } | null;
+  /** Moving-block bootstrap intervals preserve short-range temporal dependence. */
+  accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null;
+  expectancyBlockBootstrap95R: { lower: number; upper: number } | null;
+  blockBootstrap: {
+    method: "circular-moving-block-bootstrap";
+    replicates: number;
+    accuracyBlockLength: number | null;
+    expectancyBlockLength: number | null;
+  };
   targetHitPct: number | null;
   invalidationHitPct: number | null;
   timeExitPct: number | null;
@@ -142,6 +151,64 @@ function normal95(values: number[]): { lower: number; upper: number } | null {
   const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
   const standardError = Math.sqrt(variance / values.length);
   return { lower: mean - 1.96 * standardError, upper: mean + 1.96 * standardError };
+}
+
+interface BlockBootstrapInterval {
+  lower: number;
+  upper: number;
+  blockLength: number;
+  replicates: number;
+}
+
+function hashSeed(value: string): number {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0 || 0x6d2b79f5;
+}
+
+/** Deterministic moving-block bootstrap for chronological outcome samples. */
+function movingBlockBootstrap95(values: number[], seedKey: string): BlockBootstrapInterval | null {
+  if (values.length < 30 || values.some((value) => !Number.isFinite(value))) return null;
+  const blockLength = Math.max(2, Math.ceil(Math.cbrt(values.length)));
+  const replicates = 2_000;
+  let state = hashSeed(seedKey);
+  const random = () => {
+    state ^= state << 13;
+    state ^= state >>> 17;
+    state ^= state << 5;
+    return (state >>> 0) / 4_294_967_296;
+  };
+  const means: number[] = [];
+  for (let replicate = 0; replicate < replicates; replicate += 1) {
+    let sum = 0;
+    let sampled = 0;
+    while (sampled < values.length) {
+      const start = Math.floor(random() * values.length);
+      const take = Math.min(blockLength, values.length - sampled);
+      for (let offset = 0; offset < take; offset += 1) {
+        sum += values[(start + offset) % values.length];
+      }
+      sampled += take;
+    }
+    means.push(sum / values.length);
+  }
+  means.sort((a, b) => a - b);
+  const quantile = (probability: number) => {
+    const position = (means.length - 1) * probability;
+    const lowerIndex = Math.floor(position);
+    const upperIndex = Math.ceil(position);
+    const fraction = position - lowerIndex;
+    return means[lowerIndex] * (1 - fraction) + means[upperIndex] * fraction;
+  };
+  return {
+    lower: quantile(0.025),
+    upper: quantile(0.975),
+    blockLength,
+    replicates,
+  };
 }
 
 function classifyDirection(returnBps: number, neutralBandBps: number): EvaluationDirection {
@@ -359,6 +426,8 @@ export function evaluateForwardForecastOutcomes(
     ((outcome.forecastCorrect ? 1 : 0) - (outcome.baselineCorrect ? 1 : 0)) * 100
   );
   const accuracyLiftInterval = normal95(pairedAccuracyDifferences);
+  const bootstrapSeed = `${instrument}|${options.costBpsPerSide}|${outcomes[0]?.dataAsOf ?? 0}|${outcomes[outcomes.length - 1]?.dataAsOf ?? 0}`;
+  const accuracyLiftBootstrap = movingBlockBootstrap95(pairedAccuracyDifferences, bootstrapSeed + "|accuracy-lift");
   const rOutcomes = outcomes.filter((outcome): outcome is ForwardForecastOutcome & { netR: number; mfeR: number; maeR: number } =>
     outcome.netR !== undefined && outcome.mfeR !== undefined && outcome.maeR !== undefined
   );
@@ -377,14 +446,18 @@ export function evaluateForwardForecastOutcomes(
   const timeExitCount = rOutcomes.filter((outcome) => outcome.event === "TIME_EXIT").length;
   const expectancyR = rOutcomes.length ? rOutcomes.reduce((sum, outcome) => sum + outcome.netR, 0) / rOutcomes.length : null;
   const expectancyInterval = normal95(rOutcomes.map((outcome) => outcome.netR));
+  const expectancyBootstrap = movingBlockBootstrap95(
+    rOutcomes.map((outcome) => outcome.netR),
+    bootstrapSeed + "|expectancy",
+  );
   let status: ForecastEvaluationStatus = "INSUFFICIENT_SAMPLE";
   if (outcomes.length >= minimumSampleCount) {
     if ((accuracyLift ?? 0) <= 0) status = "BELOW_BASELINE";
     else if (rOutcomes.length < minimumSampleCount) status = "INCONCLUSIVE";
     else if (expectancyR === null || expectancyR <= 0) status = "NEGATIVE_NET_EXPECTANCY";
     else if (netLosses <= 0 || netWins / netLosses <= 1) status = "INCONCLUSIVE";
-    else if (accuracyLiftInterval === null || accuracyLiftInterval.lower <= 0 ||
-        expectancyInterval === null || expectancyInterval.lower <= 0) status = "INCONCLUSIVE";
+    else if (accuracyLiftBootstrap === null || accuracyLiftBootstrap.lower <= 0 ||
+        expectancyBootstrap === null || expectancyBootstrap.lower <= 0) status = "INCONCLUSIVE";
     else status = "POSITIVE_OUTCOME_EVIDENCE";
   }
 
@@ -409,6 +482,20 @@ export function evaluateForwardForecastOutcomes(
       upperPct: accuracyLiftInterval.upper,
     },
     expectancyR95: expectancyInterval,
+    accuracyLiftBlockBootstrap95Pct: accuracyLiftBootstrap === null ? null : {
+      lowerPct: accuracyLiftBootstrap.lower,
+      upperPct: accuracyLiftBootstrap.upper,
+    },
+    expectancyBlockBootstrap95R: expectancyBootstrap === null ? null : {
+      lower: expectancyBootstrap.lower,
+      upper: expectancyBootstrap.upper,
+    },
+    blockBootstrap: {
+      method: "circular-moving-block-bootstrap",
+      replicates: 2_000,
+      accuracyBlockLength: accuracyLiftBootstrap?.blockLength ?? null,
+      expectancyBlockLength: expectancyBootstrap?.blockLength ?? null,
+    },
     targetHitPct: rOutcomes.length ? targetCount / rOutcomes.length * 100 : null,
     invalidationHitPct: rOutcomes.length ? invalidationCount / rOutcomes.length * 100 : null,
     timeExitPct: rOutcomes.length ? timeExitCount / rOutcomes.length * 100 : null,
@@ -423,7 +510,7 @@ export function evaluateForwardForecastOutcomes(
     limitations: [
       "This is outcome replay, not probability calibration; no probability or confidence-of-profit is produced.",
       "The baseline direction must be computed only from the prior training window recorded on each observation.",
-      "Accuracy-lift and expectancy intervals use normal approximations; block-bootstrap uncertainty is still required before any strong production claim.",
+      "Normal-approximation intervals are retained for comparison; positive outcome status requires deterministic circular moving-block bootstrap lower bounds above zero for paired accuracy lift and net expectancy. This does not eliminate non-stationarity or regime-shift risk.",
       "Overlapping forecast horizons are excluded by default to reduce dependence between observations.",
       "If target and invalidation are both touched in one candle, invalidation is assumed first; adverse stop gaps fill at the candle open.",
       "R metrics are reported only when both observed objective and invalidation form valid geometry from the next candle open.",
