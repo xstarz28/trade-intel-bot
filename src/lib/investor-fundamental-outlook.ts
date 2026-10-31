@@ -223,6 +223,7 @@ function buildValuationReference(
   }
 
   if (valuation?.available && valuation.quality === "DEGRADED") return { status: "DEGRADED" };
+  if (valuation?.available && (valuation.quality === "STALE" || valuation.freshness === "STALE")) return { status: "STALE" };
   if (valuation?.available && (!positiveFinite(valuation.intrinsicValue) && valuation.intrinsicValue !== undefined)) {
     return { status: "INVALID" };
   }
