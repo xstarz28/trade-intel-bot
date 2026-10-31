@@ -149,7 +149,7 @@ function buildObservations(
 
   for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += step) {
     const baselineLookback = horizon === "investor" ? 180 : timeframe === "D1" ? 100 : 100;
-    if (historyEnd < baselineLookback + 1) continue;
+    if (index < baselineLookback + 1) continue;
     const priorHistory = candles.slice(index - baselineLookback, index);
     const baselineDirection = momentumDirection(priorHistory);
     const baselineTrainingEndTime = candles[index - 1].timestamp + intervalMs;
