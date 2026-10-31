@@ -423,6 +423,7 @@ export function evaluateForwardForecastOutcomes(
     limitations: [
       "This is outcome replay, not probability calibration; no probability or confidence-of-profit is produced.",
       "The baseline direction must be computed only from the prior training window recorded on each observation.",
+      "Accuracy-lift and expectancy intervals use normal approximations; block-bootstrap uncertainty is still required before any strong production claim.",
       "Overlapping forecast horizons are excluded by default to reduce dependence between observations.",
       "If target and invalidation are both touched in one candle, invalidation is assumed first; adverse stop gaps fill at the candle open.",
       "R metrics are reported only when both observed objective and invalidation form valid geometry from the next candle open.",
