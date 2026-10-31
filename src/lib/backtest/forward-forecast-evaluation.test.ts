@@ -150,6 +150,9 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
     expect(report.expectancyR).toBeNull();
     expect(report.accuracyLift95Pct).toBeNull();
     expect(report.expectancyR95).toBeNull();
+    expect(report.accuracyLiftBlockBootstrap95Pct).toBeNull();
+    expect(report.expectancyBlockBootstrap95R).toBeNull();
+    expect(report.blockBootstrap.method).toBe("moving-block-bootstrap");
     expect(report.status).toBe("INCONCLUSIVE");
   });
 
@@ -234,6 +237,16 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
     expect(report.baselineAccuracyWilson95).not.toBeNull();
     expect(report.accuracyLift95Pct?.lowerPct).toBeGreaterThan(0);
     expect(report.expectancyR95?.lower).toBeGreaterThan(0);
+    expect(report.accuracyLiftBlockBootstrap95Pct?.lowerPct).toBeGreaterThan(0);
+    expect(report.expectancyBlockBootstrap95R?.lower).toBeGreaterThan(0);
+    expect(report.blockBootstrap.accuracyBlockLength).toBeGreaterThan(0);
+    expect(report.blockBootstrap.expectancyBlockLength).toBeGreaterThan(0);
+    const repeated = evaluateForwardForecastOutcomes(observations, candles, {
+      costBpsPerSide: 5,
+      minimumSampleCount: 20,
+    });
+    expect(repeated.accuracyLiftBlockBootstrap95Pct).toEqual(report.accuracyLiftBlockBootstrap95Pct);
+    expect(repeated.expectancyBlockBootstrap95R).toEqual(report.expectancyBlockBootstrap95R);
     expect(report.expectancyR).toBeGreaterThan(0);
     expect(report.profitFactor).toBeGreaterThan(1);
     expect(report.status).toBe("POSITIVE_OUTCOME_EVIDENCE");
