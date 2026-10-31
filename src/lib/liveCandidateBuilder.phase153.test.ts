@@ -828,4 +828,43 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.conditionalScenarios).toBeUndefined();
   });
 
+  it("rejects stale OHLCV setups even when the accompanying quote timestamp is current", () => {
+    const now = Date.now();
+    const staleCandleEnd = now - 30 * 60 * 60_000;
+    const candles = Array.from({ length: 30 }, (_, i) => ({
+      time: staleCandleEnd - (30 - i) * 60_000,
+      timestamp: staleCandleEnd - (30 - i) * 60_000,
+      open: 100,
+      high: 102,
+      low: 98,
+      close: 100,
+      volume: 10,
+    }));
+    const candidate = buildCandidateFromSource({
+      instrument: "XAU/USD",
+      assetClass: "commodity",
+      marketData: {
+        instrument: "XAU/USD",
+        instrumentType: "commodity",
+        provider: "twelve-data",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "twelve-data" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      technicalData: {
+        dataPoints: 30,
+        swingHighs: [102, 110],
+        swingLows: [98, 90],
+        resistanceLevels: [101, 102, 110],
+        supportLevels: [99, 98, 90],
+        atr14: 2,
+      } as any,
+    }, now);
+
+    expect(candidate.hasLiveData).toBe(true);
+    expect(candidate.conditionalScenarios).toBeUndefined();
+  });
+
 });
