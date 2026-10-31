@@ -48,6 +48,15 @@ describe("advanced technical indicators", () => {
     expect(result?.stochastic14?.percentD).toBeLessThanOrEqual(100);
   });
 
+  it("keeps the latest stochastic when an older rolling window was flat", () => {
+    const history = trendCandles(40).map((candle, index) => index < 14
+      ? { ...candle, open: 100, high: 100, low: 100, close: 100 }
+      : candle);
+    const result = calculateAdvancedTechnicalIndicators(history);
+    expect(result?.stochastic14?.percentK).toBeDefined();
+    expect(result?.stochastic14?.percentD).toBeDefined();
+  });
+
   it("uses the previous 20 completed candles for Donchian breakout levels", () => {
     const history = trendCandles(21).map((candle) => ({
       ...candle,
@@ -81,6 +90,14 @@ describe("advanced technical indicators", () => {
 
     const noVolume = trendCandles(40).map((candle) => ({ ...candle, volume: 0 }));
     expect(calculateAdvancedTechnicalIndicators(noVolume)?.volumeFlow).toBeUndefined();
+  });
+
+  it("does not label a short OBV delta as a 20-bar change", () => {
+    const shortVolumeHistory = calculateAdvancedTechnicalIndicators(trendCandles(20));
+    expect(shortVolumeHistory?.volumeFlow).toBeUndefined();
+
+    const fullVolumeHistory = calculateAdvancedTechnicalIndicators(trendCandles(21));
+    expect(fullVolumeHistory?.volumeFlow?.obvChange20).toBeDefined();
   });
 
   it("omits indicators when candle history is insufficient or malformed", () => {
