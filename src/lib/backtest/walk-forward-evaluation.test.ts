@@ -266,4 +266,71 @@ describe("evaluateMultiAssetWalkForward", () => {
       } }),
     ], { trainingBars: 220 })).toThrow(/Insufficient candles/);
   });
+  it("preserves provider-native identity, asset class, and session timestamp policy during adaptation", () => {
+    const source = {
+      provider: "yahoo-finance-public",
+      instrumentId: "AAPL",
+      providerInstrumentId: "AAPL",
+      instrumentType: "stock" as const,
+      timestampAlignment: "PROVIDER_SESSION" as const,
+      sessionCalendar: "NASDAQ_PROVIDER_SESSION_UNVERIFIED",
+      timeframe: "1h",
+      requestedRange: { startTime: 1_700_000_000_000, endTime: 1_700_100_000_000 },
+      actualRange: null,
+      retrievedAt: 1_800_000_000_000,
+      candleCount: 0,
+      candles: [],
+      gaps: [],
+    };
+    expect(adaptHistoricalSpotDataset(source)).toMatchObject({
+      provider: "yahoo-finance-public",
+      instrument: "AAPL",
+      providerInstrumentId: "AAPL",
+      instrumentType: "stock",
+      timestampAlignment: "PROVIDER_SESSION",
+      sessionCalendar: "NASDAQ_PROVIDER_SESSION_UNVERIFIED",
+    });
+  });
+
+  it("evaluates session-aligned equity candles without forcing UTC alignment or fabricating missing bars", () => {
+    const history: OhlcvCandle[] = [];
+    let timestamp = 1_700_000_000_000 + 30 * 60_000;
+    for (let index = 0; index < 500; index += 1) {
+      if (index === 250) timestamp += 48 * 60 * 60_000;
+      history.push({ timestamp, open: 100, high: 101, low: 99, close: 100, volume: 0 });
+      timestamp += 60 * 60_000;
+    }
+    const result = evaluateMultiAssetWalkForward([
+      dataset({
+        provider: "yahoo-finance-public",
+        providerInstrumentId: "AAPL",
+        instrument: "AAPL",
+        instrumentType: "stock",
+        timeframe: "H1",
+        timestampAlignment: "PROVIDER_SESSION",
+        sessionCalendar: "NASDAQ_PROVIDER_SESSION_UNVERIFIED",
+        candles: history,
+        candleCount: history.length,
+        requestedRange: { startTime: history[0].timestamp, endTime: history[history.length - 1].timestamp },
+        actualRange: { startTime: history[0].timestamp, endTime: history[history.length - 1].timestamp },
+        gaps: [{ missingBars: 48 }],
+      }),
+    ], { trainingBars: 220, testBars: 100, maxFolds: 1 }, { runBacktest: (args) => emptyReport(args) });
+    expect(result.providerCoverage[0]).toMatchObject({
+      provider: "yahoo-finance-public",
+      providerInstrumentId: "AAPL",
+      instrumentType: "stock",
+      timestampAlignment: "PROVIDER_SESSION",
+      gaps: 1,
+    });
+    expect(result.folds).toHaveLength(1);
+    expect(result.limitations.some((item) => item.includes("session breaks"))).toBe(true);
+  });
+
+  it("does not allow provider-session alignment to bypass continuous crypto candle integrity", () => {
+    expect(() => evaluateMultiAssetWalkForward([
+      dataset({ timestampAlignment: "PROVIDER_SESSION" }),
+    ], { trainingBars: 220 })).toThrow(/not allowed for continuous crypto/);
+  });
+
 });
