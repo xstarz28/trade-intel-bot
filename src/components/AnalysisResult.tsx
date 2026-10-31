@@ -1492,6 +1492,11 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       {"structuralUpsideDownsideRatio" in forecast && forecast.structuralUpsideDownsideRatio !== undefined && <p>structural upside/downside: <span className="font-semibold text-primary">{forecast.structuralUpsideDownsideRatio.toFixed(2)} : 1</span></p>}
                       {"valuationStatus" in forecast && <p className="text-muted-foreground">valuation: unavailable · no fair-value target asserted</p>}
                       {forecast.dataAsOf && <p className="text-muted-foreground/70">source data as of: {new Date(forecast.dataAsOf).toLocaleString()}</p>}
+                      {forecast.alternateScenarios?.map((scenario, i) => (
+                        <p key={i} className="text-sky-400/80">
+                          alternate {scenario.direction}: {scenario.objective?.price ?? "objective unavailable"} · invalidation {scenario.invalidation?.price ?? "unavailable"} · {localizeAnalysisText(scenario.condition, locale)}
+                        </p>
+                      ))}
                       {forecast.evidence.map((item, i) => <p key={i} className="text-emerald-400/80">• {localizeAnalysisText(item, locale)}</p>)}
                       {forecast.limitations.map((item, i) => <p key={i} className="text-muted-foreground/70">! {localizeAnalysisText(item, locale)}</p>)}
                       <p className="text-muted-foreground/70">Horizon: {localizeAnalysisText(forecast.horizon.basis, locale)}</p>
