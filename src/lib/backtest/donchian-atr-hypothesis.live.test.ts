@@ -258,6 +258,7 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
         opportunityCount: observations.length,
         signalCount,
         signalCoveragePct: observations.length ? signalCount / observations.length * 100 : 0,
+        evaluationStatus: signalCount === 0 ? "NO_SIGNALS" : signalCount < 30 ? "INSUFFICIENT_SAMPLE" : "SAMPLE_GATE_REACHED",
         nominalRiskReward: 1.5,
         evaluationPopulation: "Signal-only: neutral/no-trade windows are excluded from directional accuracy and baseline comparison; coverage is reported separately.",
         costSensitivity,
@@ -309,11 +310,12 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
           opportunityCount: number;
           signalCount: number;
           signalCoveragePct: number;
+          evaluationStatus: string;
           costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
         };
         const lines = [
           `## ${entry.instrument} · ${entry.timeframe}`,
-          `Opportunities: ${entry.opportunityCount} · active signals: ${entry.signalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}%`,
+          `Opportunities: ${entry.opportunityCount} · active signals: ${entry.signalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}% · status: ${entry.evaluationStatus}`,
           "",
           "| Cost bps/side | Signal N | Accuracy | Baseline | Lift | Lift 95% CI | Expectancy R | Exp. 95% CI | PF | Status |",
           "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
