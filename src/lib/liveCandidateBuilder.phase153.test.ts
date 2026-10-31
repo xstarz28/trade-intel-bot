@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import type { AnalysisResult } from "@/types/analysis";
+import type { TechnicalData } from "./data/market-types";
 import { buildCandidateFromSource, findLiveSnapshotForInstrument } from "./liveCandidateBuilder";
 import { buildRadarCandidate, toRadarCandidateSource } from "./market-radar/candidate-builder";
 
@@ -764,16 +766,16 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         timeframe: "H1",
         priceSnapshot: { price: 100, timestamp: now },
         technicalData: {
-        dataPoints: 30,
-        structure: "range",
-        swingHighs: [102, 110],
-        swingLows: [98, 90],
-        resistanceLevels: [101, 102, 110],
-        supportLevels: [99, 98, 90],
-        atr14: 2,
-        volumeTrend: "stable",
-      } as any
-      } as any,
+          dataPoints: 30,
+          structure: "range",
+          swingHighs: [102, 110],
+          swingLows: [98, 90],
+          resistanceLevels: [101, 102, 110],
+          supportLevels: [99, 98, 90],
+          atr14: 2,
+          volumeTrend: "stable",
+        } as TechnicalData,
+      } as unknown as AnalysisResult,
     }, now);
 
     expect(candidate.conditionalScenarios).toHaveLength(2);
@@ -824,14 +826,16 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         timeframe: "H1",
         priceSnapshot: { price: 100, timestamp: now },
         technicalData: {
-        dataPoints: 30,
-        swingHighs: [102, 110],
-        swingLows: [98, 90],
-        resistanceLevels: [101, 102, 110],
-        supportLevels: [99, 98, 90],
-        atr14: 2,
-      } as any
-      } as any,
+          dataPoints: 30,
+          structure: "range",
+          swingHighs: [102, 110],
+          swingLows: [98, 90],
+          resistanceLevels: [101, 102, 110],
+          supportLevels: [99, 98, 90],
+          atr14: 2,
+          volumeTrend: "stable",
+        } as TechnicalData,
+      } as unknown as AnalysisResult,
     }, now);
 
     expect(candidate.freshness).toBe("STALE");
@@ -868,14 +872,16 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         timeframe: "H1",
         priceSnapshot: { price: 100, timestamp: now },
         technicalData: {
-        dataPoints: 30,
-        swingHighs: [102, 110],
-        swingLows: [98, 90],
-        resistanceLevels: [101, 102, 110],
-        supportLevels: [99, 98, 90],
-        atr14: 2,
-      } as any
-      } as any,
+          dataPoints: 30,
+          structure: "range",
+          swingHighs: [102, 110],
+          swingLows: [98, 90],
+          resistanceLevels: [101, 102, 110],
+          supportLevels: [99, 98, 90],
+          atr14: 2,
+          volumeTrend: "stable",
+        } as TechnicalData,
+      } as unknown as AnalysisResult,
     }, now);
 
     expect(candidate.hasLiveData).toBe(true);
