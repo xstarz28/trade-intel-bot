@@ -34,6 +34,8 @@ jobs:
         run: node scripts/verify-frontend-release.mjs --dist dist --expect-commit "$GITHUB_SHA" --expect-branch "$GITHUB_REF_NAME"
       - name: Test release verifier lazy-chunk discovery
         run: node --test scripts/verify-frontend-release.smoke.test.mjs
+      - name: Test Google OAuth configuration validator
+        run: node --test scripts/verify-google-auth-config.test.mjs
       - name: Syntax-check production runtime smoke
         run: node --check scripts/production-runtime-smoke.mjs
       - name: Test suite
