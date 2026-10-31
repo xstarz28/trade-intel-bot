@@ -362,12 +362,12 @@ describe("Phase 46 — forward forecast contract", () => {
         },
         evidence: [{
           source: "CoinGlass",
-          category: "DERIVATIVES_POSITIONING",
+          category: "DERIVATIVES",
           direction: "NEUTRAL",
           strength: "WEAK",
           quality: "VERIFIED",
           freshness: "FRESH",
-          dependencyGroup: "DERIVATIVES_POSITIONING",
+          dependencyGroup: "DERIVATIVES",
           explanation: "Positioning is contextual.",
           providerAvailable: true,
         }],
@@ -381,7 +381,7 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.fundamentalOutlook.evidenceStatus).toBe("VERIFIED");
     expect(forecast.investor.fundamentalOutlook.evidence[0]).toMatchObject({
       source: "CoinGlass",
-      category: "DERIVATIVES_POSITIONING",
+      category: "DERIVATIVES",
       asOf: timestamp - 60_000,
     });
     expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
