@@ -314,4 +314,78 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(0);
   });
 
+  it("labels a provider analyst target as consensus rather than intrinsic value", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      fundamentalData: {
+        provider: "Alpha Vantage",
+        timestamp: timestamp - 60_000,
+        instrumentType: "stock",
+        symbol: "AAPL",
+        analystTargetPrice: 115,
+        available: true,
+      },
+    }));
+    expect(forecast.investor.valuationStatus).toBe("AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toMatchObject({
+      kind: "ANALYST_CONSENSUS_TARGET",
+      price: 115,
+      source: "Alpha Vantage",
+      upsidePct: 15,
+    });
+    expect(forecast.investor.fundamentalOutlook.valuationReference?.description).toMatch(/not intrinsic value/i);
+  });
+
+  it("includes fresh instrument-matched crypto fundamentals but never turns them into a price target", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "ETH/USD",
+      instrumentType: "crypto",
+      timestamp,
+      priceSnapshot: { price: 3_000, timestamp: timestamp - 1_000, source: "test-provider" },
+      cryptoIntelligenceContext: {
+        instrument: "ETH/USD",
+        instrumentType: "crypto",
+        assembledAt: timestamp - 30_000,
+        derivatives: {
+          provider: "CoinGlass",
+          observedAt: timestamp - 60_000,
+          freshness: "FRESH",
+          quality: "VERIFIED",
+          available: true,
+          availableDatasets: 1,
+          totalDatasets: 1,
+        },
+        evidence: [{
+          source: "CoinGlass",
+          category: "DERIVATIVES_POSITIONING",
+          direction: "NEUTRAL",
+          strength: "WEAK",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "DERIVATIVES_POSITIONING",
+          explanation: "Positioning is contextual.",
+          providerAvailable: true,
+        }],
+        overallAvailability: "PARTIAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Crypto intelligence available.",
+      } as AnalysisResult["cryptoIntelligenceContext"],
+    }));
+    expect(forecast.investor.fundamentalOutlook.evidenceStatus).toBe("VERIFIED");
+    expect(forecast.investor.fundamentalOutlook.evidence[0]).toMatchObject({
+      source: "CoinGlass",
+      category: "DERIVATIVES_POSITIONING",
+      asOf: timestamp - 60_000,
+    });
+    expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
 });
