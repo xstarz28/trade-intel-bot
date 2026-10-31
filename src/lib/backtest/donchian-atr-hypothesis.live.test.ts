@@ -135,12 +135,14 @@ function buildDonchianObservations(
 ): { observations: ForwardForecastObservation[]; signalCount: number } {
   const intervalMs = timeframe === "D1" ? DAY : HOUR;
   const horizonBars = timeframe === "D1" ? 20 : 24;
-  const step = horizonBars + 1;
   const tradingStyle = timeframe === "D1" ? "swing" : "intraday";
   const observations: ForwardForecastObservation[] = [];
   let signalCount = 0;
 
-  for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += step) {
+  // Evaluate every completed candle. The outcome evaluator performs the
+  // non-overlapping horizon purge after signal generation; fixed-grid
+  // sampling here would silently miss valid breakouts between grid points.
+  for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += 1) {
     const baselineHistory = candles.slice(index - 100, index);
     if (baselineHistory.length < 100) continue;
     const baselineDirection = momentumDirection(baselineHistory);
@@ -238,10 +240,12 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
           }))
         : [];
       for (const scenario of costSensitivity) {
-        expect(scenario.report.evaluatedCount).toBe(signalObservations.length);
-        expect(scenario.report.excludedReasons.overlapping_horizon ?? 0).toBe(0);
-        if (signalObservations.length < 30) expect(scenario.report.status).toBe("INSUFFICIENT_SAMPLE");
+        const overlapExcluded = scenario.report.excludedReasons.overlapping_horizon ?? 0;
+        expect(scenario.report.evaluatedCount + overlapExcluded).toBe(signalObservations.length);
+        expect(scenario.report.excludedCount).toBe(overlapExcluded);
+        if (scenario.report.evaluatedCount < 30) expect(scenario.report.status).toBe("INSUFFICIENT_SAMPLE");
       }
+      const independentSignalCount = costSensitivity[0]?.report.evaluatedCount ?? 0;
 
       reports.push({
         instrument: dataset.instrumentId,
@@ -257,8 +261,9 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
         baseline: "Prior 100 completed bars: close-to-close momentum sign.",
         opportunityCount: observations.length,
         signalCount,
+        independentSignalCount,
         signalCoveragePct: observations.length ? signalCount / observations.length * 100 : 0,
-        evaluationStatus: signalCount === 0 ? "NO_SIGNALS" : signalCount < 30 ? "INSUFFICIENT_SAMPLE" : "SAMPLE_GATE_REACHED",
+        evaluationStatus: signalCount === 0 ? "NO_SIGNALS" : independentSignalCount < 30 ? "INSUFFICIENT_SAMPLE" : "SAMPLE_GATE_REACHED",
         nominalRiskReward: 1.5,
         evaluationPopulation: "Signal-only: neutral/no-trade windows are excluded from directional accuracy and baseline comparison; coverage is reported separately.",
         costSensitivity,
@@ -309,13 +314,14 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
           timeframe: string;
           opportunityCount: number;
           signalCount: number;
+          independentSignalCount: number;
           signalCoveragePct: number;
           evaluationStatus: string;
           costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
         };
         const lines = [
           `## ${entry.instrument} · ${entry.timeframe}`,
-          `Opportunities: ${entry.opportunityCount} · active signals: ${entry.signalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}% · status: ${entry.evaluationStatus}`,
+          `Opportunities: ${entry.opportunityCount} · raw signals: ${entry.signalCount} · independent OOS signals: ${entry.independentSignalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}% · status: ${entry.evaluationStatus}`,
           "",
           "| Cost bps/side | Signal N | Accuracy | Baseline | Lift | Lift 95% CI | Expectancy R | Exp. 95% CI | PF | Status |",
           "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
