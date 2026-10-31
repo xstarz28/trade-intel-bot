@@ -152,7 +152,7 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
     expect(report.expectancyR95).toBeNull();
     expect(report.accuracyLiftBlockBootstrap95Pct).toBeNull();
     expect(report.expectancyBlockBootstrap95R).toBeNull();
-    expect(report.blockBootstrap.method).toBe("moving-block-bootstrap");
+    expect(report.blockBootstrap.method).toBe("circular-moving-block-bootstrap");
     expect(report.status).toBe("INCONCLUSIVE");
   });
 
