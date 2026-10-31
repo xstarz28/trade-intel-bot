@@ -54,6 +54,7 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
       event: "TARGET",
       barsHeld: 2,
       timeToEventBars: 2,
+      horizonClosePrice: 110,
       actualDirection: "bullish",
       predictedDirection: "bullish",
       baselineDirection: "bearish",
@@ -63,6 +64,25 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
     expect(report.outcomes[0].netR).toBeCloseTo(1.98);
     expect(report.expectancyR).toBeCloseTo(1.98);
     expect(report.costBpsPerSide).toBe(5);
+  });
+
+  it("scores directional accuracy at the horizon close even when a target exits earlier", () => {
+    const candles = [
+      candle(T0, 100, 101, 99, 100),
+      candle(T0 + DAY, 100, 111, 99, 110),
+      candle(T0 + 2 * DAY, 110, 112, 90, 95),
+      candle(T0 + 3 * DAY, 95, 96, 94, 95),
+    ];
+    const report = evaluateForwardForecastOutcomes([observation()], candles, {
+      costBpsPerSide: 5,
+      minimumSampleCount: 1,
+    });
+    expect(report.outcomes[0].event).toBe("TARGET");
+    expect(report.outcomes[0].exitPrice).toBe(110);
+    expect(report.outcomes[0].horizonClosePrice).toBe(95);
+    expect(report.outcomes[0].actualDirection).toBe("bearish");
+    expect(report.outcomes[0].forecastCorrect).toBe(false);
+    expect(report.outcomes[0].baselineCorrect).toBe(true);
   });
 
   it("assumes invalidation first when target and stop are both touched in one candle", () => {
@@ -209,6 +229,9 @@ describe("Phase 47 — strict forward forecast outcome evaluation", () => {
     expect(report.directionalAccuracyPct).toBe(90);
     expect(report.baselineAccuracyPct).toBe(10);
     expect(report.accuracyWilson95?.lowerPct).toBeGreaterThan(report.baselineAccuracyPct!);
+    expect(report.baselineAccuracyWilson95).not.toBeNull();
+    expect(report.accuracyLift95Pct?.lowerPct).toBeGreaterThan(0);
+    expect(report.expectancyR95?.lower).toBeGreaterThan(0);
     expect(report.expectancyR).toBeGreaterThan(0);
     expect(report.profitFactor).toBeGreaterThan(1);
     expect(report.status).toBe("POSITIVE_OUTCOME_EVIDENCE");
