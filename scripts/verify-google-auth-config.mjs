@@ -6,7 +6,6 @@ const REQUIRED_NAMES = [
   "AUTH_GOOGLE_SECRET",
   "CONVEX_SITE_URL",
   "SITE_URL",
-  "VITE_CONVEX_URL",
 ];
 
 function httpsOrigin(value) {
