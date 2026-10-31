@@ -13,9 +13,11 @@ import {
 const enabled = process.env.RUN_REAL_DONCHIAN_ATR_EVALUATION === "1";
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
-const REQUESTED_BARS = 1_800;
+const REQUESTED_BARS_BY_INTERVAL = { "1h": 5_000, "1d": 2_500 } as const;
+const MINIMUM_BARS_BY_INTERVAL = { "1h": 4_500, "1d": 1_800 } as const;
 const COST_SCENARIOS = [15, 20, 25] as const;
-const SYMBOLS = ["LTCUSDT", "DOGEUSDT", "DOTUSDT"] as const;
+// Excluded from the earlier BTC/ETH/SOL baseline and BNB/XRP/ADA EMA replay.
+const SYMBOLS = ["LTCUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT", "AVAXUSDT", "BCHUSDT", "TRXUSDT"] as const;
 
 function ema(values: number[], period: number): number {
   const multiplier = 2 / (period + 1);
@@ -96,7 +98,7 @@ function createDonchianForecast(
     recommendation: "NO_TRADE",
     noTradeReasons: ["Pre-registered research hypothesis; projected setup is not executable."],
     tradingStyle,
-    technicalSummary: "Donchian 55-bar breakout with EMA50/EMA200 trend filter and ATR20 risk geometry.",
+    technicalSummary: "Donchian 55-bar breakout with EMA50/EMA200 trend filter and 20-period SMA true-range risk geometry.",
     fundamentalSummary: "Not used by this technical research hypothesis.",
     breakdown: { trend: 1, indicator: 1, fundamental: 0, sentiment: 0 },
     keyLevels: {
@@ -109,9 +111,9 @@ function createDonchianForecast(
       entry: entry.toString(),
       entryBasis: "Completed-candle 55-bar Donchian breakout; enter at next candle open in replay.",
       stopLoss: stop.toString(),
-      slBasis: "2 × ATR(20) volatility invalidation from signal close.",
+      slBasis: "2 × SMA(true range, 20) volatility invalidation from signal close.",
       takeProfit: target.toString(),
-      tpBasis: "3 × ATR(20) volatility objective from signal close.",
+      tpBasis: "3 × SMA(true range, 20) volatility objective from signal close.",
       riskReward: 1.5,
     } : undefined,
     riskNote: "Research-only. Projected plan remains conditional and never grants order authority.",
@@ -135,12 +137,14 @@ function buildDonchianObservations(
 ): { observations: ForwardForecastObservation[]; signalCount: number } {
   const intervalMs = timeframe === "D1" ? DAY : HOUR;
   const horizonBars = timeframe === "D1" ? 20 : 24;
-  const step = horizonBars + 1;
   const tradingStyle = timeframe === "D1" ? "swing" : "intraday";
   const observations: ForwardForecastObservation[] = [];
   let signalCount = 0;
 
-  for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += step) {
+  // Evaluate every completed candle. The outcome evaluator performs the
+  // non-overlapping horizon purge after signal generation; fixed-grid
+  // sampling here would silently miss valid breakouts between grid points.
+  for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += 1) {
     const baselineHistory = candles.slice(index - 100, index);
     if (baselineHistory.length < 100) continue;
     const baselineDirection = momentumDirection(baselineHistory);
@@ -164,14 +168,15 @@ function buildDonchianObservations(
   return { observations, signalCount };
 }
 
-describe("real Donchian + ATR forward forecast OOS evaluation", () => {
+describe("real Donchian + SMA true-range forward forecast OOS evaluation", () => {
   it.skipIf(!enabled)("evaluates a pre-registered breakout hypothesis on untouched assets and archives source provenance", async () => {
     const datasets = [];
     for (const symbol of SYMBOLS) {
       for (const interval of ["1h", "1d"] as const) {
         const intervalMs = interval === "1d" ? DAY : HOUR;
         const endTime = Math.floor(Date.now() / intervalMs) * intervalMs - intervalMs;
-        const startTime = endTime - (REQUESTED_BARS - 1) * intervalMs;
+        const requestedBars = REQUESTED_BARS_BY_INTERVAL[interval];
+        const startTime = endTime - (requestedBars - 1) * intervalMs;
         datasets.push(await fetchHistoricalBinanceSpotOhlcv({
           symbol,
           interval,
@@ -214,9 +219,12 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
 
     const reports: Array<Record<string, unknown>> = [];
     for (const dataset of datasets) {
-      expect(dataset.candleCount).toBeGreaterThanOrEqual(1_500);
-      expect(dataset.gaps).toHaveLength(0);
       const timeframe = dataset.timeframe === "1d" ? "D1" : "H1";
+      const minimumBars = timeframe === "D1"
+        ? MINIMUM_BARS_BY_INTERVAL["1d"]
+        : MINIMUM_BARS_BY_INTERVAL["1h"];
+      expect(dataset.candleCount).toBeGreaterThanOrEqual(minimumBars);
+      expect(dataset.gaps).toHaveLength(0);
       const warmupBars = timeframe === "D1" ? 600 : 300;
       const { observations, signalCount } = buildDonchianObservations(
         dataset.instrumentId,
@@ -238,10 +246,12 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
           }))
         : [];
       for (const scenario of costSensitivity) {
-        expect(scenario.report.evaluatedCount).toBe(signalObservations.length);
-        expect(scenario.report.excludedReasons.overlapping_horizon ?? 0).toBe(0);
-        if (signalObservations.length < 30) expect(scenario.report.status).toBe("INSUFFICIENT_SAMPLE");
+        const overlapExcluded = scenario.report.excludedReasons.overlapping_horizon ?? 0;
+        expect(scenario.report.evaluatedCount + overlapExcluded).toBe(signalObservations.length);
+        expect(scenario.report.excludedCount).toBe(overlapExcluded);
+        if (scenario.report.evaluatedCount < 30) expect(scenario.report.status).toBe("INSUFFICIENT_SAMPLE");
       }
+      const independentSignalCount = costSensitivity[0]?.report.evaluatedCount ?? 0;
 
       reports.push({
         instrument: dataset.instrumentId,
@@ -253,12 +263,13 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
         warmupBars,
         oosStart: dataset.candles[warmupBars]?.timestamp,
         oosEnd: dataset.candles[dataset.candles.length - 1]?.timestamp,
-        hypothesis: "Donchian 55-bar breakout with EMA50/EMA200 trend filter; stop 2 × ATR20; objective 3 × ATR20; next-open entry; 20 D1 / 24 H1 bar horizon.",
+        hypothesis: "Donchian 55-bar breakout with EMA50/EMA200 trend filter; stop 2 × SMA(true range, 20); objective 3 × SMA(true range, 20); next-open entry; 20 D1 / 24 H1 bar horizon.",
         baseline: "Prior 100 completed bars: close-to-close momentum sign.",
         opportunityCount: observations.length,
         signalCount,
+        independentSignalCount,
         signalCoveragePct: observations.length ? signalCount / observations.length * 100 : 0,
-        evaluationStatus: signalCount === 0 ? "NO_SIGNALS" : signalCount < 30 ? "INSUFFICIENT_SAMPLE" : "SAMPLE_GATE_REACHED",
+        evaluationStatus: signalCount === 0 ? "NO_SIGNALS" : independentSignalCount < 30 ? "INSUFFICIENT_SAMPLE" : "SAMPLE_GATE_REACHED",
         nominalRiskReward: 1.5,
         evaluationPopulation: "Signal-only: neutral/no-trade windows are excluded from directional accuracy and baseline comparison; coverage is reported separately.",
         costSensitivity,
@@ -267,12 +278,13 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
 
     const report = {
       schemaVersion: 1,
-      title: "Trade Intel Bot — Donchian + ATR Forward Hypothesis OOS Evaluation",
+      title: "Trade Intel Bot — Donchian + SMA True-Range Forward Hypothesis OOS Evaluation",
       generatedAtIso: new Date().toISOString(),
       provider: "Binance Spot public OHLCV",
       assets: [...SYMBOLS],
-      requestedBars: REQUESTED_BARS,
-      hypothesisVersion: "donchian55-ema50-ema200-atr20-v1",
+      requestedBarsByInterval: REQUESTED_BARS_BY_INTERVAL,
+      minimumBarsByInterval: MINIMUM_BARS_BY_INTERVAL,
+      hypothesisVersion: "donchian55-ema50-ema200-sma-tr20-v1",
       hypothesisRegisteredAt: "2026-10-31",
       noParameterOptimization: true,
       warmupAndOOS: "First 300 H1 / 600 D1 bars are warm-up only. Parameters are fixed and no optimization is performed on OOS windows. All signals use candle prefixes ending at the forecast timestamp.",
@@ -282,7 +294,7 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
       reports,
       limitations: [
         "This is a fixed technical research hypothesis, not a calibrated probabilistic model.",
-        "The 2 ATR stop and 3 ATR objective are volatility-derived rule levels, not fair value or guaranteed targets.",
+        "The 20-period SMA of true range is not Wilder-smoothed ATR; its 2× stop and 3× objective are volatility-derived rule levels, not fair value or guaranteed targets.",
         "The prior 100-bar momentum baseline is computed strictly before each signal candle.",
         "Overlapping horizons are excluded and incomplete horizons are right-censored.",
         "Costs are 15/20/25 bps per side sensitivity assumptions, not venue-calibrated realized fills.",
@@ -295,13 +307,13 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
     await mkdir(artifactDir, { recursive: true });
     await writeFile(join(artifactDir, "donchian-atr-oos-report.json"), JSON.stringify(report, null, 2), "utf8");
     const markdown = [
-      "# Donchian + ATR Forward Hypothesis OOS Evaluation",
+      "# Donchian + SMA True-Range Forward Hypothesis OOS Evaluation",
       "",
       `Generated: ${report.generatedAtIso}`,
       "",
       `Assets: ${SYMBOLS.join(", ")}`,
       "",
-      "Hypothesis: Donchian55 breakout + EMA50/EMA200 filter, stop 2×ATR20, target 3×ATR20. Baseline: prior-only 100-bar momentum.",
+      "Hypothesis: Donchian55 breakout + EMA50/EMA200 filter, stop 2×SMA(true range,20), target 3×SMA(true range,20). Baseline: prior-only 100-bar momentum.",
       "",
       ...reports.flatMap((item) => {
         const entry = item as {
@@ -309,20 +321,21 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
           timeframe: string;
           opportunityCount: number;
           signalCount: number;
+          independentSignalCount: number;
           signalCoveragePct: number;
           evaluationStatus: string;
-          costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
+          costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; expectancyBlockBootstrap95R: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
         };
         const lines = [
           `## ${entry.instrument} · ${entry.timeframe}`,
-          `Opportunities: ${entry.opportunityCount} · active signals: ${entry.signalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}% · status: ${entry.evaluationStatus}`,
+          `Opportunities: ${entry.opportunityCount} · raw signals: ${entry.signalCount} · independent OOS signals: ${entry.independentSignalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}% · status: ${entry.evaluationStatus}`,
           "",
-          "| Cost bps/side | Signal N | Accuracy | Baseline | Lift | Lift 95% CI | Expectancy R | Exp. 95% CI | PF | Status |",
+          "| Cost bps/side | Signal N | Accuracy | Baseline | Lift | Lift block 95% CI | Expectancy R | Exp. block 95% CI | PF | Status |",
           "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
         ];
         for (const scenario of entry.costSensitivity) {
           const r = scenario.report;
-          lines.push(`| ${scenario.costBpsPerSide} | ${r.evaluatedCount} | ${r.directionalAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.baselineAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.accuracyLiftPct?.toFixed(1) ?? "n/a"}pp | ${r.accuracyLift95Pct ? `${r.accuracyLift95Pct.lowerPct.toFixed(1)} to ${r.accuracyLift95Pct.upperPct.toFixed(1)}pp` : "n/a"} | ${r.expectancyR?.toFixed(2) ?? "n/a"} | ${r.expectancyR95 ? `${r.expectancyR95.lower.toFixed(2)} to ${r.expectancyR95.upper.toFixed(2)}R` : "n/a"} | ${r.profitFactor?.toFixed(2) ?? "n/a"} | ${r.status} |`);
+          lines.push(`| ${scenario.costBpsPerSide} | ${r.evaluatedCount} | ${r.directionalAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.baselineAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.accuracyLiftPct?.toFixed(1) ?? "n/a"}pp | ${r.accuracyLiftBlockBootstrap95Pct ? `${r.accuracyLiftBlockBootstrap95Pct.lowerPct.toFixed(1)} to ${r.accuracyLiftBlockBootstrap95Pct.upperPct.toFixed(1)}pp` : "n/a"} | ${r.expectancyR?.toFixed(2) ?? "n/a"} | ${r.expectancyBlockBootstrap95R ? `${r.expectancyBlockBootstrap95R.lower.toFixed(2)} to ${r.expectancyBlockBootstrap95R.upper.toFixed(2)}R` : "n/a"} | ${r.profitFactor?.toFixed(2) ?? "n/a"} | ${r.status} |`);
         }
         lines.push("");
         return lines;
@@ -333,7 +346,7 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
     ].join("\n");
     await writeFile(join(artifactDir, "donchian-atr-oos-report.md"), markdown, "utf8");
 
-    expect(reports).toHaveLength(6);
+    expect(reports).toHaveLength(SYMBOLS.length * 2);
     expect(sourceSnapshots.every((snapshot) => snapshot.gapCount === 0 && snapshot.sha256.length === 64)).toBe(true);
   }, 900_000);
 });
