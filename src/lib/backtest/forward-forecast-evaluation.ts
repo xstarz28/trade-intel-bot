@@ -54,6 +54,7 @@ export interface ForwardForecastOutcome {
   horizonEndsAt: number;
   entryPrice: number;
   exitPrice: number;
+  horizonClosePrice: number;
   actualDirection: EvaluationDirection;
   predictedDirection: EvaluationDirection;
   baselineDirection: EvaluationDirection;
@@ -130,6 +131,14 @@ function wilson95(successes: number, total: number): { lowerPct: number; upperPc
     lowerPct: Math.max(0, center - margin) * 100,
     upperPct: Math.min(1, center + margin) * 100,
   };
+}
+
+function normal95(values: number[]): { lower: number; upper: number } | null {
+  if (values.length < 2) return null;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (values.length - 1);
+  const standardError = Math.sqrt(variance / values.length);
+  return { lower: mean - 1.96 * standardError, upper: mean + 1.96 * standardError };
 }
 
 function classifyDirection(returnBps: number, neutralBandBps: number): EvaluationDirection {
@@ -307,7 +316,9 @@ export function evaluateForwardForecastOutcomes(
     const observation = item.observation;
     const entryPrice = item.futureCandles[0].open;
     const exit = evaluateR(observation, item.futureCandles, entryPrice, options.costBpsPerSide);
-    const grossMarketReturnBps = (exit.exitPrice / entryPrice - 1) * 10_000;
+    const horizonClosePrice = item.futureCandles[item.futureCandles.length - 1].close;
+    // Directional accuracy is measured at the declared horizon, never at an earlier target/stop exit.
+    const grossMarketReturnBps = (horizonClosePrice / entryPrice - 1) * 10_000;
     const actualDirection = classifyDirection(grossMarketReturnBps, neutralBandBps);
     outcomes.push({
       id: observation.id,
@@ -315,6 +326,7 @@ export function evaluateForwardForecastOutcomes(
       horizonEndsAt: observation.horizonEndsAt,
       entryPrice,
       exitPrice: exit.exitPrice,
+      horizonClosePrice,
       actualDirection,
       predictedDirection: observation.direction,
       baselineDirection: observation.baselineDirection,
@@ -339,6 +351,11 @@ export function evaluateForwardForecastOutcomes(
   const baselineAccuracy = outcomes.length ? baselineCorrect / outcomes.length * 100 : null;
   const accuracyLift = directionalAccuracy === null || baselineAccuracy === null ? null : directionalAccuracy - baselineAccuracy;
   const interval = wilson95(directionalCorrect, outcomes.length);
+  const baselineInterval = wilson95(baselineCorrect, outcomes.length);
+  const pairedAccuracyDifferences = outcomes.map((outcome) =>
+    ((outcome.forecastCorrect ? 1 : 0) - (outcome.baselineCorrect ? 1 : 0)) * 100
+  );
+  const accuracyLiftInterval = normal95(pairedAccuracyDifferences);
   const rOutcomes = outcomes.filter((outcome): outcome is ForwardForecastOutcome & { netR: number; mfeR: number; maeR: number } =>
     outcome.netR !== undefined && outcome.mfeR !== undefined && outcome.maeR !== undefined
   );
@@ -356,13 +373,15 @@ export function evaluateForwardForecastOutcomes(
   const invalidationCount = rOutcomes.filter((outcome) => outcome.event === "INVALIDATION").length;
   const timeExitCount = rOutcomes.filter((outcome) => outcome.event === "TIME_EXIT").length;
   const expectancyR = rOutcomes.length ? rOutcomes.reduce((sum, outcome) => sum + outcome.netR, 0) / rOutcomes.length : null;
+  const expectancyInterval = normal95(rOutcomes.map((outcome) => outcome.netR));
   let status: ForecastEvaluationStatus = "INSUFFICIENT_SAMPLE";
   if (outcomes.length >= minimumSampleCount) {
     if ((accuracyLift ?? 0) <= 0) status = "BELOW_BASELINE";
     else if (rOutcomes.length < minimumSampleCount) status = "INCONCLUSIVE";
     else if (expectancyR === null || expectancyR <= 0) status = "NEGATIVE_NET_EXPECTANCY";
     else if (netLosses <= 0 || netWins / netLosses <= 1) status = "INCONCLUSIVE";
-    else if (interval === null || baselineAccuracy === null || interval.lowerPct <= baselineAccuracy) status = "INCONCLUSIVE";
+    else if (accuracyLiftInterval === null || accuracyLiftInterval.lower <= 0 ||
+        expectancyInterval === null || expectancyInterval.lower <= 0) status = "INCONCLUSIVE";
     else status = "POSITIVE_OUTCOME_EVIDENCE";
   }
 
@@ -381,6 +400,12 @@ export function evaluateForwardForecastOutcomes(
     baselineAccuracyPct: baselineAccuracy,
     accuracyLiftPct: accuracyLift,
     accuracyWilson95: interval,
+    baselineAccuracyWilson95: baselineInterval,
+    accuracyLift95Pct: accuracyLiftInterval === null ? null : {
+      lowerPct: accuracyLiftInterval.lower,
+      upperPct: accuracyLiftInterval.upper,
+    },
+    expectancyR95: expectancyInterval,
     targetHitPct: rOutcomes.length ? targetCount / rOutcomes.length * 100 : null,
     invalidationHitPct: rOutcomes.length ? invalidationCount / rOutcomes.length * 100 : null,
     timeExitPct: rOutcomes.length ? timeExitCount / rOutcomes.length * 100 : null,
