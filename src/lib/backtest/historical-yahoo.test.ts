@@ -29,7 +29,7 @@ describe("fetchHistoricalYahooFinanceOhlcv", () => {
       instrumentType: "forex",
       interval: "1h",
       startTime: timestamp,
-      endTime: timestamp,
+      endTime: timestamp + 60 * 60_000,
     }, {
       now: () => timestamp + 2 * 60 * 60_000,
       fetchImpl: async (input) => {
@@ -67,7 +67,7 @@ describe("fetchHistoricalYahooFinanceOhlcv", () => {
       instrumentType: "commodity",
       interval: "1d",
       startTime: timestamp,
-      endTime: timestamp,
+      endTime: timestamp + 24 * 60 * 60_000,
     }, {
       now: () => timestamp + 2 * 24 * 60 * 60_000,
       fetchImpl: async (input) => {
