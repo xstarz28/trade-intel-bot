@@ -155,8 +155,6 @@ function evaluateR(
   const objective = positiveLevel(observation.objectivePrice);
   const invalidation = positiveLevel(observation.invalidationPrice);
   const long = observation.direction === "bullish";
-  const validGeometry = observation.direction !== "neutral" && objective !== undefined && invalidation !== undefined &&
-    (long ? objective > entryPrice && invalidation < entryPrice : objective < entryPrice && invalidation > entryPrice);
   const side = long ? 1 : -1;
   let event: ForecastEvent = "DIRECTION_ONLY";
   let exitPrice = futureCandles[futureCandles.length - 1].close;
@@ -166,7 +164,8 @@ function evaluateR(
   let maeR: number | undefined;
   let netR: number | undefined;
 
-  if (validGeometry) {
+  if (observation.direction !== "neutral" && objective !== undefined && invalidation !== undefined &&
+      (long ? objective > entryPrice && invalidation < entryPrice : objective < entryPrice && invalidation > entryPrice)) {
     event = "TIME_EXIT";
     const riskPrice = Math.abs(entryPrice - invalidation);
     const riskPct = riskPrice / entryPrice * 100;
