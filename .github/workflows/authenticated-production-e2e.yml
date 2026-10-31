@@ -51,7 +51,7 @@ jobs:
           if (state.cookies.length === 0 && state.origins.length === 0) {
             throw new Error("Storage state is empty; an authenticated session is required.");
           }
-          process.stdout.write("Authorized browser storage-state structure validated; values are not logged.\\n");
+          process.stdout.write("Authorized browser storage-state structure validated; values are not logged.\n");
           NODE
 
       - name: Install repository and browser dependencies
