@@ -19,7 +19,9 @@ jobs:
   smoke:
     name: Real production multi-market analysis smoke
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    # Playwright 1.55 has no browser/dependency image for ubuntu-latest after it moved to 26.04.
+    # Pin the supported LTS runner so the real production smoke actually executes.
+    runs-on: ubuntu-24.04
     environment: development
     timeout-minutes: 18
     env:

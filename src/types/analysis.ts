@@ -253,6 +253,8 @@ export interface AnalysisResult {
   // Phase 29 — forward market path: professional forward-looking scenario planning.
   // Pure derivation: does not modify bias, conviction, gates, or trade plan.
   forwardMarketPath?: import("@/lib/forward-market-path").ForwardMarketPathContext;
+  // Phase 46 — conditional trader/investor structural forecast; informational only.
+  forwardForecast?: import("@/lib/forward-forecast").ForwardForecastContext;
   // Phase 35 — long-horizon market & investment thesis.
   // Pure derivation: does not modify bias, conviction, gates, trade plan, or recommendation.
   longHorizonThesis?: import("@/lib/long-horizon-thesis").LongHorizonThesis;
