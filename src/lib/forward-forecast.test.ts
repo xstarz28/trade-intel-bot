@@ -158,4 +158,160 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.trader.objective).toBeUndefined();
     expect(forecast.trader.status).toBe("UNAVAILABLE");
   });
+  it("surfaces a fresh, exact-instrument provider intrinsic-value reference without changing the structural thesis", () => {
+    const timestamp = 1_800_000_000_000;
+    const result = baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      universalIntelligenceContext: {
+        instrument: "AAPL",
+        assetClass: "equity",
+        assembledAt: timestamp - 500,
+        equity: {
+          instrument: "AAPL",
+          instrumentType: "equity",
+          assembledAt: timestamp - 500,
+          valuation: {
+            provider: "Verified Valuation Provider",
+            observedAt: timestamp - 60_000,
+            freshness: "FRESH",
+            quality: "VERIFIED",
+            available: true,
+            availableDatasets: 1,
+            totalDatasets: 1,
+            intrinsicValue: 120,
+            relativeValuation: "undervalued",
+          },
+          evidence: [],
+          overallAvailability: "FULL",
+          overallQuality: "VERIFIED",
+          missingInformation: [],
+          analystSummary: "Verified equity valuation context.",
+        },
+        evidence: [{
+          source: "Verified Valuation Provider",
+          category: "VALUATION",
+          direction: "SUPPORTING",
+          strength: "MODERATE",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "EQUITY_VALUATION",
+          explanation: "Provider-supplied valuation evidence.",
+          providerAvailable: true,
+          assetClass: "equity",
+          instrument: "AAPL",
+        }],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "AAPL fundamentals available.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    });
+    const forecast = buildForwardForecast(result);
+    expect(forecast.investor.valuationStatus).toBe("AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toMatchObject({
+      kind: "PROVIDER_INTRINSIC_VALUE",
+      price: 120,
+      source: "Verified Valuation Provider",
+      upsidePct: 20,
+    });
+    expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(1);
+    expect(forecast.investor.direction).toBe("bullish");
+    expect(result.recommendation).toBe("NO_TRADE");
+  });
+
+  it("rejects valuation and evidence belonging to a different instrument", () => {
+    const timestamp = 1_800_000_000_000;
+    const result = baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      fundamentalData: {
+        provider: "Alpha Vantage",
+        timestamp: timestamp - 60_000,
+        instrumentType: "stock",
+        symbol: "MSFT",
+        analystTargetPrice: 150,
+        available: true,
+      },
+      universalIntelligenceContext: {
+        instrument: "MSFT",
+        assetClass: "equity",
+        assembledAt: timestamp - 500,
+        evidence: [{
+          source: "Other instrument",
+          category: "VALUATION",
+          direction: "SUPPORTING",
+          strength: "STRONG",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "EQUITY_VALUATION",
+          explanation: "Evidence for MSFT only.",
+          providerAvailable: true,
+          assetClass: "equity",
+          instrument: "MSFT",
+        }],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "MSFT context.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    });
+    const forecast = buildForwardForecast(result);
+    expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+    expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(0);
+  });
+
+  it("suppresses stale valuation references and stale fundamental evidence", () => {
+    const timestamp = 1_800_000_000_000;
+    const result = baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      fundamentalData: {
+        provider: "Alpha Vantage",
+        timestamp: timestamp - 31 * 24 * 60 * 60 * 1000,
+        instrumentType: "stock",
+        symbol: "AAPL",
+        analystTargetPrice: 120,
+        available: true,
+      },
+      universalIntelligenceContext: {
+        instrument: "AAPL",
+        assetClass: "equity",
+        assembledAt: timestamp - 31 * 24 * 60 * 60 * 1000,
+        evidence: [{
+          source: "Stale provider",
+          category: "VALUATION",
+          direction: "SUPPORTING",
+          strength: "STRONG",
+          quality: "STALE",
+          freshness: "STALE",
+          dependencyGroup: "EQUITY_VALUATION",
+          explanation: "Stale evidence must not be used.",
+          providerAvailable: true,
+          assetClass: "equity",
+          instrument: "AAPL",
+        }],
+        overallAvailability: "PARTIAL",
+        overallQuality: "STALE",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Stale context.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    });
+    const forecast = buildForwardForecast(result);
+    expect(forecast.investor.valuationStatus).toBe("STALE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+    expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(0);
+  });
+
 });
