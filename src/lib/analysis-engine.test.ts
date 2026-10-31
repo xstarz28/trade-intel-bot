@@ -83,6 +83,33 @@ describe("calculateBias (via runAnalysis)", () => {
   });
 });
 
+describe("analysis clock", () => {
+  it("uses the injected historical clock for replay freshness while live calls keep wall-clock checks", () => {
+    const historicalTimestamp = 1_700_000_000_000;
+    const input = baseInput({
+      instrument: "BTCUSDT",
+      instrumentType: "crypto",
+      timeframe: "D1",
+      currentPrice: "50000",
+      marketData: {
+        instrument: "BTCUSDT",
+        instrumentType: "crypto",
+        provider: "historical-walk-forward",
+        fetchTimestamp: historicalTimestamp,
+        price: { price: 50000, timestamp: historicalTimestamp, source: "historical-OHLCV" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "delayed",
+      },
+    });
+
+    const liveClockResult = runAnalysis(input);
+    const historicalReplayResult = runAnalysis(input, { now: () => historicalTimestamp });
+    expect(liveClockResult.noTradeReasons.some((reason) => reason.includes("Price snapshot is older than"))).toBe(true);
+    expect(historicalReplayResult.noTradeReasons.some((reason) => reason.includes("Price snapshot is older than"))).toBe(false);
+  });
+});
+
 // ── Trend scoring ─────────────────────────────────────────────────
 
 describe("scoreTrend (via breakdown)", () => {

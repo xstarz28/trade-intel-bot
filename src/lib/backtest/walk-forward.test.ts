@@ -49,6 +49,75 @@ describe("runWalkForwardBacktest", () => {
     expect(seenLengths.length).toBeGreaterThan(0);
   });
 
+  it("measures future structural watch confirmations and links only production-approved trades", () => {
+    const data = candles(40);
+    data[26] = { timestamp: data[26].timestamp, open: 108, high: 112, low: 107, close: 110, volume: 2000 };
+    data[27] = { timestamp: data[27].timestamp, open: 110, high: 121, low: 109, close: 120, volume: 1500 };
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: data,
+      options: { minimumHistory: 20, maxHoldingBars: 5, costBpsPerSide: 5 },
+      analyzeAtClose: (_visible, index) => {
+        if (index === 25) {
+          return {
+            recommendation: "NO_TRADE",
+            watchLevels: [{ level: "105", type: "resistance", source: "keyLevels", description: "breakout watch" }],
+          };
+        }
+        if (index === 26) {
+          return {
+            recommendation: "LONG",
+            tradePlan: { direction: "long", entry: "110", stopLoss: "105", takeProfit: "120" },
+            confidence: 80,
+          };
+        }
+        return { recommendation: "NO_TRADE" };
+      },
+    });
+
+    expect(report.watchlistEvaluation).toMatchObject({
+      candidates: 1,
+      confirmed: 1,
+      expired: 0,
+      censored: 0,
+      confirmationRatePct: 100,
+      confirmedWithActionableTrade: 1,
+      confirmedWithoutActionableTrade: 0,
+      linkedTradeCount: 1,
+    });
+    expect(report.watchlistEvaluation?.linkedTradeExpectancyR).toBeGreaterThan(0);
+    expect(report.watchlistEvaluation?.byType).toContainEqual(expect.objectContaining({
+      type: "resistance", candidates: 1, confirmed: 1, linkedTradeCount: 1,
+    }));
+  });
+
+  it("censors watchlist events whose full confirmation horizon is not available", () => {
+    const data = candles(40);
+    const report = runWalkForwardBacktest({
+      instrument: "TEST",
+      timeframe: "M1",
+      candles: data,
+      options: { minimumHistory: 20, maxHoldingBars: 5 },
+      analyzeAtClose: (_visible, index) => index === 38
+        ? { recommendation: "NO_TRADE", watchLevels: [{ level: "105", type: "resistance", source: "keyLevels" }] }
+        : { recommendation: "NO_TRADE" },
+    });
+    expect(report.watchlistEvaluation).toMatchObject({ candidates: 1, confirmed: 0, expired: 0, censored: 1, confirmationRatePct: null });
+  });
+
+  it("does not reject historical candles as wall-clock stale in production-engine replay", () => {
+    const report = runProductionWalkForwardBacktest({
+      instrument: "BTCUSDT",
+      instrumentType: "crypto",
+      timeframe: "M1",
+      candles: candles(30),
+      options: { minimumHistory: 20 },
+    });
+    expect(report.signalsChecked).toBeGreaterThan(0);
+    expect(report.noTradeReasonCounts?.some((item) => item.reason.includes("Price snapshot is older than"))).toBe(false);
+  });
+
   it("scores only the configured out-of-sample period while retaining earlier candles as history", () => {
     const data = candles(30);
     const seenIndices: number[] = [];

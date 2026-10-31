@@ -49,6 +49,10 @@ export interface WalkForwardReport {
   totalNetReturnPct: number;
   averageNetReturnPct: number | null;
   trades: BacktestTrade[];
+  /** Aggregated analyzer rejection reasons, useful for diagnosing over-filtering. */
+  noTradeReasonCounts?: Array<{ reason: string; count: number }>;
+  /** Future support/resistance watch confirmation and linked executable-trade metrics. */
+  watchlistEvaluation?: WatchlistEvaluationReport;
   warnings: string[];
 }
 
@@ -56,6 +60,177 @@ export interface BacktestSignal {
   recommendation: "LONG" | "SHORT" | "NO_TRADE";
   tradePlan?: Pick<TradePlan, "direction" | "entry" | "stopLoss" | "takeProfit">;
   confidence?: number;
+  noTradeReasons?: string[];
+  watchLevels?: Array<{ level: string | number; type: string; source?: string; description?: string }>;
+}
+
+export interface WatchlistTypeEvaluation {
+  type: "support" | "resistance";
+  candidates: number;
+  confirmed: number;
+  expired: number;
+  censored: number;
+  confirmationRatePct: number | null;
+  linkedTradeCount: number;
+  linkedTradeWins: number;
+  linkedTradeLosses: number;
+  linkedTradeWinRatePct: number | null;
+  linkedTradeExpectancyR: number | null;
+  linkedTradeProfitFactor: number | null;
+  linkedTradeNetReturnPct: number;
+  linkedTradeRiskBudgetReturnPct: number;
+  linkedSumR: number;
+  linkedGrossWinsR: number;
+  linkedGrossLossesR: number;
+}
+
+export interface WatchlistEvaluationReport {
+  candidates: number;
+  confirmed: number;
+  expired: number;
+  censored: number;
+  confirmationRatePct: number | null;
+  confirmedWithActionableTrade: number;
+  confirmedWithoutActionableTrade: number;
+  linkedTradeCount: number;
+  linkedTradeWins: number;
+  linkedTradeLosses: number;
+  linkedTradeWinRatePct: number | null;
+  linkedTradeExpectancyR: number | null;
+  linkedTradeProfitFactor: number | null;
+  linkedTradeNetReturnPct: number;
+  linkedTradeRiskBudgetReturnPct: number;
+  linkedSumR: number;
+  linkedGrossWinsR: number;
+  linkedGrossLossesR: number;
+  byType: WatchlistTypeEvaluation[];
+}
+
+interface WatchLevelObservation {
+  signalIndex: number;
+  level: number;
+  type: "support" | "resistance";
+}
+
+function summarizeLinkedTrades(trades: BacktestTrade[]) {
+  const wins = trades.filter((trade) => trade.rMultiple > 0).length;
+  const sumR = trades.reduce((sum, trade) => sum + trade.rMultiple, 0);
+  const grossWinsR = trades.reduce((sum, trade) => sum + Math.max(0, trade.rMultiple), 0);
+  const grossLossesR = trades.reduce((sum, trade) => sum + Math.max(0, -trade.rMultiple), 0);
+  const fullNotionalEquity = trades.reduce((equity, trade) => equity * (1 + trade.netReturnPct / 100), 1);
+  const riskBudgetEquity = trades.reduce((equity, trade) => equity * Math.max(0, 1 + 0.01 * trade.rMultiple), 1);
+  return {
+    linkedTradeCount: trades.length,
+    linkedTradeWins: wins,
+    linkedTradeLosses: trades.filter((trade) => trade.rMultiple < 0).length,
+    linkedTradeWinRatePct: trades.length ? (wins / trades.length) * 100 : null,
+    linkedTradeExpectancyR: trades.length ? sumR / trades.length : null,
+    linkedTradeProfitFactor: grossLossesR > 0 ? grossWinsR / grossLossesR : null,
+    linkedTradeNetReturnPct: (fullNotionalEquity - 1) * 100,
+    linkedTradeRiskBudgetReturnPct: (riskBudgetEquity - 1) * 100,
+    linkedSumR: sumR,
+    linkedGrossWinsR: grossWinsR,
+    linkedGrossLossesR: grossLossesR,
+  };
+}
+
+/**
+ * Evaluate future structural watch levels using only later candles. A confirmation
+ * requires a close beyond support/resistance, a directional candle body, and
+ * volume above the preceding 20-bar mean. Only production-approved trades on
+ * that same confirmation candle are linked to transaction-cost-adjusted P&L.
+ */
+function evaluateWatchlistObservations(
+  candles: OhlcvCandle[],
+  observations: WatchLevelObservation[],
+  trades: BacktestTrade[],
+  maxWatchBars: number,
+): WatchlistEvaluationReport {
+  const activeUntil = new Map<string, number>();
+  const candidates: WatchLevelObservation[] = [];
+  for (const observation of [...observations].sort((a, b) => a.signalIndex - b.signalIndex)) {
+    const key = `${observation.type}:${observation.level.toPrecision(12)}`;
+    if ((activeUntil.get(key) ?? -1) >= observation.signalIndex) continue;
+    candidates.push(observation);
+    activeUntil.set(key, observation.signalIndex + maxWatchBars);
+  }
+
+  const eventResults: Array<{
+    type: "support" | "resistance";
+    status: "confirmed" | "expired" | "censored";
+    linkedTrade?: BacktestTrade;
+  }> = [];
+
+  for (const candidate of candidates) {
+    const finalIndex = Math.min(candidate.signalIndex + maxWatchBars, candles.length - 1);
+    const fullWindowAvailable = candidate.signalIndex + maxWatchBars <= candles.length - 1;
+    let confirmationIndex: number | undefined;
+    for (let index = candidate.signalIndex + 1; index <= finalIndex; index++) {
+      const candle = candles[index];
+      const volumeHistory = candles.slice(Math.max(0, index - 20), index).map((item) => item.volume).filter((value) => Number.isFinite(value) && value > 0);
+      const averageVolume = volumeHistory.length
+        ? volumeHistory.reduce((sum, value) => sum + value, 0) / volumeHistory.length
+        : 0;
+      const volumeConfirmed = averageVolume > 0 && candle.volume > averageVolume;
+      const confirmed = candidate.type === "resistance"
+        ? candle.close > candidate.level && candle.close > candle.open && volumeConfirmed
+        : candle.close < candidate.level && candle.close < candle.open && volumeConfirmed;
+      if (confirmed) {
+        confirmationIndex = index;
+        break;
+      }
+    }
+
+    if (confirmationIndex !== undefined) {
+      const expectedDirection = candidate.type === "resistance" ? "long" : "short";
+      const confirmationTime = candles[confirmationIndex].timestamp;
+      const linkedTrade = trades.find((trade) =>
+        trade.signalTime === confirmationTime && trade.direction === expectedDirection,
+      );
+      eventResults.push({ type: candidate.type, status: "confirmed", linkedTrade });
+    } else {
+      eventResults.push({
+        type: candidate.type,
+        status: fullWindowAvailable ? "expired" : "censored",
+      });
+    }
+  }
+
+  const confirmed = eventResults.filter((event) => event.status === "confirmed");
+  const uniqueLinkedTrades = [...new Map(
+    confirmed.flatMap((event) => event.linkedTrade ? [[`${event.linkedTrade.signalTime}:${event.linkedTrade.direction}`, event.linkedTrade] as const] : []),
+  ).values()];
+  const summarizeType = (type: "support" | "resistance"): WatchlistTypeEvaluation => {
+    const events = eventResults.filter((event) => event.type === type);
+    const typeTrades = [...new Map(
+      events.flatMap((event) => event.linkedTrade ? [[`${event.linkedTrade.signalTime}:${event.linkedTrade.direction}`, event.linkedTrade] as const] : []),
+    ).values()];
+    const typeConfirmed = events.filter((event) => event.status === "confirmed").length;
+    const typeExpired = events.filter((event) => event.status === "expired").length;
+    return {
+      type,
+      candidates: events.length,
+      confirmed: typeConfirmed,
+      expired: typeExpired,
+      censored: events.filter((event) => event.status === "censored").length,
+      confirmationRatePct: typeConfirmed + typeExpired > 0 ? (typeConfirmed / (typeConfirmed + typeExpired)) * 100 : null,
+      ...summarizeLinkedTrades(typeTrades),
+    };
+  };
+  const expired = eventResults.filter((event) => event.status === "expired").length;
+  const confirmedWithActionableTrade = confirmed.filter((event) => event.linkedTrade).length;
+  const stats = summarizeLinkedTrades(uniqueLinkedTrades);
+  return {
+    candidates: eventResults.length,
+    confirmed: confirmed.length,
+    expired,
+    censored: eventResults.filter((event) => event.status === "censored").length,
+    confirmationRatePct: confirmed.length + expired > 0 ? (confirmed.length / (confirmed.length + expired)) * 100 : null,
+    confirmedWithActionableTrade,
+    confirmedWithoutActionableTrade: confirmed.length - confirmedWithActionableTrade,
+    ...stats,
+    byType: [summarizeType("support"), summarizeType("resistance")],
+  };
 }
 
 export interface WalkForwardInput {
@@ -66,6 +241,16 @@ export interface WalkForwardInput {
   /** Receives only candles available at signal time. No future candles are passed. */
   analyzeAtClose: (visibleCandles: readonly OhlcvCandle[], signalIndex: number) => BacktestSignal;
 }
+
+const TIMEFRAME_DURATION_MS: Record<Timeframe, number> = {
+  M1: 60_000,
+  M5: 300_000,
+  M15: 900_000,
+  H1: 3_600_000,
+  H4: 14_400_000,
+  D1: 86_400_000,
+  W1: 604_800_000,
+};
 
 const finitePositive = (n: number): boolean => Number.isFinite(n) && n > 0;
 const parsePrice = (value: string): number => Number(value);
@@ -220,11 +405,14 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     `Out-of-sample scoring starts at candle index ${firstSignalIndex}; earlier candles are history only.`,
     "Signals use the production analysis callback on past-only candles; no provider fundamentals, news, COT, derivatives, or MTF feeds are synthesized.",
     "Entry is next-bar open; stop/target touches use OHLC approximations and stop wins if both levels are touched in one bar.",
-    "Fees/slippage are a user-configurable per-side assumption; results are not proof of future profitability.",
+    "Fees, spread, and slippage are combined into a user-configurable per-side rate; results are not proof of future profitability.",
+    "Watchlist confirmation is an OHLCV proxy: close beyond support/resistance, directional candle body, and volume above the preceding 20-bar mean. Non-OHLCV and MTF confirmation are not synthesized.",
   ];
   const trades: BacktestTrade[] = [];
   let signalsChecked = 0;
   let noTradeSignals = 0;
+  const noTradeReasonCounts = new Map<string, number>();
+  const watchObservations: WatchLevelObservation[] = [];
   let rejectedPlans = 0;
   let nextEligibleSignalIndex = firstSignalIndex;
 
@@ -234,7 +422,14 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     const signal = input.analyzeAtClose(visible, i);
     signalsChecked++;
     if (signal.recommendation === "NO_TRADE") {
+      for (const watchLevel of signal.watchLevels ?? []) {
+        if (watchLevel.source !== "keyLevels" || (watchLevel.type !== "support" && watchLevel.type !== "resistance")) continue;
+        const rawLevel = typeof watchLevel.level === "number" ? watchLevel.level : Number(watchLevel.level.replace(/,/g, "").trim());
+        if (finitePositive(rawLevel)) watchObservations.push({ signalIndex: i, level: rawLevel, type: watchLevel.type });
+      }
       noTradeSignals++;
+      const reasons = signal.noTradeReasons?.length ? signal.noTradeReasons : ["Analyzer returned NO_TRADE without a reason"];
+      for (const reason of reasons) noTradeReasonCounts.set(reason, (noTradeReasonCounts.get(reason) ?? 0) + 1);
       continue;
     }
     const trade = simulateTrade({
@@ -283,6 +478,10 @@ export function runWalkForwardBacktest(input: WalkForwardInput): WalkForwardRepo
     totalNetReturnPct: (trades.reduce((growth, trade) => growth * (1 + trade.netReturnPct / 100), 1) - 1) * 100,
     averageNetReturnPct: trades.length ? trades.reduce((sum, t) => sum + t.netReturnPct, 0) / trades.length : null,
     trades,
+    noTradeReasonCounts: [...noTradeReasonCounts.entries()]
+      .map(([reason, count]) => ({ reason, count }))
+      .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason)),
+    watchlistEvaluation: evaluateWatchlistObservations(candles, watchObservations, trades, maxHoldingBars),
     warnings,
   };
 }
@@ -306,12 +505,14 @@ export function runProductionWalkForwardBacktest(args: {
     options: args.options,
     analyzeAtClose: (visibleCandles) => {
       const latest = visibleCandles[visibleCandles.length - 1];
+      // Candle timestamps mark opens; the replay observes the completed close.
+      const replayNow = latest.timestamp + TIMEFRAME_DURATION_MS[args.timeframe] - 1;
       const marketData: MarketData = {
         instrument: args.instrument,
         instrumentType: args.instrumentType,
         provider: "historical-walk-forward",
-        fetchTimestamp: latest.timestamp,
-        price: { price: latest.close, timestamp: latest.timestamp, source: "historical-OHLCV" },
+        fetchTimestamp: replayNow,
+        price: { price: latest.close, timestamp: replayNow, source: "historical-OHLCV" },
         candles: [...visibleCandles],
         timeframe: args.timeframe,
         dataFreshness: "delayed",
@@ -326,11 +527,13 @@ export function runProductionWalkForwardBacktest(args: {
         marketData,
         technicalData,
       };
-      const result: AnalysisResult = runAnalysis(analysisInput);
+      const result: AnalysisResult = runAnalysis(analysisInput, { now: () => replayNow });
       return {
         recommendation: result.recommendation,
         tradePlan: result.tradePlan,
         confidence: result.confidence,
+        noTradeReasons: result.noTradeReasons,
+        watchLevels: result.forwardMarketPath?.watchLevels ?? [],
       };
     },
   });
