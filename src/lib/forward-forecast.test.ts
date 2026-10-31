@@ -158,4 +158,392 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.trader.objective).toBeUndefined();
     expect(forecast.trader.status).toBe("UNAVAILABLE");
   });
+  it("surfaces a fresh, exact-instrument provider intrinsic-value reference without changing the structural thesis", () => {
+    const timestamp = 1_800_000_000_000;
+    const result = baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      universalIntelligenceContext: {
+        instrument: "AAPL",
+        assetClass: "equity",
+        assembledAt: timestamp - 500,
+        equity: {
+          instrument: "AAPL",
+          instrumentType: "equity",
+          assembledAt: timestamp - 500,
+          valuation: {
+            provider: "Verified Valuation Provider",
+            observedAt: timestamp - 60_000,
+            freshness: "FRESH",
+            quality: "VERIFIED",
+            available: true,
+            availableDatasets: 1,
+            totalDatasets: 1,
+            intrinsicValue: 120,
+            relativeValuation: "undervalued",
+          },
+          evidence: [],
+          overallAvailability: "FULL",
+          overallQuality: "VERIFIED",
+          missingInformation: [],
+          analystSummary: "Verified equity valuation context.",
+        },
+        evidence: [{
+          source: "Verified Valuation Provider",
+          category: "VALUATION",
+          direction: "SUPPORTING",
+          strength: "MODERATE",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "EQUITY_VALUATION",
+          explanation: "Provider-supplied valuation evidence.",
+          providerAvailable: true,
+          assetClass: "equity",
+          instrument: "AAPL",
+        }],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "AAPL fundamentals available.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    });
+    const forecast = buildForwardForecast(result);
+    expect(forecast.investor.valuationStatus).toBe("AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toMatchObject({
+      kind: "PROVIDER_INTRINSIC_VALUE",
+      price: 120,
+      source: "Verified Valuation Provider",
+    });
+    expect(forecast.investor.fundamentalOutlook.valuationReference?.upsidePct).toBeCloseTo(20);
+    expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(1);
+    expect(forecast.investor.direction).toBe("bullish");
+    expect(result.recommendation).toBe("NO_TRADE");
+  });
+
+  it("rejects valuation and evidence belonging to a different instrument", () => {
+    const timestamp = 1_800_000_000_000;
+    const result = baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      fundamentalData: {
+        provider: "Alpha Vantage",
+        timestamp: timestamp - 60_000,
+        instrumentType: "stock",
+        symbol: "MSFT",
+        analystTargetPrice: 150,
+        available: true,
+      },
+      universalIntelligenceContext: {
+        instrument: "MSFT",
+        assetClass: "equity",
+        assembledAt: timestamp - 500,
+        evidence: [{
+          source: "Other instrument",
+          category: "VALUATION",
+          direction: "SUPPORTING",
+          strength: "STRONG",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "EQUITY_VALUATION",
+          explanation: "Evidence for MSFT only.",
+          providerAvailable: true,
+          assetClass: "equity",
+          instrument: "MSFT",
+        }],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "MSFT context.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    });
+    const forecast = buildForwardForecast(result);
+    expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+    expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(0);
+  });
+
+  it("suppresses stale valuation references and stale fundamental evidence", () => {
+    const timestamp = 1_800_000_000_000;
+    const result = baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      fundamentalData: {
+        provider: "Alpha Vantage",
+        timestamp: timestamp - 31 * 24 * 60 * 60 * 1000,
+        instrumentType: "stock",
+        symbol: "AAPL",
+        analystTargetPrice: 120,
+        available: true,
+      },
+      universalIntelligenceContext: {
+        instrument: "AAPL",
+        assetClass: "equity",
+        assembledAt: timestamp - 31 * 24 * 60 * 60 * 1000,
+        evidence: [{
+          source: "Stale provider",
+          category: "VALUATION",
+          direction: "SUPPORTING",
+          strength: "STRONG",
+          quality: "STALE",
+          freshness: "STALE",
+          dependencyGroup: "EQUITY_VALUATION",
+          explanation: "Stale evidence must not be used.",
+          providerAvailable: true,
+          assetClass: "equity",
+          instrument: "AAPL",
+        }],
+        overallAvailability: "PARTIAL",
+        overallQuality: "STALE",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Stale context.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    });
+    const forecast = buildForwardForecast(result);
+    expect(forecast.investor.valuationStatus).toBe("STALE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+    expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(0);
+  });
+
+  it("labels a provider analyst target as consensus rather than intrinsic value", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      fundamentalData: {
+        provider: "Alpha Vantage",
+        timestamp: timestamp - 60_000,
+        instrumentType: "stock",
+        symbol: "AAPL",
+        analystTargetPrice: 115,
+        available: true,
+      },
+    }));
+    expect(forecast.investor.valuationStatus).toBe("AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toMatchObject({
+      kind: "ANALYST_CONSENSUS_TARGET",
+      price: 115,
+      source: "Alpha Vantage",
+    });
+    expect(forecast.investor.fundamentalOutlook.valuationReference?.upsidePct).toBeCloseTo(15);
+    expect(forecast.investor.fundamentalOutlook.valuationReference?.description).toMatch(/not intrinsic value/i);
+  });
+
+  it("includes fresh instrument-matched crypto fundamentals but never turns them into a price target", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "ETH/USD",
+      instrumentType: "crypto",
+      timestamp,
+      priceSnapshot: { price: 3_000, timestamp: timestamp - 1_000, source: "test-provider" },
+      cryptoIntelligenceContext: {
+        instrument: "ETH/USD",
+        instrumentType: "crypto",
+        assembledAt: timestamp - 30_000,
+        derivatives: {
+          provider: "CoinGlass",
+          observedAt: timestamp - 60_000,
+          freshness: "FRESH",
+          quality: "VERIFIED",
+          available: true,
+          availableDatasets: 1,
+          totalDatasets: 1,
+        },
+        evidence: [{
+          source: "CoinGlass",
+          category: "DERIVATIVES",
+          direction: "NEUTRAL",
+          strength: "WEAK",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "DERIVATIVES_POSITIONING",
+          explanation: "Positioning is contextual.",
+          providerAvailable: true,
+        }],
+        overallAvailability: "PARTIAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Crypto intelligence available.",
+      } as AnalysisResult["cryptoIntelligenceContext"],
+    }));
+    expect(forecast.investor.fundamentalOutlook.evidenceStatus).toBe("VERIFIED");
+    expect(forecast.investor.fundamentalOutlook.evidence[0]).toMatchObject({
+      source: "CoinGlass",
+      category: "DERIVATIVES",
+      asOf: timestamp - 60_000,
+    });
+    expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
+  it("does not publish a valuation reference when primary market data quality blocks the forecast", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      dataQualityContext: { primaryData: { status: "STALE" } } as AnalysisResult["dataQualityContext"],
+      universalIntelligenceContext: {
+        instrument: "AAPL",
+        assetClass: "equity",
+        assembledAt: timestamp - 500,
+        equity: {
+          instrument: "AAPL",
+          instrumentType: "equity",
+          assembledAt: timestamp - 500,
+          valuation: {
+            provider: "Verified Valuation Provider",
+            observedAt: timestamp - 60_000,
+            freshness: "FRESH",
+            quality: "VERIFIED",
+            available: true,
+            availableDatasets: 1,
+            totalDatasets: 1,
+            intrinsicValue: 120,
+          },
+          evidence: [],
+          overallAvailability: "FULL",
+          overallQuality: "VERIFIED",
+          missingInformation: [],
+          analystSummary: "Verified equity valuation context.",
+        },
+        evidence: [],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "AAPL fundamentals available.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    }));
+    expect(forecast.investor.status).toBe("BLOCKED_DATA_QUALITY");
+    expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
+  it("respects provider-declared stale valuation even when its retrieval timestamp is recent", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      universalIntelligenceContext: {
+        instrument: "AAPL",
+        assetClass: "equity",
+        assembledAt: timestamp - 500,
+        equity: {
+          instrument: "AAPL",
+          instrumentType: "equity",
+          assembledAt: timestamp - 500,
+          valuation: {
+            provider: "Verified Valuation Provider",
+            observedAt: timestamp - 60_000,
+            freshness: "STALE",
+            quality: "STALE",
+            available: true,
+            availableDatasets: 1,
+            totalDatasets: 1,
+            intrinsicValue: 120,
+          },
+          evidence: [],
+          overallAvailability: "PARTIAL",
+          overallQuality: "STALE",
+          missingInformation: [],
+          analystSummary: "Provider marked valuation stale.",
+        },
+        evidence: [],
+        overallAvailability: "PARTIAL",
+        overallQuality: "STALE",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Stale equity valuation.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    }));
+    expect(forecast.investor.valuationStatus).toBe("STALE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
+  it("includes fresh instrument-matched FX rates and carry evidence with source timestamps", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "EUR/USD",
+      instrumentType: "forex",
+      timestamp,
+      priceSnapshot: { price: 1.08, timestamp: timestamp - 1_000, source: "test-provider" },
+      universalIntelligenceContext: {
+        instrument: "EUR/USD",
+        assetClass: "forex",
+        assembledAt: timestamp - 30_000,
+        forex: {
+          instrument: "EUR/USD",
+          instrumentType: "forex",
+          assembledAt: timestamp - 30_000,
+          rates: { provider: "Central Bank Data", observedAt: timestamp - 60_000, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, rateDifferential: 0.5 },
+          evidence: [],
+          overallAvailability: "PARTIAL",
+          overallQuality: "VERIFIED",
+          missingInformation: [],
+          analystSummary: "FX rate differential available.",
+        },
+        evidence: [{ source: "Central Bank Data", category: "RATES", direction: "SUPPORTING", strength: "MODERATE", quality: "VERIFIED", freshness: "FRESH", dependencyGroup: "MACRO_RATES", explanation: "Observed rate differential.", providerAvailable: true, assetClass: "forex", instrument: "EUR/USD" }],
+        overallAvailability: "PARTIAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "EUR/USD macro intelligence available.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    }));
+    expect(forecast.investor.fundamentalOutlook.evidence).toMatchObject([{ category: "RATES", source: "Central Bank Data", asOf: timestamp - 60_000 }]);
+    expect(forecast.investor.fundamentalOutlook.evidenceStatus).toBe("VERIFIED");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
+  it("includes fresh instrument-matched commodity inventory and supply-demand evidence", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "XAU/USD",
+      instrumentType: "commodity",
+      timestamp,
+      priceSnapshot: { price: 2_700, timestamp: timestamp - 1_000, source: "test-provider" },
+      universalIntelligenceContext: {
+        instrument: "XAU/USD",
+        assetClass: "commodity",
+        assembledAt: timestamp - 30_000,
+        commodity: {
+          instrument: "XAU/USD",
+          instrumentType: "commodity",
+          assembledAt: timestamp - 30_000,
+          inventory: { provider: "Commodity Data", observedAt: timestamp - 90_000, freshness: "FRESH", quality: "VERIFIED", available: true, availableDatasets: 1, totalDatasets: 1, currentInventory: 100 },
+          evidence: [],
+          overallAvailability: "PARTIAL",
+          overallQuality: "VERIFIED",
+          missingInformation: [],
+          analystSummary: "Commodity inventory available.",
+        },
+        evidence: [{ source: "Commodity Data", category: "INVENTORY", direction: "SUPPORTING", strength: "MODERATE", quality: "VERIFIED", freshness: "FRESH", dependencyGroup: "COMMODITY_INVENTORY", explanation: "Observed inventory data.", providerAvailable: true, assetClass: "commodity", instrument: "XAU/USD" }],
+        overallAvailability: "PARTIAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Gold fundamental intelligence available.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    }));
+    expect(forecast.investor.fundamentalOutlook.evidence).toMatchObject([{ category: "INVENTORY", source: "Commodity Data", asOf: timestamp - 90_000 }]);
+    expect(forecast.investor.fundamentalOutlook.evidenceStatus).toBe("VERIFIED");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
 });

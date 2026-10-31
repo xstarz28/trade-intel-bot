@@ -1545,7 +1545,32 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       {forecast.invalidation && <p>invalidation/downside: <span className="text-foreground tabular-nums">{forecast.invalidation.price}</span></p>}
                       {"rewardRisk" in forecast && forecast.rewardRisk !== undefined && <p>reward : risk: <span className="font-semibold text-primary">1 : {forecast.rewardRisk.toFixed(2)}</span></p>}
                       {"structuralUpsideDownsideRatio" in forecast && forecast.structuralUpsideDownsideRatio !== undefined && <p>structural upside/downside: <span className="font-semibold text-primary">{forecast.structuralUpsideDownsideRatio.toFixed(2)} : 1</span></p>}
-                      {"valuationStatus" in forecast && <p className="text-muted-foreground">valuation: unavailable · no fair-value target asserted</p>}
+                      {"valuationStatus" in forecast && (
+                        <p className="text-muted-foreground">
+                          valuation reference: {forecast.valuationStatus.toLowerCase().replace(/_/g, " ")}
+                        </p>
+                      )}
+                      {"fundamentalOutlook" in forecast && (
+                        <>
+                          {forecast.fundamentalOutlook.valuationReference && (
+                            <p>
+                              {forecast.fundamentalOutlook.valuationReference.kind === "PROVIDER_INTRINSIC_VALUE" ? "provider intrinsic-value estimate" : "analyst consensus target"}:{" "}
+                              <span className="text-foreground tabular-nums">{formatPrice(forecast.fundamentalOutlook.valuationReference.price, result.instrumentType, result.instrument)}</span>
+                              {" "}· {forecast.fundamentalOutlook.valuationReference.upsidePct >= 0 ? "+" : ""}{forecast.fundamentalOutlook.valuationReference.upsidePct.toFixed(1)}%
+                              {" "}· {forecast.fundamentalOutlook.valuationReference.source}
+                              <span className="text-muted-foreground"> · as of {new Date(forecast.fundamentalOutlook.valuationReference.asOf).toLocaleString()}</span>
+                            </p>
+                          )}
+                          <p className="text-muted-foreground">
+                            asset-class intelligence evidence: {forecast.fundamentalOutlook.evidenceStatus.toLowerCase()} · {forecast.fundamentalOutlook.evidence.length} eligible source items
+                          </p>
+                          {forecast.fundamentalOutlook.evidence.map((item, i) => (
+                            <p key={i} className="text-sky-400/80">
+                              • {item.source} · {item.category} · {item.direction.toLowerCase()} · {item.freshness.toLowerCase()} · {localizeAnalysisText(item.explanation, locale)}
+                            </p>
+                          ))}
+                        </>
+                      )}
                       {forecast.dataAsOf && <p className="text-muted-foreground/70">source data as of: {new Date(forecast.dataAsOf).toLocaleString()}</p>}
                       {forecast.alternateScenarios?.map((scenario, i) => (
                         <p key={i} className="text-sky-400/80">
