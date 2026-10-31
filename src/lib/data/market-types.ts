@@ -256,7 +256,42 @@ export interface CrossAssetContext {
   provider?: string;
 }
 
+export interface AdvancedTechnicalIndicators {
+  adx14?: {
+    value: number;
+    plusDi: number;
+    minusDi: number;
+    strength: "WEAK" | "DEVELOPING" | "STRONG";
+  };
+  bollinger20?: {
+    upper: number;
+    middle: number;
+    lower: number;
+    bandwidthPct: number;
+    percentB?: number;
+  };
+  stochastic14?: {
+    percentK: number;
+    percentD: number;
+  };
+  donchian20?: {
+    upper: number;
+    lower: number;
+    middle: number;
+    breakout: "ABOVE" | "BELOW" | "INSIDE";
+  };
+  volumeFlow?: {
+    obv: number;
+    obvChange20: number;
+    obvDirection: "RISING" | "FALLING" | "FLAT";
+    mfi14?: number;
+  };
+}
+
 export interface TechnicalData {
+  /** Complementary classic indicators; informational only, never a decision override. */
+  advancedIndicators?: AdvancedTechnicalIndicators;
+
   // Moving averages
   sma50?: number;
   sma100?: number;

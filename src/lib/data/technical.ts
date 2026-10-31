@@ -8,6 +8,7 @@
 
 import type { OhlcvCandle, TechnicalData } from "./market-types";
 import { analyzeClassicPriceAction, type ClassicPriceActionContext } from "./classic-price-action";
+import { calculateAdvancedTechnicalIndicators } from "./advanced-technical";
 
 // ── Moving Averages ───────────────────────────────────────────────
 
@@ -430,6 +431,7 @@ export function calculateTechnical(
   const latestCandle = candles[candles.length - 1];
   const dailyRange = latestCandle.high - latestCandle.low;
   const classicContext = analyzeClassicPriceAction(candles, htfLabel);
+  const advancedIndicators = calculateAdvancedTechnicalIndicators(candles);
 
   return ({
     sma50: sma50Val,
@@ -453,6 +455,7 @@ export function calculateTechnical(
     atr14,
     dailyRange,
     dataPoints: candles.length,
+    ...(advancedIndicators ? { advancedIndicators } : {}),
     htfContext,
     classicContext,
   } as TechnicalData & { classicContext: ClassicPriceActionContext });

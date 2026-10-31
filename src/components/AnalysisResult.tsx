@@ -503,6 +503,61 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                 </div>
               )}
             </div>
+            {tech.advancedIndicators && (
+              <div className="mt-3 pt-2 border-t border-border/30">
+                <p className="text-[9px] font-mono font-semibold text-muted-foreground/60 mb-2">
+                  ADDITIONAL INDICATORS · INFORMATIONAL ONLY · NOT INDEPENDENT TRADE SIGNALS
+                </p>
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                  {tech.advancedIndicators.adx14 && (
+                    <div className="text-center">
+                      <p className="text-[9px] font-mono text-muted-foreground">ADX / DMI(14)</p>
+                      <p className="text-xs font-bold font-mono tabular-nums">{tech.advancedIndicators.adx14.value.toFixed(1)}</p>
+                      <p className="text-[8px] font-mono text-muted-foreground">
+                        +DI {tech.advancedIndicators.adx14.plusDi.toFixed(1)} / −DI {tech.advancedIndicators.adx14.minusDi.toFixed(1)}
+                      </p>
+                      <p className="text-[8px] font-mono text-muted-foreground">{tech.advancedIndicators.adx14.strength}</p>
+                    </div>
+                  )}
+                  {tech.advancedIndicators.bollinger20 && (
+                    <div className="text-center">
+                      <p className="text-[9px] font-mono text-muted-foreground">BB(20, 2σ)</p>
+                      <p className="text-xs font-bold font-mono tabular-nums">{tech.advancedIndicators.bollinger20.bandwidthPct.toFixed(2)}% width</p>
+                      <p className="text-[8px] font-mono text-muted-foreground">
+                        %B {tech.advancedIndicators.bollinger20.percentB?.toFixed(2) ?? "n/a"}
+                      </p>
+                    </div>
+                  )}
+                  {tech.advancedIndicators.stochastic14 && (
+                    <div className="text-center">
+                      <p className="text-[9px] font-mono text-muted-foreground">Stochastic(14,3,3)</p>
+                      <p className="text-xs font-bold font-mono tabular-nums">
+                        {tech.advancedIndicators.stochastic14.percentK.toFixed(1)} / {tech.advancedIndicators.stochastic14.percentD.toFixed(1)}
+                      </p>
+                      <p className="text-[8px] font-mono text-muted-foreground">%K / %D</p>
+                    </div>
+                  )}
+                  {tech.advancedIndicators.donchian20 && (
+                    <div className="text-center">
+                      <p className="text-[9px] font-mono text-muted-foreground">Donchian(20)</p>
+                      <p className="text-xs font-bold font-mono">{tech.advancedIndicators.donchian20.breakout}</p>
+                      <p className="text-[8px] font-mono text-muted-foreground">
+                        {formatPrice(tech.advancedIndicators.donchian20.lower, result.instrumentType, result.instrument)} – {formatPrice(tech.advancedIndicators.donchian20.upper, result.instrumentType, result.instrument)}
+                      </p>
+                    </div>
+                  )}
+                  {tech.advancedIndicators.volumeFlow && (
+                    <div className="text-center">
+                      <p className="text-[9px] font-mono text-muted-foreground">OBV / MFI(14)</p>
+                      <p className="text-xs font-bold font-mono">{tech.advancedIndicators.volumeFlow.obvDirection}</p>
+                      <p className="text-[8px] font-mono text-muted-foreground">
+                        MFI {tech.advancedIndicators.volumeFlow.mfi14?.toFixed(1) ?? "unavailable"}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="flex items-center gap-3 mt-2 pt-2 border-t border-border/30">
               {tech.structure !== "unknown" && (
                 <span className={cn(
