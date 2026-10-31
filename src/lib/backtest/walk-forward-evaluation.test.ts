@@ -321,7 +321,7 @@ describe("evaluateMultiAssetWalkForward", () => {
       providerInstrumentId: "AAPL",
       instrumentType: "stock",
       timestampAlignment: "PROVIDER_SESSION",
-      gaps: 48,
+      gaps: 1,
     });
     expect(result.folds).toHaveLength(1);
     expect(result.limitations.some((item) => item.includes("session breaks"))).toBe(true);
