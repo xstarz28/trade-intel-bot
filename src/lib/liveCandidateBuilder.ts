@@ -485,10 +485,28 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     : undefined;
   const tech = source.technicalData ?? candleDerivedTechnical;
   const ar = source.analysisResult;
-  // For forward levels, accept precomputed technical structure only from a
-  // same-instrument, same-timeframe analysis with the exact same observed
-  // price snapshot. Unbound convenience technicalData is not sufficient proof.
-  const scenarioTechnical = ar?.technicalData ?? candleDerivedTechnical;
+  // Reuse precomputed structure for forward levels only when its complete
+  // observation identity matches this candidate. Otherwise derive levels from
+  // this candidate's own OHLCV; never borrow another symbol/timeframe/snapshot.
+  const normalizeInstrumentId = (value: string | undefined) =>
+    value?.trim().toUpperCase().replace(/[^A-Z0-9]/g, "") ?? "";
+  const observedPrice = source.marketData?.price?.price ?? orderedCandles?.[orderedCandles.length - 1]?.close;
+  const observedTimestamp = source.marketData?.price?.timestamp ?? orderedCandles?.[orderedCandles.length - 1]?.timestamp;
+  const analysisPrice = ar?.priceSnapshot?.price;
+  const priceTolerance = typeof observedPrice === "number" && Number.isFinite(observedPrice)
+    ? Math.max(Math.abs(observedPrice) * 1e-10, 1e-10)
+    : 0;
+  const sameAnalysisSnapshot = Boolean(
+    ar &&
+    normalizeInstrumentId(ar.instrument) === normalizeInstrumentId(source.instrument) &&
+    ar.timeframe === source.marketData?.timeframe &&
+    (!ar.instrumentType || !source.marketData?.instrumentType || ar.instrumentType === source.marketData.instrumentType) &&
+    typeof analysisPrice === "number" && Number.isFinite(analysisPrice) &&
+    typeof observedPrice === "number" && Number.isFinite(observedPrice) &&
+    Math.abs(analysisPrice - observedPrice) <= priceTolerance &&
+    typeof observedTimestamp === "number" && ar.priceSnapshot?.timestamp === observedTimestamp
+  );
+  const scenarioTechnical = sameAnalysisSnapshot ? ar?.technicalData ?? candleDerivedTechnical : candleDerivedTechnical;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
 
   // Freshness must describe when the market observation occurred, not when we fetched it.
