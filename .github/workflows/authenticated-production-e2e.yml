@@ -1,0 +1,77 @@
+name: Authenticated production browser acceptance
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: authenticated-production-browser-acceptance
+  cancel-in-progress: false
+
+jobs:
+  authenticated-e2e:
+    name: Restore an authorized session and verify production account surfaces
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 25
+    env:
+      XSTARZ_SMOKE_URL: https://xstarzanalysis.vercel.app
+      XSTARZ_SMOKE_TIMEOUT_MS: "120000"
+      XSTARZ_SMOKE_STORAGE_STATE: ${{ runner.temp }}/xstarz-auth-storage-state.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Require authorized Playwright storage state
+        env:
+          STORAGE_STATE_B64: ${{ secrets.XSTARZ_SMOKE_STORAGE_STATE_B64 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${STORAGE_STATE_B64:-}" ]; then
+            echo "::error::Missing production environment secret XSTARZ_SMOKE_STORAGE_STATE_B64. Add a Playwright storage-state JSON for an authorized test account; never commit it to the repository."
+            exit 1
+          fi
+          printf '%s' "$STORAGE_STATE_B64" | base64 --decode > "$XSTARZ_SMOKE_STORAGE_STATE"
+          chmod 600 "$XSTARZ_SMOKE_STORAGE_STATE"
+          node --input-type=module - "$XSTARZ_SMOKE_STORAGE_STATE" <<'NODE'
+          import { readFileSync } from "node:fs";
+          const state = JSON.parse(readFileSync(process.argv[2], "utf8"));
+          if (!Array.isArray(state.cookies) || !Array.isArray(state.origins)) {
+            throw new Error("Storage state must contain Playwright cookies and origins arrays.");
+          }
+          if (state.cookies.length === 0 && state.origins.length === 0) {
+            throw new Error("Storage state is empty; an authenticated session is required.");
+          }
+          process.stdout.write("Authorized browser storage-state structure validated; values are not logged.\\n");
+          NODE
+
+      - name: Install repository and browser dependencies
+        run: |
+          npm install --legacy-peer-deps --no-audit --no-fund
+          npm install --no-save --legacy-peer-deps playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Verify authenticated production session and full runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          node scripts/production-runtime-smoke.mjs | tee artifacts/authenticated-production-runtime-evidence.json
+
+      - name: Upload sanitized browser acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authenticated-production-browser-evidence
+          path: artifacts/authenticated-production-runtime-evidence.json
+          if-no-files-found: warn
+          retention-days: 30
