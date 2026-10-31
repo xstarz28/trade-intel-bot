@@ -367,7 +367,7 @@ describe("Phase 46 — forward forecast contract", () => {
           strength: "WEAK",
           quality: "VERIFIED",
           freshness: "FRESH",
-          dependencyGroup: "DERIVATIVES",
+          dependencyGroup: "DERIVATIVES_POSITIONING",
           explanation: "Positioning is contextual.",
           providerAvailable: true,
         }],
