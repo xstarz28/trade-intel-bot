@@ -23,9 +23,11 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
       { symbol: "XAG/USD", instrumentType: "commodity" as const },
     ];
     const intervals = ["1h", "1d"] as const;
+    // Use most of the provider's usable history so the OOS sample can
+    // reach meaningful event counts. The parameters are fixed before replay.
     const evaluationConfig = {
-      "1h": { trainingBars: 300, testBars: 80, maxFolds: 10, minimumHistory: 300, maxHoldingBars: 20 },
-      "1d": { trainingBars: 180, testBars: 40, maxFolds: 7, minimumHistory: 180, maxHoldingBars: 20 },
+      "1h": { trainingBars: 300, testBars: 80, maxFolds: 17, minimumHistory: 300, maxHoldingBars: 20 },
+      "1d": { trainingBars: 600, testBars: 100, maxFolds: 15, minimumHistory: 600, maxHoldingBars: 20 },
     } as const;
     const datasets: HistoricalEvaluationDataset[] = [];
     const sourceSnapshots = [];
@@ -33,7 +35,7 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
     for (const instrument of instruments) {
       for (const interval of intervals) {
         const intervalMs = interval === "1h" ? 60 * 60_000 : 24 * 60 * 60_000;
-        const lookbackMs = interval === "1h" ? 365 * 24 * 60 * 60_000 : 700 * 24 * 60 * 60_000;
+        const lookbackMs = interval === "1h" ? 365 * 24 * 60 * 60_000 : 3_650 * 24 * 60 * 60_000;
         const endTime = Math.floor(now / intervalMs) * intervalMs - 2 * intervalMs;
         const startTime = endTime - lookbackMs;
         const source = await fetchHistoricalYahooFinanceOhlcv({
@@ -149,7 +151,7 @@ describe("real multi-asset Yahoo Finance historical walk-forward evaluation", ()
       "",
       `Generated: ${report.generatedAtIso}`,
       "",
-      `Assets: ${instruments.map((item) => `${item.symbol} (${item.instrumentType})`).join(", ")}; H1 and D1.`,
+      `Assets: ${instruments.map((item) => `${item.symbol} (${item.instrumentType})`).join(", ")}; H1 (365-day history) and D1 (10-year history).`,
       "",
       "## Provider coverage",
       "",
