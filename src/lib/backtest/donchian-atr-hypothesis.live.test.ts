@@ -226,17 +226,21 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
       );
       expect(observations.length).toBeGreaterThanOrEqual(30);
 
-      const costSensitivity = COST_SCENARIOS.map((costBpsPerSide) => ({
-        costBpsPerSide,
-        report: evaluateForwardForecastOutcomes(observations, dataset.candles, {
-          costBpsPerSide,
-          minimumSampleCount: 30,
-          enforceNonOverlapping: true,
-        }),
-      }));
+      const signalObservations = observations.filter((observation) => observation.direction !== "neutral");
+      const costSensitivity = signalObservations.length > 0
+        ? COST_SCENARIOS.map((costBpsPerSide) => ({
+            costBpsPerSide,
+            report: evaluateForwardForecastOutcomes(signalObservations, dataset.candles, {
+              costBpsPerSide,
+              minimumSampleCount: 30,
+              enforceNonOverlapping: true,
+            }),
+          }))
+        : [];
       for (const scenario of costSensitivity) {
-        expect(scenario.report.evaluatedCount).toBeGreaterThanOrEqual(30);
+        expect(scenario.report.evaluatedCount).toBe(signalObservations.length);
         expect(scenario.report.excludedReasons.overlapping_horizon ?? 0).toBe(0);
+        if (signalObservations.length < 30) expect(scenario.report.status).toBe("INSUFFICIENT_SAMPLE");
       }
 
       reports.push({
@@ -251,9 +255,11 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
         oosEnd: dataset.candles[dataset.candles.length - 1]?.timestamp,
         hypothesis: "Donchian 55-bar breakout with EMA50/EMA200 trend filter; stop 2 × ATR20; objective 3 × ATR20; next-open entry; 20 D1 / 24 H1 bar horizon.",
         baseline: "Prior 100 completed bars: close-to-close momentum sign.",
-        observationCount: observations.length,
+        opportunityCount: observations.length,
         signalCount,
+        signalCoveragePct: observations.length ? signalCount / observations.length * 100 : 0,
         nominalRiskReward: 1.5,
+        evaluationPopulation: "Signal-only: neutral/no-trade windows are excluded from directional accuracy and baseline comparison; coverage is reported separately.",
         costSensitivity,
       });
     }
@@ -300,15 +306,16 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
         const entry = item as {
           instrument: string;
           timeframe: string;
-          observationCount: number;
+          opportunityCount: number;
           signalCount: number;
+          signalCoveragePct: number;
           costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
         };
         const lines = [
           `## ${entry.instrument} · ${entry.timeframe}`,
-          `Observations: ${entry.observationCount} · directional signals: ${entry.signalCount}`,
+          `Opportunities: ${entry.opportunityCount} · active signals: ${entry.signalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}%`,
           "",
-          "| Cost bps/side | N | Accuracy | Baseline | Lift | Lift 95% CI | Expectancy R | Exp. 95% CI | PF | Status |",
+          "| Cost bps/side | Signal N | Accuracy | Baseline | Lift | Lift 95% CI | Expectancy R | Exp. 95% CI | PF | Status |",
           "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
         ];
         for (const scenario of entry.costSensitivity) {
