@@ -388,4 +388,49 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
   });
 
+  it("does not publish a valuation reference when primary market data quality blocks the forecast", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      instrument: "AAPL",
+      instrumentType: "stock",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      dataQualityContext: { primaryData: { status: "STALE" } } as AnalysisResult["dataQualityContext"],
+      universalIntelligenceContext: {
+        instrument: "AAPL",
+        assetClass: "equity",
+        assembledAt: timestamp - 500,
+        equity: {
+          instrument: "AAPL",
+          instrumentType: "equity",
+          assembledAt: timestamp - 500,
+          valuation: {
+            provider: "Verified Valuation Provider",
+            observedAt: timestamp - 60_000,
+            freshness: "FRESH",
+            quality: "VERIFIED",
+            available: true,
+            availableDatasets: 1,
+            totalDatasets: 1,
+            intrinsicValue: 120,
+          },
+          evidence: [],
+          overallAvailability: "FULL",
+          overallQuality: "VERIFIED",
+          missingInformation: [],
+          analystSummary: "Verified equity valuation context.",
+        },
+        evidence: [],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "AAPL fundamentals available.",
+      } as AnalysisResult["universalIntelligenceContext"],
+    }));
+    expect(forecast.investor.status).toBe("BLOCKED_DATA_QUALITY");
+    expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
+    expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
+  });
+
 });
