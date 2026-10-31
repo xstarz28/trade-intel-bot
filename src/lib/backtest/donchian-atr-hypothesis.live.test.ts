@@ -13,9 +13,11 @@ import {
 const enabled = process.env.RUN_REAL_DONCHIAN_ATR_EVALUATION === "1";
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
-const REQUESTED_BARS = 1_800;
+const REQUESTED_BARS_BY_INTERVAL = { "1h": 5_000, "1d": 2_500 } as const;
+const MINIMUM_BARS_BY_INTERVAL = { "1h": 4_500, "1d": 1_800 } as const;
 const COST_SCENARIOS = [15, 20, 25] as const;
-const SYMBOLS = ["LTCUSDT", "DOGEUSDT", "DOTUSDT"] as const;
+// Excluded from the earlier BTC/ETH/SOL baseline and BNB/XRP/ADA EMA replay.
+const SYMBOLS = ["LTCUSDT", "DOGEUSDT", "DOTUSDT", "LINKUSDT", "AVAXUSDT", "BCHUSDT", "TRXUSDT"] as const;
 
 function ema(values: number[], period: number): number {
   const multiplier = 2 / (period + 1);
@@ -173,7 +175,8 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
       for (const interval of ["1h", "1d"] as const) {
         const intervalMs = interval === "1d" ? DAY : HOUR;
         const endTime = Math.floor(Date.now() / intervalMs) * intervalMs - intervalMs;
-        const startTime = endTime - (REQUESTED_BARS - 1) * intervalMs;
+        const requestedBars = REQUESTED_BARS_BY_INTERVAL[interval];
+        const startTime = endTime - (requestedBars - 1) * intervalMs;
         datasets.push(await fetchHistoricalBinanceSpotOhlcv({
           symbol,
           interval,
@@ -216,7 +219,8 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
 
     const reports: Array<Record<string, unknown>> = [];
     for (const dataset of datasets) {
-      expect(dataset.candleCount).toBeGreaterThanOrEqual(1_500);
+      const minimumBars = MINIMUM_BARS_BY_INTERVAL[dataset.timeframe];
+      expect(dataset.candleCount).toBeGreaterThanOrEqual(minimumBars);
       expect(dataset.gaps).toHaveLength(0);
       const timeframe = dataset.timeframe === "1d" ? "D1" : "H1";
       const warmupBars = timeframe === "D1" ? 600 : 300;
@@ -276,7 +280,8 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
       generatedAtIso: new Date().toISOString(),
       provider: "Binance Spot public OHLCV",
       assets: [...SYMBOLS],
-      requestedBars: REQUESTED_BARS,
+      requestedBarsByInterval: REQUESTED_BARS_BY_INTERVAL,
+      minimumBarsByInterval: MINIMUM_BARS_BY_INTERVAL,
       hypothesisVersion: "donchian55-ema50-ema200-atr20-v1",
       hypothesisRegisteredAt: "2026-10-31",
       noParameterOptimization: true,
@@ -339,7 +344,7 @@ describe("real Donchian + ATR forward forecast OOS evaluation", () => {
     ].join("\n");
     await writeFile(join(artifactDir, "donchian-atr-oos-report.md"), markdown, "utf8");
 
-    expect(reports).toHaveLength(6);
+    expect(reports).toHaveLength(SYMBOLS.length * 2);
     expect(sourceSnapshots.every((snapshot) => snapshot.gapCount === 0 && snapshot.sha256.length === 64)).toBe(true);
   }, 900_000);
 });
