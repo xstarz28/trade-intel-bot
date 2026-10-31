@@ -14,14 +14,16 @@ import { calculateAdvancedTechnicalIndicators } from "./advanced-technical";
 
 /** Simple Moving Average of close prices. */
 export function sma(closes: number[], period: number): number | undefined {
-  if (closes.length < period) return undefined;
+  if (!Number.isInteger(period) || period <= 0 || closes.length < period) return undefined;
+  if (closes.some((value) => !Number.isFinite(value))) return undefined;
   const slice = closes.slice(closes.length - period);
   return slice.reduce((a, b) => a + b, 0) / period;
 }
 
 /** Exponential Moving Average of close prices. */
 export function ema(closes: number[], period: number): number[] {
-  if (closes.length === 0) return [];
+  if (!Number.isInteger(period) || period <= 0 || closes.length === 0) return [];
+  if (closes.some((value) => !Number.isFinite(value))) return [];
   const k = 2 / (period + 1);
   const result: number[] = [closes[0]];
   for (let i = 1; i < closes.length; i++) {
@@ -37,7 +39,8 @@ export function ema(closes: number[], period: number): number[] {
  * Returns the latest RSI value (0–100).
  */
 export function rsi(closes: number[], period = 14): number | undefined {
-  if (closes.length < period + 1) return undefined;
+  if (!Number.isInteger(period) || period <= 0 || closes.length < period + 1) return undefined;
+  if (closes.some((value) => !Number.isFinite(value))) return undefined;
 
   let gainSum = 0;
   let lossSum = 0;
@@ -152,6 +155,9 @@ export function detectSwings(
 ): { highs: number[]; lows: number[] } {
   const highs: number[] = [];
   const lows: number[] = [];
+  if (!Number.isInteger(lookback) || lookback < 1 || candles.length < lookback * 2 + 1) {
+    return { highs, lows };
+  }
 
   for (let i = lookback; i < candles.length - lookback; i++) {
     const current = candles[i];
@@ -297,7 +303,7 @@ export function fibonacciLevels(
 
 /** Average True Range over `period` candles. */
 export function atr(candles: OhlcvCandle[], period = 14): number | undefined {
-  if (candles.length < period + 1) return undefined;
+  if (!Number.isInteger(period) || period <= 0 || candles.length < period + 1) return undefined;
 
   const trueRanges: number[] = [];
   for (let i = 1; i < candles.length; i++) {
