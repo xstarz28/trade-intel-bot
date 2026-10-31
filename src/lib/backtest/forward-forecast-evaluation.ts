@@ -62,8 +62,8 @@ export interface ForwardForecastOutcome {
   event: ForecastEvent;
   barsHeld: number;
   timeToEventBars?: number;
-  grossReturnPct: number;
-  netReturnPct: number;
+  grossReturnPct?: number;
+  netReturnPct?: number;
   netR?: number;
   mfeR?: number;
   maeR?: number;
@@ -155,7 +155,7 @@ function evaluateR(
   const objective = positiveLevel(observation.objectivePrice);
   const invalidation = positiveLevel(observation.invalidationPrice);
   const long = observation.direction === "bullish";
-  const validGeometry = objective !== undefined && invalidation !== undefined &&
+  const validGeometry = observation.direction !== "neutral" && objective !== undefined && invalidation !== undefined &&
     (long ? objective > entryPrice && invalidation < entryPrice : objective < entryPrice && invalidation > entryPrice);
   const side = long ? 1 : -1;
   let event: ForecastEvent = "DIRECTION_ONLY";
@@ -176,19 +176,21 @@ function evaluateR(
       const candle = futureCandles[index];
       const favorable = long ? candle.high - entryPrice : entryPrice - candle.low;
       const adverse = long ? entryPrice - candle.low : candle.high - entryPrice;
-      maxFavorable = Math.max(maxFavorable, favorable);
-      maxAdverse = Math.max(maxAdverse, adverse);
       const stopHit = long ? candle.low <= invalidation : candle.high >= invalidation;
       const targetHit = long ? candle.high >= objective : candle.low <= objective;
       // Conservative path: if both levels print in one candle, invalidation wins.
       if (stopHit) {
         const adverseGap = long ? candle.open < invalidation : candle.open > invalidation;
         exitPrice = adverseGap ? candle.open : invalidation;
+        maxAdverse = Math.max(maxAdverse, Math.abs(entryPrice - exitPrice));
+        // Intrabar ordering is unknown on a stop candle; do not credit its favorable extreme.
         event = "INVALIDATION";
         barsHeld = index + 1;
         timeToEventBars = barsHeld;
         break;
       }
+      maxFavorable = Math.max(maxFavorable, favorable);
+      maxAdverse = Math.max(maxAdverse, adverse);
       if (targetHit) {
         exitPrice = objective;
         event = "TARGET";
@@ -205,9 +207,9 @@ function evaluateR(
     return { event, exitPrice, barsHeld, timeToEventBars, grossReturnPct, netReturnPct, netR, mfeR, maeR };
   }
 
-  const grossReturnPct = side * (exitPrice / entryPrice - 1) * 100;
-  const netReturnPct = grossReturnPct - (2 * costBpsPerSide) / 100;
-  return { event, exitPrice, barsHeld, grossReturnPct, netReturnPct };
+  const grossReturnPct = observation.direction === "neutral" ? undefined : side * (exitPrice / entryPrice - 1) * 100;
+  const netReturnPct = grossReturnPct === undefined ? undefined : grossReturnPct - (2 * costBpsPerSide) / 100;
+  return { event, exitPrice, barsHeld, ...(grossReturnPct === undefined ? {} : { grossReturnPct }), ...(netReturnPct === undefined ? {} : { netReturnPct }) };
 }
 
 function recordExcluded(reasons: Record<string, number>, reason: string): void {
@@ -300,8 +302,8 @@ export function evaluateForwardForecastOutcomes(
     const observation = item.observation;
     const entryPrice = item.futureCandles[0].open;
     const exit = evaluateR(observation, item.futureCandles, entryPrice, options.costBpsPerSide);
-    const grossReturnBps = (exit.exitPrice / entryPrice - 1) * 10_000 * (observation.direction === "bullish" ? 1 : observation.direction === "bearish" ? -1 : 0);
-    const actualDirection = classifyDirection(grossReturnBps, neutralBandBps);
+    const grossMarketReturnBps = (exit.exitPrice / entryPrice - 1) * 10_000;
+    const actualDirection = classifyDirection(grossMarketReturnBps, neutralBandBps);
     outcomes.push({
       id: observation.id,
       dataAsOf: observation.dataAsOf,
@@ -350,6 +352,7 @@ export function evaluateForwardForecastOutcomes(
   let status: ForecastEvaluationStatus = "INSUFFICIENT_SAMPLE";
   if (outcomes.length >= minimumSampleCount) {
     if ((accuracyLift ?? 0) <= 0) status = "BELOW_BASELINE";
+    else if (rOutcomes.length < minimumSampleCount) status = "INCONCLUSIVE";
     else if (expectancyR === null || expectancyR <= 0 || netLosses <= 0 || netWins / netLosses <= 1) status = "NEGATIVE_NET_EXPECTANCY";
     else if (interval === null || baselineAccuracy === null || interval.lowerPct <= baselineAccuracy) status = "INCONCLUSIVE";
     else status = "POSITIVE_OUTCOME_EVIDENCE";
