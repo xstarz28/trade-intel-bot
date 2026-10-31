@@ -1,0 +1,41 @@
+name: Cross-asset Yahoo historical walk-forward report
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/lib/backtest/**"
+      - ".github/workflows/multiasset-historical-yahoo-report.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: multiasset-yahoo-walk-forward-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  evaluate:
+    name: Fetch FX, equity, and commodity history and evaluate OOS folds
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Run real cross-asset historical evaluation
+        env:
+          RUN_REAL_MULTI_ASSET_YAHOO_EVALUATION: "1"
+        run: npx vitest run src/lib/backtest/historical-yahoo.live.test.ts --testTimeout=900000
+      - name: Upload auditable cross-asset report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trade-intel-multiasset-yahoo-historical-report
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30
