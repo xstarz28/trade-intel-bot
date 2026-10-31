@@ -248,7 +248,7 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
 function investorForecast(result: AnalysisResult, snapshot: { price: number; timestamp: number } | undefined): InvestorForwardForecast {
   const horizon = investorHorizon(result, snapshot?.timestamp ?? result.timestamp);
   const blocked = dataStatus(result);
-  const structure = result.technicalData?.htfContext ?? result.technicalData?.smc?.internalExternal.external;
+  const structure = result.technicalData?.htfContext ?? result.technicalData?.smc?.internalExternal?.external;
   const direction: ForecastDirection = result.htfAlignment?.htfStructure === "HH/HL" || structure?.structure === "HH/HL"
     ? "bullish"
     : result.htfAlignment?.htfStructure === "LH/LL" || structure?.structure === "LH/LL"
