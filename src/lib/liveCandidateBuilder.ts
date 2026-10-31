@@ -476,16 +476,19 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
   const orderedHigherTimeframeCandles = source.marketData?.higherTimeframeCandles
     ?.slice()
     .sort((a, b) => a.timestamp - b.timestamp);
-  const tech = source.technicalData ?? (
-    orderedCandles && orderedCandles.length > 0
-      ? calculateTechnical(
-          orderedCandles,
-          orderedHigherTimeframeCandles,
-          source.marketData?.higherTimeframe ?? "HTF",
-        )
-      : undefined
-  );
+  const candleDerivedTechnical = orderedCandles && orderedCandles.length > 0
+    ? calculateTechnical(
+        orderedCandles,
+        orderedHigherTimeframeCandles,
+        source.marketData?.higherTimeframe ?? "HTF",
+      )
+    : undefined;
+  const tech = source.technicalData ?? candleDerivedTechnical;
   const ar = source.analysisResult;
+  // For forward levels, accept precomputed technical structure only from a
+  // same-instrument, same-timeframe analysis with the exact same observed
+  // price snapshot. Unbound convenience technicalData is not sufficient proof.
+  const scenarioTechnical = ar?.technicalData ?? candleDerivedTechnical;
   const price = source.marketData?.price?.price ?? ar?.priceSnapshot?.price ?? 0;
 
   // Freshness must describe when the market observation occurred, not when we fetched it.
@@ -521,7 +524,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
   );
   const conditionalScenarios = buildConditionalEntryScenariosFromMarketData({
     candles: orderedCandles,
-    technicalData: tech,
+    technicalData: scenarioTechnical,
     primaryQuality: candleFreshness,
   });
 
