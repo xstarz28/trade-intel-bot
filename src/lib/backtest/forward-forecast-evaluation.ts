@@ -252,10 +252,16 @@ export function evaluateForwardForecastOutcomes(
     if (!item.id.trim() || ids.has(item.id)) throw new Error("Forecast observation IDs must be non-empty and unique.");
     ids.add(item.id);
     if (item.instrument !== instrument) throw new Error("Evaluate one instrument per report.");
-    if (item.baselineTrainingEndTime >= item.dataAsOf) {
+    if (!["bullish", "bearish", "neutral"].includes(item.direction) ||
+        !["bullish", "bearish", "neutral"].includes(item.baselineDirection)) {
+      throw new Error(`Invalid forecast or baseline direction for ${item.id}.`);
+    }
+    if (!Number.isSafeInteger(item.baselineTrainingEndTime) || item.baselineTrainingEndTime >= item.dataAsOf) {
       throw new Error(`Baseline leakage detected for observation ${item.id}: training must end before forecast dataAsOf.`);
     }
-    if (!item.baselineMethod.trim()) throw new Error(`A documented prior-only baseline method is required for ${item.id}.`);
+    if (typeof item.baselineMethod !== "string" || !item.baselineMethod.trim()) {
+      throw new Error(`A documented prior-only baseline method is required for ${item.id}.`);
+    }
     if (!Number.isSafeInteger(item.dataAsOf) || !Number.isSafeInteger(item.horizonEndsAt) ||
         item.horizonEndsAt <= item.dataAsOf || (item.horizonEndsAt - item.dataAsOf) % intervalMs !== 0) {
       throw new Error(`Invalid or misaligned forecast horizon for ${item.id}.`);
@@ -353,7 +359,8 @@ export function evaluateForwardForecastOutcomes(
   if (outcomes.length >= minimumSampleCount) {
     if ((accuracyLift ?? 0) <= 0) status = "BELOW_BASELINE";
     else if (rOutcomes.length < minimumSampleCount) status = "INCONCLUSIVE";
-    else if (expectancyR === null || expectancyR <= 0 || netLosses <= 0 || netWins / netLosses <= 1) status = "NEGATIVE_NET_EXPECTANCY";
+    else if (expectancyR === null || expectancyR <= 0) status = "NEGATIVE_NET_EXPECTANCY";
+    else if (netLosses <= 0 || netWins / netLosses <= 1) status = "INCONCLUSIVE";
     else if (interval === null || baselineAccuracy === null || interval.lowerPct <= baselineAccuracy) status = "INCONCLUSIVE";
     else status = "POSITIVE_OUTCOME_EVIDENCE";
   }
