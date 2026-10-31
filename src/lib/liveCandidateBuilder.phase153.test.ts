@@ -759,7 +759,11 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         timeframe: "H1",
         dataFreshness: "realtime",
       },
-      technicalData: {
+      analysisResult: {
+        instrument: "XAU/USD",
+        timeframe: "H1",
+        priceSnapshot: { price: 100, timestamp: now },
+        technicalData: {
         dataPoints: 30,
         structure: "range",
         swingHighs: [102, 110],
@@ -768,6 +772,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         supportLevels: [99, 98, 90],
         atr14: 2,
         volumeTrend: "stable",
+      } as any
       } as any,
     }, now);
 
@@ -814,13 +819,18 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         timeframe: "H1",
         dataFreshness: "stale",
       },
-      technicalData: {
+      analysisResult: {
+        instrument: "XAU/USD",
+        timeframe: "H1",
+        priceSnapshot: { price: 100, timestamp: now },
+        technicalData: {
         dataPoints: 30,
         swingHighs: [102, 110],
         swingLows: [98, 90],
         resistanceLevels: [101, 102, 110],
         supportLevels: [99, 98, 90],
         atr14: 2,
+      } as any
       } as any,
     }, now);
 
@@ -853,13 +863,18 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         timeframe: "H1",
         dataFreshness: "realtime",
       },
-      technicalData: {
+      analysisResult: {
+        instrument: "XAU/USD",
+        timeframe: "H1",
+        priceSnapshot: { price: 100, timestamp: now },
+        technicalData: {
         dataPoints: 30,
         swingHighs: [102, 110],
         swingLows: [98, 90],
         resistanceLevels: [101, 102, 110],
         supportLevels: [99, 98, 90],
         atr14: 2,
+      } as any
       } as any,
     }, now);
 
