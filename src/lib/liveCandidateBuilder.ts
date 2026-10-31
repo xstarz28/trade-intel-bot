@@ -22,6 +22,7 @@ import { deriveMacroYieldEvidence, type TreasuryData } from "./data/treasury";
 import type { CotData } from "./data/cot";
 import type { EiaData } from "./data/eia";
 import { calculateTechnical } from "./data/technical";
+import { buildConditionalEntryScenariosFromMarketData } from "./conditional-entry-scenarios";
 import { matchesDerivativeSymbol } from "./data/derivatives-symbol";
 
 // ═══════════════════════════════════════════════════════════════
@@ -512,6 +513,13 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
 
   // Live data availability
   const hasLiveData = freshness === "FRESH" || freshness === "DELAYED";
+  // Forward setups are derived from this exact ordered candle series and its
+  // technical context. They remain informational and never alter candidate score.
+  const conditionalScenarios = buildConditionalEntryScenariosFromMarketData({
+    candles: orderedCandles,
+    technicalData: tech,
+    primaryQuality: freshness,
+  });
 
   // Provider coverage
   const providerCoverage = dataPoints > 0 ? "PARTIAL" : "MINIMAL";
@@ -582,6 +590,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     hasExecutionQuality: extractSpreadBps(source) !== undefined,
 
     ...extractSetupEvidence(tech, price),
+    ...(conditionalScenarios.length > 0 ? { conditionalScenarios } : {}),
 
     // Directional evidence bridge: use the analysis engine's signed
     // fundamental/positioning factors instead of reconstructing them in UI.
