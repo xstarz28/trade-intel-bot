@@ -124,6 +124,15 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.trader.rewardRisk).toBeUndefined();
   });
 
+  it("keeps candle price provenance paired with the candle timestamp when snapshot price is absent", () => {
+    const forecast = buildForwardForecast(baseResult({
+      priceSnapshot: { price: Number.NaN, timestamp: 1_799_000_000_000, source: "missing-price" },
+      candles: [{ timestamp: 1_799_998_000_000, open: 99_000, high: 101_000, low: 98_000, close: 100_500, volume: 10 }],
+    }));
+    expect(forecast.trader.horizon.startsAt).toBe(1_799_998_000_000);
+    expect(forecast.trader.dataAsOf).toBe(1_799_998_000_000);
+  });
+
   it("does not issue an investor direction without higher-timeframe structure", () => {
     const forecast = buildForwardForecast(baseResult({ htfAlignment: undefined, technicalData: undefined }));
     expect(forecast.investor.direction).toBe("neutral");
