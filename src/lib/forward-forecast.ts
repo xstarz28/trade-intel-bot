@@ -177,10 +177,9 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
     snapshot.price,
     targetRelation,
   );
-  const invalidationPrice = direction === "neutral" ? undefined : validLevel(
-    result.keyLevels?.invalidation ?? (direction === "bullish" ? result.keyLevels?.support : result.keyLevels?.resistance),
-    snapshot.price,
-    invalidationRelation,
+  const invalidationPrice = direction === "neutral" ? undefined : (
+    validLevel(result.keyLevels?.invalidation, snapshot.price, invalidationRelation) ??
+    validLevel(direction === "bullish" ? result.keyLevels?.support : result.keyLevels?.resistance, snapshot.price, invalidationRelation)
   );
   if (direction !== "neutral" && objectivePrice !== undefined) evidence.push("Objective is an observed structural key level, not a guaranteed target.");
   if (direction !== "neutral" && invalidationPrice !== undefined) evidence.push("Invalidation is an observed structural key level.");
