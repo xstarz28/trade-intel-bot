@@ -158,6 +158,7 @@ function buildValuationReference(
   const universal = result.universalIntelligenceContext;
   const equity = universal?.assetClass === "equity" &&
     normalizeInstrument(universal.instrument) === instrument
+    && universal.equity && normalizeInstrument(universal.equity.instrument) === instrument
     ? universal.equity
     : undefined;
   const valuation = equity?.valuation;
@@ -238,7 +239,7 @@ export function buildInvestorFundamentalOutlook(result: AnalysisResult, spot?: n
     limitations: [
       "Fundamental evidence is asset-class-specific context; it does not independently establish a calibrated price forecast or win probability.",
       "A provider intrinsic-value estimate or analyst consensus target is a sourced reference, not a guaranteed fair value or expected return.",
-      "Evidence from stale, degraded, unavailable, or mismatched instruments is excluded from the investor outlook.",
+      "Stale, unavailable, or mismatched evidence is excluded; degraded evidence may remain contextual but cannot produce a numeric valuation reference.",
     ],
   };
 }
