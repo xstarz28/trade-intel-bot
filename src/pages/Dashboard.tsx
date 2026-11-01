@@ -1042,8 +1042,11 @@ export default function Dashboard() {
   // Phase 50 — Live scan result from available sources
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const scanInFlightRef = useRef(false);
 
   const handleScanRefresh = useCallback(async () => {
+    if (scanInFlightRef.current) return;
+    scanInFlightRef.current = true;
     setIsScanning(true);
     try {
       // Metadata discovery is separate from verified live candle acquisition.
@@ -1285,7 +1288,10 @@ export default function Dashboard() {
       setScanResult(
         scanInstruments(sources, { horizons: ALL_SCAN_HORIZONS, maxResults: 100 }),
       );
+    } catch {
+      setMarketDiscoveryMessage("Automatic market refresh failed; the next cycle will retry.");
     } finally {
+      scanInFlightRef.current = false;
       setIsScanning(false);
     }
   }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchOkxFuturesOpenInterest, fetchMarketData]);
@@ -1294,6 +1300,17 @@ export default function Dashboard() {
     if (initialScanStartedRef.current) return;
     initialScanStartedRef.current = true;
     void handleScanRefresh();
+  }, [handleScanRefresh]);
+
+  // Keep future-opportunity discovery current while the dashboard is open.
+  // The rotating cross-asset cursor advances once per cycle; hidden tabs do not
+  // spend provider requests, and the in-flight guard prevents overlapping scans.
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void handleScanRefresh();
+    }, 60_000);
+    return () => window.clearInterval(intervalId);
   }, [handleScanRefresh]);
 
   // Phase 51 — Radar state for autonomous scanning
