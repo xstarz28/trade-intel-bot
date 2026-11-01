@@ -34,6 +34,39 @@ function providerDate(value: unknown): string | undefined {
     : undefined;
 }
 
+
+export interface AlphaVantageEarningsObservation {
+  fiscalPeriodEnd?: string;
+  /** Required publication date; observations without it are not point-in-time eligible. */
+  reportedDate: string;
+  eps?: number;
+  revenue?: number;
+}
+
+/**
+ * Map all quarterly earnings events that have a valid provider-reported
+ * publication date. Never substitute fiscal period end for reportedDate.
+ */
+export function mapAlphaVantageEarningsObservations(raw: unknown): AlphaVantageEarningsObservation[] {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return [];
+  const quarterlyEarnings = (raw as Record<string, unknown>).quarterlyEarnings;
+  if (!Array.isArray(quarterlyEarnings)) return [];
+
+  return quarterlyEarnings.flatMap((item): AlphaVantageEarningsObservation[] => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
+    const record = item as Record<string, unknown>;
+    const reportedDate = providerDate(record.reportedDate);
+    if (!reportedDate) return [];
+
+    const fiscalPeriodEnd = providerDate(record.fiscalDateEnding);
+    const eps = finiteProviderNumber(record.reportedEPS);
+    const revenue = finiteProviderNumber(record.reportedRevenue);
+    if (fiscalPeriodEnd === undefined && eps === undefined && revenue === undefined) return [];
+
+    return [{ fiscalPeriodEnd, reportedDate, eps, revenue }];
+  });
+}
+
 /**
  * Map the newest quarterly earnings record while keeping its fiscal period end
  * distinct from the provider's public report date. FiscalDateEnding is not the
