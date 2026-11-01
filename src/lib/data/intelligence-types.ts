@@ -79,6 +79,12 @@ export interface FundamentalData {
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
   // Earnings data
+  /** Persistence status for actual provider-reported quarterly earnings events only. */
+  pointInTimeHistory?: {
+    status: "PERSISTED" | "NO_DATED_OBSERVATIONS" | "PERSISTENCE_FAILED";
+    providerObservationCount: number;
+    newlyPersistedCount: number;
+  };
   latestEarnings?: {
     /** Fiscal period end; retained for backward compatibility. */
     date?: string;
