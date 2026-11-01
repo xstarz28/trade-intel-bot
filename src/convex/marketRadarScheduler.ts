@@ -359,8 +359,11 @@ export const runScheduledScan = internalAction({
               universalIntelligenceContext: previousSource?.universalIntelligence ?? previousAnalysis?.universalIntelligenceContext,
             };
             const baseAnalysis = runAnalysis(analysisInput);
-            analysisResult = secEdgarObservations?.length
-              ? { ...baseAnalysis, secEdgarObservations }
+            const availableSecObservations = secEdgarObservations?.length
+              ? secEdgarObservations
+              : previousAnalysis?.secEdgarObservations;
+            analysisResult = availableSecObservations?.length
+              ? { ...baseAnalysis, secEdgarObservations: availableSecObservations }
               : baseAnalysis;
           } catch (error) {
             errors.push(`${entry.instrument} ${timeframe} analysis: ${error instanceof Error ? error.message : String(error)}`);
