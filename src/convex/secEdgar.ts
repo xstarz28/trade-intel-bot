@@ -15,6 +15,19 @@ const SEC_DATA_BASE = "https://data.sec.gov";
 const TICKER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 let tickerDirectoryCache: { value: Record<string, SecTickerRecord>; expiresAt: number } | undefined;
 
+interface SecEdgarFetchResult {
+  success: boolean;
+  status: string;
+  ticker?: string;
+  cik?: string;
+  observationCount: number;
+  newlyPersistedCount?: number;
+  requiredEnvVar?: string;
+  filingDateSemantics?: string;
+  source?: string;
+  error?: string;
+}
+
 async function fetchSecJson<T>(url: string, userAgent: string): Promise<T> {
   const response = await fetch(url, {
     headers: {
@@ -45,7 +58,7 @@ async function getTickerDirectory(userAgent: string): Promise<Record<string, Sec
  */
 export const fetchCompanyFilingHistory = action({
   args: { ticker: v.string() },
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<SecEdgarFetchResult> => {
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) {
       return { success: false, status: "AUTH_REQUIRED", observationCount: 0 };
@@ -110,7 +123,7 @@ export const fetchCompanyFilingHistory = action({
       }
 
       const retrievedAt = Date.now();
-      const persistence = await ctx.runMutation(
+      const persistence: { inserted: number; received: number } = await ctx.runMutation(
         internal.historicalIntelligence.persistSecEdgarObservations,
         { ticker, retrievedAt, observations },
       );
