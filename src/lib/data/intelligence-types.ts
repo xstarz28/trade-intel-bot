@@ -81,7 +81,7 @@ export interface FundamentalData {
   // Earnings data
   /** Persistence status for actual provider-reported quarterly earnings events only. */
   pointInTimeHistory?: {
-    status: "PERSISTED" | "NO_DATED_OBSERVATIONS" | "PERSISTENCE_FAILED";
+    status: "PERSISTED" | "NO_DATED_OBSERVATIONS" | "PERSISTENCE_FAILED" | "SYMBOL_MISMATCH";
     providerObservationCount: number;
     newlyPersistedCount: number;
   };
