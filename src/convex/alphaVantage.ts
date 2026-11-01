@@ -173,9 +173,18 @@ export const fetchIntelligence = action({
               args.instrumentType,
               ticker,
             );
-            const pointInTimeObservations = mapAlphaVantageEarningsObservations(earningsJson);
+            const providerSymbolMatches = normalizedFundamentals.symbol === ticker;
+            const pointInTimeObservations = providerSymbolMatches
+              ? mapAlphaVantageEarningsObservations(earningsJson)
+              : [];
 
-            if (pointInTimeObservations.length === 0) {
+            if (!providerSymbolMatches) {
+              normalizedFundamentals.pointInTimeHistory = {
+                status: "SYMBOL_MISMATCH",
+                providerObservationCount: 0,
+                newlyPersistedCount: 0,
+              };
+            } else if (pointInTimeObservations.length === 0) {
               normalizedFundamentals.pointInTimeHistory = {
                 status: "NO_DATED_OBSERVATIONS",
                 providerObservationCount: 0,
