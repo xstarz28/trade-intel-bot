@@ -47,6 +47,7 @@ describe("mapAlphaVantageFundamentalMetrics", () => {
     })).toEqual({});
     expect(mapAlphaVantageFundamentalMetrics(null)).toEqual({});
   });
+});
 
 describe("mapAlphaVantageLatestEarnings", () => {
   it("keeps fiscal period end distinct from the public earnings report date", () => {
