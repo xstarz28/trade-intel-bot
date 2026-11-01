@@ -187,6 +187,10 @@ interface MarketOpportunitiesProps {
   candidates: CandidateInput[];
   /** Live candidate sources for real-time scanning (Phase 50). */
   liveSources?: LiveCandidateSource[];
+  /** Persisted provider snapshots from the scheduled backend scanner. */
+  backgroundSources?: LiveCandidateSource[];
+  /** Last successful/attempted backend scan timestamp. */
+  backgroundScanAt?: number;
   /** Whether a scan is in progress. */
   isScanning?: boolean;
   /** Last scan result (Phase 50). */
@@ -526,6 +530,8 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
 export function MarketOpportunities({
   candidates,
   liveSources,
+  backgroundSources,
+  backgroundScanAt,
   isScanning = false,
   scanResult: externalScanResult,
   radarResult,
@@ -543,22 +549,34 @@ export function MarketOpportunities({
   const horizons = tab === "trading" ? TRADING_HORIZONS : INVESTOR_HORIZONS;
   const currentHorizon = horizons[horizonIdx]?.key ?? "INTRADAY";
 
-  // Live scan result from external props or compute locally
-  const scanResult = useMemo(() => {
-    if (externalScanResult) return externalScanResult;
+  // Merge durable backend snapshots with the foreground cache. For the same
+  // instrument/timeframe, retain the source with the newest observed price.
+  const effectiveLiveSources = useMemo(() => {
+    const byIdentity = new Map<string, LiveCandidateSource>();
+    for (const source of [...(backgroundSources ?? []), ...(liveSources ?? [])]) {
+      const timeframe = source.marketData?.timeframe?.trim().toUpperCase() ?? "UNKNOWN";
+      const key = `${source.instrument.trim().toUpperCase()}|${timeframe}`;
+      const previous = byIdentity.get(key);
+      const observedAt = source.marketData?.price?.timestamp ?? 0;
+      const previousObservedAt = previous?.marketData?.price?.timestamp ?? 0;
+      if (!previous || observedAt >= previousObservedAt) byIdentity.set(key, source);
+    }
+    return Array.from(byIdentity.values());
+  }, [backgroundSources, liveSources]);
 
-    // Build candidates from live sources if available
-    if (liveSources && liveSources.length > 0) {
+  // The persistent backend scanner continues acquiring while the dashboard is
+  // closed. Foreground observations are merged in and win only when newer.
+  const scanResult = useMemo(() => {
+    if (effectiveLiveSources.length > 0) {
       const scanConfig: ScanConfig = {
         horizons: [currentHorizon],
         maxResults: 10,
         assetClasses: assetFilter !== "all" ? [assetFilter] : undefined,
       };
-      return scanInstruments(liveSources, scanConfig);
+      return scanInstruments(effectiveLiveSources, scanConfig);
     }
-
-    return null;
-  }, [liveSources, currentHorizon, assetFilter, externalScanResult]);
+    return externalScanResult ?? null;
+  }, [effectiveLiveSources, currentHorizon, assetFilter, externalScanResult]);
 
   // Get ranked result for current horizon
   const result: UniversalRecommendationResult = useMemo(() => {
@@ -643,7 +661,7 @@ export function MarketOpportunities({
   // LIVE means the current scan contains verified live/delayed market data.
   // Radar presence or merely having cached liveSources must never promote the badge.
   const isLive = (scanResult?.totalWithLiveData ?? 0) > 0;
-  const scanTimestamp = scanResult?.timestamp ?? radarResult?.timestamp;
+  const scanTimestamp = scanResult?.timestamp ?? backgroundScanAt ?? radarResult?.timestamp;
 
   const handleRefresh = useCallback(() => {
     if (onRefresh) onRefresh();
