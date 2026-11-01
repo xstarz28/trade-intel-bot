@@ -13,6 +13,7 @@ const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
 const Journal = lazy(() => import("@/components/Journal").then((m) => ({ default: m.Journal })));
 const NotFound = lazy(() => import("./pages/NotFound.tsx"));
 const Pricing = lazy(() => import("./pages/Pricing.tsx"));
+const ConnectPage = lazy(() => import("./pages/Connect.tsx"));
 
 class RootErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -72,6 +73,7 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
                 <Route path="/pricing" element={<Pricing />} />
+                <Route path="/connect" element={<RequireAuth><ConnectPage /></RequireAuth>} />
                 <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
                 <Route path="/journal" element={<RequireAuth><Journal /></RequireAuth>} />
                 <Route path="*" element={<NotFound />} />
