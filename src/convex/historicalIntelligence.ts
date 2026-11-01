@@ -501,6 +501,87 @@ export const persistFundamentalObservations = internalMutation({
   },
 });
 
+/**
+ * Persist SEC EDGAR facts by accession and fiscal period. The first observed
+ * values remain immutable; repeat retrieval updates only lastRetrievedAt.
+ */
+export const persistSecEdgarObservations = internalMutation({
+  args: {
+    ticker: v.string(),
+    retrievedAt: v.number(),
+    observations: v.array(v.object({
+      cik: v.string(),
+      ticker: v.string(),
+      accessionNumber: v.string(),
+      form: v.string(),
+      filingDate: v.string(),
+      acceptanceDateTime: v.optional(v.string()),
+      fiscalPeriodStart: v.string(),
+      fiscalPeriodEnd: v.string(),
+      fiscalYear: v.optional(v.number()),
+      fiscalPeriod: v.optional(v.string()),
+      eps: v.optional(v.number()),
+      revenue: v.optional(v.number()),
+      epsTag: v.optional(v.string()),
+      revenueTag: v.optional(v.string()),
+      sourceUrl: v.string(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    let inserted = 0;
+    const seen = new Set<string>();
+
+    for (const observation of args.observations) {
+      if (observation.ticker !== args.ticker) continue;
+      const identity = observation.accessionNumber + "|" + observation.fiscalPeriodEnd;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+
+      const existingRows = await ctx.db
+        .query("secEdgarObservations")
+        .withIndex("by_ticker_accession", (q) =>
+          q.eq("ticker", args.ticker).eq("accessionNumber", observation.accessionNumber),
+        )
+        .collect();
+      const existing = existingRows.find(
+        (row) => row.fiscalPeriodEnd === observation.fiscalPeriodEnd,
+      );
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          lastRetrievedAt: Math.max(existing.lastRetrievedAt, args.retrievedAt),
+        });
+        continue;
+      }
+
+      await ctx.db.insert("secEdgarObservations", {
+        ...observation,
+        firstObservedAt: args.retrievedAt,
+        lastRetrievedAt: args.retrievedAt,
+      });
+      inserted += 1;
+    }
+
+    return { inserted, received: args.observations.length };
+  },
+});
+
+/** Internal chronological SEC filing history for point-in-time evaluation. */
+export const listSecEdgarObservations = internalQuery({
+  args: {
+    ticker: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 250)));
+    return await ctx.db
+      .query("secEdgarObservations")
+      .withIndex("by_ticker_filing_date", (q) => q.eq("ticker", args.ticker))
+      .order("asc")
+      .take(limit);
+  },
+});
+
 /** Internal chronological history for future point-in-time evaluation. */
 export const listFundamentalObservations = internalQuery({
   args: {

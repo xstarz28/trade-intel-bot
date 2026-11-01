@@ -685,6 +685,7 @@ function addCatalogInstrument(input: {
     region: input.region,
     exchanges: [input.exchange],
     ...(input.sector ? { sector: input.sector } : {}),
+    ...(input.region === "US" ? { countryCode: "US" } : {}),
     providerMappings: [{ provider: "twelve-data", symbol: input.canonical, available: true }],
     isActive: true,
     tags: ["curated-catalog", input.assetClass],
@@ -805,7 +806,13 @@ export function getProviderSymbol(instrument: string, provider: string): string 
   const mapping = canonical.providerMappings.find(
     (m) => m.provider === provider && m.available,
   );
-  return mapping?.symbol ?? null;
+  if (mapping) return mapping.symbol;
+  // SEC resolves US issuer identity through its official ticker-to-CIK directory;
+  // the canonical ticker is the lookup key, not an assumed CIK or exchange alias.
+  if (provider === "sec-edgar" && canonical.assetClass === "equity" && canonical.countryCode === "US") {
+    return canonical.canonical;
+  }
+  return null;
 }
 
 /**

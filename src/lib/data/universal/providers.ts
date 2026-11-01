@@ -70,6 +70,20 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
     ],
   },
   {
+    id: "sec-edgar",
+    name: "SEC EDGAR",
+    authRequired: false,
+    credentialsAvailable: false,
+    rateLimitPerMinute: 600,
+    timeoutMs: 20000,
+    retryConfig: { maxRetries: 1, backoffMs: 1000 },
+    assetClasses: ["equity"],
+    capabilities: [
+      { capability: "earnings", quality: "PARTIAL", assetClasses: ["equity"] },
+      { capability: "financial_statements", quality: "PARTIAL", assetClasses: ["equity"] },
+    ],
+  },
+  {
     id: "coingecko",
     name: "CoinGecko",
     authRequired: false,
@@ -311,6 +325,7 @@ export function providerSupportsCapability(
 
   const canonical = resolveInstrument(instrument);
   if (!canonical) return false;
+  if (providerId === "sec-edgar" && getProviderSymbol(instrument, providerId) === null) return false;
 
   return provider.assetClasses.includes(canonical.assetClass) &&
     provider.capabilities.some(

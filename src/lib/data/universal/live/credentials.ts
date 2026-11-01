@@ -12,6 +12,8 @@ export interface ProviderCredentialSpec {
   providerId: string;
   /** Env var names required to call this provider. Empty = public endpoint. */
   requiredEnvVars: string[];
+  /** Override when a required environment value is identification, not authentication. */
+  authRequired?: boolean;
 }
 
 /** Credential requirements per provider (public endpoints have none). */
@@ -21,6 +23,8 @@ const CREDENTIAL_SPECS: Record<string, ProviderCredentialSpec> = {
   coinglass: { providerId: "coinglass", requiredEnvVars: ["COINGLASS_API_KEY"] },
   tickatlas: { providerId: "tickatlas", requiredEnvVars: ["TICKATLAS_API_KEY"] },
   eia: { providerId: "eia", requiredEnvVars: ["EIA_API_KEY"] },
+  // SEC EDGAR is public, but requires a declared application/contact User-Agent.
+  "sec-edgar": { providerId: "sec-edgar", requiredEnvVars: ["SEC_USER_AGENT"], authRequired: false },
   // Public / keyless endpoints
   okx: { providerId: "okx", requiredEnvVars: [] },
   coingecko: { providerId: "coingecko", requiredEnvVars: [] },
@@ -71,7 +75,7 @@ export function checkCredentials(
 
   return {
     providerId,
-    authRequired: spec.requiredEnvVars.length > 0,
+    authRequired: spec.authRequired ?? spec.requiredEnvVars.length > 0,
     requiredEnvVarNames: spec.requiredEnvVars,
     available: missing.length === 0,
     missingEnvVarNames: missing,
