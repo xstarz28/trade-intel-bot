@@ -42,6 +42,7 @@ describe("SEC EDGAR provider registration", () => {
 
   it("does not claim SEC coverage for IDX instruments", () => {
     const result = findProviderRoutes("BBCA", "earnings", configuredEnv);
-    expect(result.routes.find((route) => route.providerId === "sec-edgar")).toBeUndefined();
+    expect(result.routes.find((route) => route.providerId === "sec-edgar")?.quality).toBe("UNAVAILABLE");
+    expect(result.available).toBe(false);
   });
 });
