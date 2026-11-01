@@ -70,6 +70,7 @@ function compactSource(source: LiveCandidateSource): LiveCandidateSource {
     eiaContext: analysis.eiaContext,
     cryptoIntelligenceContext: analysis.cryptoIntelligenceContext,
     universalIntelligenceContext: analysis.universalIntelligenceContext,
+    secEdgarObservations: analysis.secEdgarObservations?.slice(-50),
     timestamp: analysis.timestamp,
   } as AnalysisResult : undefined;
   const compact = {
@@ -245,6 +246,14 @@ export const runScheduledScan = internalAction({
               errors,
             )
           : Promise.resolve(undefined);
+        const secTicker = entry.instrument.trim().toUpperCase();
+        const secRefreshPromise = entry.assetClass === "equity" && entry.region === "us" && entry.requiredCapabilities.includes("fundamentals")
+          ? callOptionalProvider(
+              () => ctx.runAction(anyApi.secEdgar.refreshCompanyFilingHistoryForScanner, { ticker: secTicker }),
+              "SEC EDGAR",
+              errors,
+            )
+          : Promise.resolve(undefined);
 
         const [intelligenceResult, calendarResult, treasuryResult, cotResult, eiaResult, derivativesResult, defiResult] =
           await Promise.all([
@@ -255,6 +264,7 @@ export const runScheduledScan = internalAction({
             eiaPromise,
             derivativesPromise,
             defiPromise,
+            secRefreshPromise,
           ]);
 
         const intelligence = intelligenceResult as {
@@ -267,6 +277,18 @@ export const runScheduledScan = internalAction({
         const cotData = (cotResult as { data?: AnalysisInput["cotData"] } | undefined)?.data;
         const eiaData = (eiaResult as { data?: AnalysisInput["eiaData"] } | undefined)?.data;
         const derivativesData = (derivativesResult as { data?: AnalysisInput["derivativesData"] } | undefined)?.data;
+        let secEdgarObservations: AnalysisResult["secEdgarObservations"];
+        if (entry.assetClass === "equity" && entry.region === "us" && entry.requiredCapabilities.includes("fundamentals")) {
+          try {
+            const rows = await ctx.runQuery(
+              anyApi.historicalIntelligence.getLatestSecEdgarObservations,
+              { ticker: secTicker, limit: 100 },
+            ) as NonNullable<AnalysisResult["secEdgarObservations"]>;
+            secEdgarObservations = rows.length > 0 ? rows : undefined;
+          } catch (error) {
+            errors.push(`SEC EDGAR history: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
 
         let cryptoIntelligenceContext: AnalysisInput["cryptoIntelligenceContext"];
         if (entry.assetClass === "crypto") {
@@ -336,7 +358,13 @@ export const runScheduledScan = internalAction({
                 : previousAnalysis?.cryptoIntelligenceContext ?? cryptoIntelligenceContext,
               universalIntelligenceContext: previousSource?.universalIntelligence ?? previousAnalysis?.universalIntelligenceContext,
             };
-            analysisResult = runAnalysis(analysisInput);
+            const baseAnalysis = runAnalysis(analysisInput);
+            const availableSecObservations = secEdgarObservations?.length
+              ? secEdgarObservations
+              : previousAnalysis?.secEdgarObservations;
+            analysisResult = availableSecObservations?.length
+              ? { ...baseAnalysis, secEdgarObservations: availableSecObservations }
+              : baseAnalysis;
           } catch (error) {
             errors.push(`${entry.instrument} ${timeframe} analysis: ${error instanceof Error ? error.message : String(error)}`);
           }

@@ -6,6 +6,27 @@ export type InstrumentType = "forex" | "crypto" | "stock" | "commodity" | "indic
 
 export type Timeframe = "M1" | "M5" | "M15" | "H1" | "H4" | "D1" | "W1";
 
+/** SEC EDGAR filing facts with filing-date (not fiscal-period-end) availability semantics. */
+export interface SecEdgarFundamentalObservation {
+  ticker: string;
+  cik: string;
+  accessionNumber: string;
+  form: string;
+  filingDate: string;
+  acceptanceDateTime?: string;
+  fiscalPeriodStart: string;
+  fiscalPeriodEnd: string;
+  fiscalYear?: number;
+  fiscalPeriod?: string;
+  eps?: number;
+  revenue?: number;
+  epsTag?: string;
+  revenueTag?: string;
+  sourceUrl: string;
+  firstObservedAt?: number;
+  lastRetrievedAt?: number;
+}
+
 export type DirectionalBias = "Bullish" | "Bearish" | "Neutral";
 
 export type FactorScore = -2 | -1 | 0 | 1 | 2;
@@ -224,6 +245,8 @@ export interface AnalysisResult {
   sentimentData?: SentimentData;
   fundamentalData?: FundamentalData;
   macroData?: MacroData;
+  /** Point-in-time SEC EDGAR facts; filingDate is the daily eligibility boundary. */
+  secEdgarObservations?: SecEdgarFundamentalObservation[];
   // Crypto derivatives metadata
   derivativesData?: CryptoDerivativesData;
   // Economic calendar metadata

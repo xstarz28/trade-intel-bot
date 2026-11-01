@@ -582,6 +582,23 @@ export const listSecEdgarObservations = internalQuery({
   },
 });
 
+/** Latest SEC filing observations, returned in chronological order for point-in-time comparisons. */
+export const getLatestSecEdgarObservations = internalQuery({
+  args: {
+    ticker: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 100)));
+    const latestFirst = await ctx.db
+      .query("secEdgarObservations")
+      .withIndex("by_ticker_filing_date", (q) => q.eq("ticker", args.ticker))
+      .order("desc")
+      .take(limit);
+    return latestFirst.reverse();
+  },
+});
+
 /** Internal chronological history for future point-in-time evaluation. */
 export const listFundamentalObservations = internalQuery({
   args: {
