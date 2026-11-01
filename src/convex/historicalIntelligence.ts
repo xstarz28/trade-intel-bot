@@ -11,7 +11,7 @@
  */
 
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
@@ -428,5 +428,91 @@ export const deleteHistoryForPosition = mutation({
     }
 
     return deleted;
+  },
+});
+
+
+// ═══════════════════════════════════════════════════════════════
+// POINT-IN-TIME FUNDAMENTAL OBSERVATIONS
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Persist historical earnings events only when the provider supplies a valid
+ * public report date. Fiscal period end is stored separately and is never used
+ * as a substitute for the market-availability date.
+ *
+ * First-seen EPS/revenue values are immutable. Repeat fetches update only the
+ * retrieval timestamp, preventing silent restatement of historical observations.
+ */
+export const persistFundamentalObservations = internalMutation({
+  args: {
+    provider: v.string(),
+    instrument: v.string(),
+    retrievedAt: v.number(),
+    observations: v.array(v.object({
+      fiscalPeriodEnd: v.optional(v.string()),
+      reportedDate: v.string(),
+      eps: v.optional(v.number()),
+      revenue: v.optional(v.number()),
+    })),
+  },
+  handler: async (ctx, args) => {
+    let inserted = 0;
+    const seen = new Set<string>();
+
+    for (const observation of args.observations) {
+      const identity = `${observation.reportedDate}|${observation.fiscalPeriodEnd ?? ""}`;
+      if (seen.has(identity)) continue;
+      seen.add(identity);
+
+      const matchingReports = await ctx.db
+        .query("fundamentalObservations")
+        .withIndex("by_provider_instrument_reported_date", (q) =>
+          q.eq("provider", args.provider)
+            .eq("instrument", args.instrument)
+            .eq("reportedDate", observation.reportedDate),
+        )
+        .collect();
+      const existing = matchingReports.find(
+        (record) => record.fiscalPeriodEnd === observation.fiscalPeriodEnd,
+      );
+
+      if (existing) {
+        await ctx.db.patch(existing._id, {
+          lastRetrievedAt: Math.max(existing.lastRetrievedAt, args.retrievedAt),
+        });
+        continue;
+      }
+
+      await ctx.db.insert("fundamentalObservations", {
+        provider: args.provider,
+        instrument: args.instrument,
+        fiscalPeriodEnd: observation.fiscalPeriodEnd,
+        reportedDate: observation.reportedDate,
+        eps: observation.eps,
+        revenue: observation.revenue,
+        firstObservedAt: args.retrievedAt,
+        lastRetrievedAt: args.retrievedAt,
+      });
+      inserted += 1;
+    }
+
+    return { inserted, received: args.observations.length };
+  },
+});
+
+/** Internal chronological history for future point-in-time evaluation. */
+export const listFundamentalObservations = internalQuery({
+  args: {
+    instrument: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const limit = Math.max(1, Math.min(500, Math.floor(args.limit ?? 250)));
+    return await ctx.db
+      .query("fundamentalObservations")
+      .withIndex("by_instrument_reported_date", (q) => q.eq("instrument", args.instrument))
+      .order("asc")
+      .take(limit);
   },
 });

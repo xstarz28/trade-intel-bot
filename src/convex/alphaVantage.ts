@@ -6,6 +6,7 @@
 "use node";
 
 import { action } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import type {
   NewsArticle,
@@ -14,7 +15,7 @@ import type {
   MacroData,
   IntelligenceResult,
 } from "../lib/data/intelligence-types";
-import { mapAlphaVantageFundamentalMetrics } from "../lib/data/alpha-vantage-fundamentals";
+import { mapAlphaVantageEarningsObservations, mapAlphaVantageFundamentalMetrics, mapAlphaVantageLatestEarnings } from "../lib/data/alpha-vantage-fundamentals";
 
 // ── Simple in-memory cache (resets per Convex action instance) ──
 // For production, use Convex scheduled functions or a database cache.
@@ -90,7 +91,7 @@ export const fetchIntelligence = action({
       v.literal("indices"),
     ),
   },
-  handler: async (_ctx, args): Promise<IntelligenceResult> => {
+  handler: async (ctx, args): Promise<IntelligenceResult> => {
     const apiKey = process.env.ALPHA_VANTAGE_API_KEY;
     if (!apiKey) {
       return {
@@ -166,13 +167,67 @@ export const fetchIntelligence = action({
               avFetch({ function: "OVERVIEW", symbol: avSymbol }, apiKey),
               avFetch({ function: "EARNINGS", symbol: avSymbol }, apiKey),
             ]);
-            fundamentals = normalizeFundamentalsFromAV(
+            const normalizedFundamentals = normalizeFundamentalsFromAV(
               overviewJson,
               earningsJson,
               args.instrumentType,
               ticker,
             );
-            setCache(fundCacheKey, fundamentals);
+            const providerSymbolMatches = normalizedFundamentals.available && normalizedFundamentals.symbol === ticker;
+            const pointInTimeObservations = providerSymbolMatches
+              ? mapAlphaVantageEarningsObservations(earningsJson)
+              : [];
+
+            if (!normalizedFundamentals.available) {
+              normalizedFundamentals.pointInTimeHistory = {
+                status: "SOURCE_IDENTITY_UNVERIFIED",
+                providerObservationCount: 0,
+                newlyPersistedCount: 0,
+              };
+            } else if (normalizedFundamentals.symbol !== ticker) {
+              normalizedFundamentals.pointInTimeHistory = {
+                status: "SYMBOL_MISMATCH",
+                providerObservationCount: 0,
+                newlyPersistedCount: 0,
+              };
+            } else if (pointInTimeObservations.length === 0) {
+              normalizedFundamentals.pointInTimeHistory = {
+                status: "NO_DATED_OBSERVATIONS",
+                providerObservationCount: 0,
+                newlyPersistedCount: 0,
+              };
+            } else {
+              try {
+                const persistence = await ctx.runMutation(
+                  internal.historicalIntelligence.persistFundamentalObservations,
+                  {
+                    provider: "alpha-vantage",
+                    instrument: ticker,
+                    retrievedAt: normalizedFundamentals.timestamp,
+                    observations: pointInTimeObservations,
+                  },
+                );
+                normalizedFundamentals.pointInTimeHistory = {
+                  status: "PERSISTED",
+                  providerObservationCount: pointInTimeObservations.length,
+                  newlyPersistedCount: persistence.inserted,
+                };
+              } catch {
+                // Keep analysis available, but disclose that historical
+                // point-in-time persistence did not complete. Do not cache
+                // this failure so the next request can retry the write.
+                normalizedFundamentals.pointInTimeHistory = {
+                  status: "PERSISTENCE_FAILED",
+                  providerObservationCount: pointInTimeObservations.length,
+                  newlyPersistedCount: 0,
+                };
+              }
+            }
+
+            fundamentals = normalizedFundamentals;
+            if (normalizedFundamentals.pointInTimeHistory?.status !== "PERSISTENCE_FAILED") {
+              setCache(fundCacheKey, normalizedFundamentals);
+            }
           } catch (err: any) {
             if (String(err?.message).startsWith("RATE_LIMIT")) {
               return {
@@ -321,14 +376,10 @@ function normalizeFundamentalsFromAV(
   base.fiftyTwoWeekHigh = safeNum(overview.FiftyTwoWeekHigh);
   base.fiftyTwoWeekLow = safeNum(overview.FiftyTwoWeekLow);
 
-  if (earnings?.quarterlyEarnings?.length) {
-    const latest = earnings.quarterlyEarnings[0];
-    base.latestEarnings = {
-      date: latest.fiscalDateEnding,
-      eps: safeNum(latest.reportedEPS),
-      revenue: safeNum(latest.reportedRevenue),
-    };
-  }
+  // Keep fiscal period end separate from the actual public release date.
+  // A fiscal period end must never be treated as the date the market knew
+  // those earnings; the mapper preserves reportedDate only when valid.
+  base.latestEarnings = mapAlphaVantageLatestEarnings(earnings);
 
   return base;
 }

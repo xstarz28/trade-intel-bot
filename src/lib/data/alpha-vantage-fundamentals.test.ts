@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapAlphaVantageFundamentalMetrics } from "./alpha-vantage-fundamentals";
+import { mapAlphaVantageFundamentalMetrics, mapAlphaVantageLatestEarnings, mapAlphaVantageEarningsObservations } from "./alpha-vantage-fundamentals";
 
 describe("mapAlphaVantageFundamentalMetrics", () => {
   it("maps provider growth, valuation, profitability and scale fields without changing units", () => {
@@ -46,5 +46,78 @@ describe("mapAlphaVantageFundamentalMetrics", () => {
       RevenueTTM: Number.POSITIVE_INFINITY,
     })).toEqual({});
     expect(mapAlphaVantageFundamentalMetrics(null)).toEqual({});
+  });
+});
+
+describe("mapAlphaVantageLatestEarnings", () => {
+  it("keeps fiscal period end distinct from the public earnings report date", () => {
+    const result = mapAlphaVantageLatestEarnings({
+      quarterlyEarnings: [{
+        fiscalDateEnding: "2026-09-30",
+        reportedDate: "2026-10-28",
+        reportedEPS: "1.25",
+        reportedRevenue: "1250000000",
+      }],
+    });
+
+    expect(result).toMatchObject({
+      date: "2026-09-30",
+      reportedDate: "2026-10-28",
+      eps: 1.25,
+      revenue: 1250000000,
+    });
+    expect(result?.reportedDate).not.toBe(result?.date);
+  });
+
+  it("does not substitute fiscal period end when publication date is missing or malformed", () => {
+    const result = mapAlphaVantageLatestEarnings({
+      quarterlyEarnings: [{
+        fiscalDateEnding: "2026-09-30",
+        reportedDate: "not-a-date",
+        reportedEPS: "1.25",
+      }],
+    });
+
+    expect(result?.date).toBe("2026-09-30");
+    expect(result?.reportedDate).toBeUndefined();
+  });
+
+  it("rejects malformed earnings dates and empty provider payloads", () => {
+    expect(mapAlphaVantageLatestEarnings({
+      quarterlyEarnings: [{
+        fiscalDateEnding: "2026-02-30",
+        reportedDate: "2026-99-99",
+        reportedEPS: "None",
+        reportedRevenue: "-",
+      }],
+    })).toBeUndefined();
+    expect(mapAlphaVantageLatestEarnings(null)).toBeUndefined();
+    expect(mapAlphaVantageLatestEarnings({ quarterlyEarnings: [] })).toBeUndefined();
+  });
+});
+
+
+describe("mapAlphaVantageEarningsObservations", () => {
+  it("keeps only historical earnings with provider-reported publication dates", () => {
+    const observations = mapAlphaVantageEarningsObservations({
+      quarterlyEarnings: [
+        { fiscalDateEnding: "2026-09-30", reportedDate: "2026-10-28", reportedEPS: "1.25", reportedRevenue: "1250000000" },
+        { fiscalDateEnding: "2026-06-30", reportedDate: "2026-07-29", reportedEPS: "1.10", reportedRevenue: "1100000000" },
+        { fiscalDateEnding: "2026-03-31", reportedEPS: "0.95", reportedRevenue: "950000000" },
+        { fiscalDateEnding: "2025-12-31", reportedDate: "invalid", reportedEPS: "0.80" },
+      ],
+    });
+
+    expect(observations).toEqual([
+      { fiscalPeriodEnd: "2026-09-30", reportedDate: "2026-10-28", eps: 1.25, revenue: 1250000000 },
+      { fiscalPeriodEnd: "2026-06-30", reportedDate: "2026-07-29", eps: 1.1, revenue: 1100000000 },
+    ]);
+  });
+
+  it("does not create observations when publication dates are absent", () => {
+    expect(mapAlphaVantageEarningsObservations({
+      quarterlyEarnings: [{ fiscalDateEnding: "2026-09-30", reportedEPS: "1.25" }],
+    })).toEqual([]);
+    expect(mapAlphaVantageEarningsObservations(null)).toEqual([]);
   });
 });

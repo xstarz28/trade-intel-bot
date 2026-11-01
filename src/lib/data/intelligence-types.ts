@@ -42,6 +42,7 @@ export interface SentimentData {
 /** Fundamental data for stocks (EPS, earnings, revenue, etc.). */
 export interface FundamentalData {
   provider: string;
+  /** Retrieval timestamp (Unix ms), not an as-of/effective date for every metric. */
   timestamp: number;
   instrumentType: "stock" | "forex" | "crypto" | "commodity" | "indices";
   // Stock-specific
@@ -78,8 +79,17 @@ export interface FundamentalData {
   fiftyTwoWeekHigh?: number;
   fiftyTwoWeekLow?: number;
   // Earnings data
+  /** Persistence status for actual provider-reported quarterly earnings events only. */
+  pointInTimeHistory?: {
+    status: "PERSISTED" | "NO_DATED_OBSERVATIONS" | "PERSISTENCE_FAILED" | "SYMBOL_MISMATCH" | "SOURCE_IDENTITY_UNVERIFIED";
+    providerObservationCount: number;
+    newlyPersistedCount: number;
+  };
   latestEarnings?: {
+    /** Fiscal period end; retained for backward compatibility. */
     date?: string;
+    /** Provider-reported public release date; use this, not fiscal period end, for point-in-time eligibility. */
+    reportedDate?: string;
     eps?: number;
     revenue?: number;
   };
