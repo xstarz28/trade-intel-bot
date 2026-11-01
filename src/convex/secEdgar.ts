@@ -1,7 +1,8 @@
 "use node";
 
 import { action, internalAction, type ActionCtx } from "./_generated/server";
-import { anyApi, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
+import { anyApi } from "convex/server";
 import { v } from "convex/values";
 import {
   findSecTickerRecord,
@@ -169,9 +170,9 @@ export const refreshCompanyFilingHistoryForScanner = internalAction({
     const existing = await ctx.runQuery(
       anyApi.historicalIntelligence.getLatestSecEdgarObservations,
       { ticker, limit: 500 },
-    );
+    ) as Array<{ lastRetrievedAt: number }>;
     const lastRetrievedAt = existing.reduce(
-      (latest, row) => Math.max(latest, row.lastRetrievedAt),
+      (latest: number, row: { lastRetrievedAt: number }) => Math.max(latest, row.lastRetrievedAt),
       0,
     );
     if (lastRetrievedAt > 0 && Date.now() - lastRetrievedAt < SEC_BACKGROUND_REFRESH_TTL_MS) {
