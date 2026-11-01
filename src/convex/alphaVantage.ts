@@ -173,7 +173,7 @@ export const fetchIntelligence = action({
               args.instrumentType,
               ticker,
             );
-            const providerSymbolMatches = normalizedFundamentals.symbol === ticker;
+            const providerSymbolMatches = normalizedFundamentals.available && normalizedFundamentals.symbol === ticker;
             const pointInTimeObservations = providerSymbolMatches
               ? mapAlphaVantageEarningsObservations(earningsJson)
               : [];
