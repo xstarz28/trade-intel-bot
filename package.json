@@ -73,7 +73,8 @@
     "vaul": "^1.1.2",
     "zod": "^4.1.13",
     "@auth/core": "^0.41.3",
-    "@testing-library/dom": "^10.4.1"
+    "@testing-library/dom": "^10.4.1",
+    "@convex-dev/mcp": "alpha"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
