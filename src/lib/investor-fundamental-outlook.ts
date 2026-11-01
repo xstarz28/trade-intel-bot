@@ -324,7 +324,7 @@ function mapCoreFundamentalSummary(
   result: AnalysisResult,
   existingEvidence: InvestorFundamentalEvidence[],
 ): InvestorFundamentalEvidence[] {
-  if (existingEvidence.length > 0) return [];
+  if (existingEvidence.some((item) => item.direction === "SUPPORTING" || item.direction === "CONFLICTING")) return [];
   const score = result.breakdown?.fundamental;
   if (typeof score !== "number" || !Number.isFinite(score) || Math.abs(score) < 1) return [];
 
