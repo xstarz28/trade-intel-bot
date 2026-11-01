@@ -7,7 +7,7 @@
  */
 import { getAuthUserId } from "@convex-dev/auth/server";
 import { v } from "convex/values";
-import { api, internal } from "./_generated/api";
+import { anyApi } from "convex/server";
 import { internalAction, query } from "./_generated/server";
 import { DEFAULT_UNIVERSE } from "../lib/market-radar/universe";
 import { ALL_SCAN_HORIZONS } from "../lib/liveScanner";
@@ -25,6 +25,7 @@ import type { LiveCandidateSource } from "../lib/liveCandidateBuilder";
 import type { MarketData, TechnicalData } from "../lib/data/market-types";
 
 const GLOBAL_SCOPE = "global";
+const SOURCE_LIMIT = 300;
 const CANDLES_TO_PERSIST = 40;
 
 function sourceKey(source: LiveCandidateSource): string {
@@ -92,7 +93,9 @@ export const runScheduledScan = internalAction({
   args: {},
   handler: async (ctx) => {
     const now = Date.now();
-    const claim = await ctx.runMutation(internal.marketRadarInternal.claimScan, { now });
+    const claim = await ctx.runMutation(anyApi.marketRadarInternal.claimScan, { now }) as
+      | { claimed: false }
+      | { claimed: true; cursor: number; previousResults: Array<[string, RadarOpportunity[]]>; lastScanAt: number };
     if (!claim.claimed) return { skipped: true as const, reason: "previous scan still holds the lease" };
 
     try {
@@ -106,7 +109,7 @@ export const runScheduledScan = internalAction({
       const instrumentType = toInstrumentType(entry.assetClass);
       const timeframes = batch.timeframes;
 
-      const existingSources = await ctx.runQuery(internal.marketRadarInternal.listSources, {});
+      const existingSources = await ctx.runQuery(anyApi.marketRadarInternal.listSources, {}) as LiveCandidateSource[];
       const sourceMap = new Map(existingSources.map((source) => [sourceKey(source), source]));
       const updates: Array<{
         key: string;
@@ -122,11 +125,13 @@ export const runScheduledScan = internalAction({
         errors.push(`Unsupported asset class for ${entry.instrument}: ${entry.assetClass}`);
       } else {
         for (const timeframe of timeframes) {
-          const response = await ctx.runAction(api.marketData.fetchMarketData, {
+          const response = await ctx.runAction(anyApi.marketData.fetchMarketData, {
             instrument: entry.instrument,
             instrumentType,
             timeframe,
-          });
+          }) as
+            | { success: true; data: MarketData; technical?: TechnicalData }
+            | { success: false; error?: string; errorCode?: string };
           if (!response.success || !response.data) {
             const failure = response as { error?: string; errorCode?: string };
             errors.push(`${entry.instrument} ${timeframe}: ${failure.error ?? "provider returned no market data"}`);
@@ -188,7 +193,7 @@ export const runScheduledScan = internalAction({
         durationMs: scan.durationMs,
       };
 
-      const saved = await ctx.runMutation(internal.marketRadarInternal.persistScan, {
+      const saved = await ctx.runMutation(anyApi.marketRadarInternal.persistScan, {
         updates,
         cursor: batch.nextCursor,
         results: JSON.parse(JSON.stringify(Array.from(scan.results.entries()))),
@@ -196,7 +201,7 @@ export const runScheduledScan = internalAction({
         metrics,
         errors,
         lastScanAt: now,
-      });
+      }) as { savedSources: number; lastScanAt: number };
 
       return {
         skipped: false as const,
@@ -209,7 +214,7 @@ export const runScheduledScan = internalAction({
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      await ctx.runMutation(internal.marketRadarInternal.releaseScan, {
+      await ctx.runMutation(anyApi.marketRadarInternal.releaseScan, {
         now: Date.now(),
         error: message,
       });
