@@ -346,6 +346,32 @@ const schema = defineSchema(
       .index("by_user_position", ["userId", "positionId"])
       .index("by_user_position_ts", ["userId", "positionId", "timestamp"]),
 
+    // Persistent multi-asset market radar state. One global scanner state is
+    // shared by authenticated readers; source snapshots are stored separately
+    // to keep each document comfortably below Convex's document-size limit.
+    marketRadarState: defineTable({
+      scope: v.string(),
+      cursor: v.number(),
+      leaseUntil: v.number(),
+      results: v.any(),
+      diffs: v.any(),
+      metrics: v.any(),
+      errors: v.array(v.string()),
+      lastScanAt: v.number(),
+      updatedAt: v.number(),
+    }).index("by_scope", ["scope"]),
+
+    marketRadarSources: defineTable({
+      key: v.string(),
+      instrument: v.string(),
+      timeframe: v.string(),
+      assetClass: v.string(),
+      payload: v.any(),
+      updatedAt: v.number(),
+    })
+      .index("by_key", ["key"])
+      .index("by_updated_at", ["updatedAt"]),
+
     // Phase 99 — Runtime health snapshots
     runtimeHealthSnapshots: defineTable({
       userId: v.id("users"),
