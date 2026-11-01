@@ -28,6 +28,7 @@ import {
   type ResolutionStatus,
 } from "./instruments";
 import { getAllProviders } from "./providers";
+import type { EnvReader } from "./live/credentials";
 
 // ═══════════════════════════════════════════════════════════════
 // COVERAGE MATRIX TYPES
@@ -108,7 +109,7 @@ export interface CoverageMatrix {
 // ═══════════════════════════════════════════════════════════════
 
 // Use the canonical provider registry so routing and coverage cannot drift.
-const PROVIDER_SPECS = getAllProviders();
+
 
 // ═══════════════════════════════════════════════════════════════
 // COVERAGE MATRIX ASSEMBLY
@@ -117,16 +118,17 @@ const PROVIDER_SPECS = getAllProviders();
 /**
  * Compute provider coverage for a single instrument.
  */
-export function computeInstrumentCoverage(instrument: string): InstrumentCoverageReport | null {
+export function computeInstrumentCoverage(instrument: string, readEnv?: EnvReader): InstrumentCoverageReport | null {
   const canonical = resolveInstrument(instrument);
   if (!canonical) return null;
 
+  const providerSpecs = getAllProviders(readEnv);
   const coverage: ProviderCoverageEntry[] = [];
   const supportedCapabilities = new Set<DataCapability>();
   const unsupportedCapabilities = new Set<DataCapability>();
   const allCapabilities = new Set<DataCapability>();
 
-  for (const spec of PROVIDER_SPECS) {
+  for (const spec of providerSpecs) {
     if (!spec.assetClasses.includes(canonical.assetClass)) continue;
 
     for (const cap of spec.capabilities) {
@@ -180,8 +182,9 @@ export function computeInstrumentCoverage(instrument: string): InstrumentCoverag
 /**
  * Compute provider summary across all instruments.
  */
-export function computeProviderSummaries(): ProviderCoverageSummary[] {
-  return PROVIDER_SPECS.map((spec) => {
+export function computeProviderSummaries(readEnv?: EnvReader): ProviderCoverageSummary[] {
+  const providerSpecs = getAllProviders(readEnv);
+  return providerSpecs.map((spec) => {
     const instrumentCount = getAllInstruments().filter((inst) =>
       spec.assetClasses.includes(inst.assetClass) &&
       getProviderSymbol(inst.canonical, spec.id) !== null,
@@ -201,17 +204,18 @@ export function computeProviderSummaries(): ProviderCoverageSummary[] {
 /**
  * Assemble the full coverage matrix.
  */
-export function assembleCoverageMatrix(): CoverageMatrix {
+export function assembleCoverageMatrix(readEnv?: EnvReader): CoverageMatrix {
+  const providerSpecs = getAllProviders(readEnv);
   const instruments = getAllInstrumentIds();
   const instrumentReports = instruments
-    .map((id) => computeInstrumentCoverage(id))
+    .map((id) => computeInstrumentCoverage(id, readEnv))
     .filter((r): r is InstrumentCoverageReport => r !== null);
 
   const capabilitiesByAssetClass: Record<string, DataCapability[]> = {};
   const assetClasses: AssetClass[] = ["crypto", "forex", "equity", "commodity", "indices", "macro"];
   for (const ac of assetClasses) {
     const caps = new Set<DataCapability>();
-    for (const spec of PROVIDER_SPECS) {
+    for (const spec of providerSpecs) {
       if (!spec.assetClasses.includes(ac)) continue;
       for (const cap of spec.capabilities) {
         if (cap.assetClasses.includes(ac)) caps.add(cap.capability);
@@ -233,7 +237,7 @@ export function assembleCoverageMatrix(): CoverageMatrix {
       {} as Record<string, number>,
     ),
     instruments: instrumentReports,
-    providers: computeProviderSummaries(),
+    providers: computeProviderSummaries(readEnv),
     totalCoverageEntries: instrumentReports.reduce((sum, r) => sum + r.coverage.length, 0),
     capabilitiesByAssetClass,
   };
@@ -260,7 +264,7 @@ export interface InstrumentAnalysisReadiness {
  * Determine whether a user-requested instrument can be analyzed
  * and provide actionable feedback if not.
  */
-export function assessAnalysisReadiness(input: string): InstrumentAnalysisReadiness {
+export function assessAnalysisReadiness(input: string, readEnv?: EnvReader): InstrumentAnalysisReadiness {
   const resolution = resolveInstrumentWithAliases(input);
 
   if (resolution.status === "UNKNOWN") {
@@ -296,7 +300,7 @@ export function assessAnalysisReadiness(input: string): InstrumentAnalysisReadin
     };
   }
 
-  const coverage = computeInstrumentCoverage(resolution.instrument.canonical);
+  const coverage = computeInstrumentCoverage(resolution.instrument.canonical, readEnv);
 
   if (!coverage) {
     return {
@@ -336,8 +340,8 @@ export function assessAnalysisReadiness(input: string): InstrumentAnalysisReadin
 /**
  * Get a compact human-readable explanation of provider coverage for an instrument.
  */
-export function explainCoverage(instrument: string): string {
-  const report = computeInstrumentCoverage(instrument);
+export function explainCoverage(instrument: string, readEnv?: EnvReader): string {
+  const report = computeInstrumentCoverage(instrument, readEnv);
   if (!report) return `No coverage data for "${instrument}".`;
 
   const parts: string[] = [];
