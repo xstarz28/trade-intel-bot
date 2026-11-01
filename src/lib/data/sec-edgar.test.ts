@@ -99,6 +99,15 @@ describe("mapSecQuarterlyFundamentals", () => {
     const { facts, submissions } = fixtures();
     const gaap = facts.facts["us-gaap"];
     gaap.EarningsPerShareDiluted.units["USD / shares"].push({
+      accn: accession,
+      filed,
+      start: "2025-07-01",
+      end: "2025-09-30",
+      val: 77,
+      fy: 2025,
+      fp: "Q3",
+    });
+    gaap.EarningsPerShareDiluted.units["USD / shares"].push({
       accn: "0000320193-26-000009",
       filed: "2026-10-29",
       start: "2026-04-01",
