@@ -109,8 +109,12 @@ export const runScheduledScan = internalAction({
       const instrumentType = toInstrumentType(entry.assetClass);
       const timeframes = batch.timeframes;
 
-      const existingSources = await ctx.runQuery(anyApi.marketRadarInternal.listSources, {}) as LiveCandidateSource[];
-      const sourceMap = new Map(existingSources.map((source) => [sourceKey(source), source]));
+      const existingSources = (await ctx.runQuery(anyApi.marketRadarInternal.listSources, {}) as LiveCandidateSource[])
+        .filter((source) => !!source && typeof source.instrument === "string" &&
+          !!source.marketData && Array.isArray(source.marketData.candles));
+      const sourceMap = new Map<string, LiveCandidateSource>(
+        existingSources.map((source) => [sourceKey(source), source] as const),
+      );
       const updates: Array<{
         key: string;
         instrument: string;
