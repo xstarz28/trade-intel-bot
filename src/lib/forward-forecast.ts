@@ -55,10 +55,17 @@ export interface InvestorForwardForecast {
   direction: ForecastDirection;
   horizon: ForecastHorizon;
   alternateScenarios?: AlternateForecastScenario[];
+  /** Current spot used as a transparent investment comparison reference, not an order. */
+  entry?: ForecastLevel;
+  /** Observed higher-timeframe support reference; not a guaranteed fill or accumulation zone. */
+  accumulationReference?: ForecastLevel;
   objective?: ForecastLevel;
   invalidation?: ForecastLevel;
-  /** Structural distance ratio only; never a valuation or expected-return estimate. */
+  /** Price-distance ratio from the spot reference to objective versus invalidation. */
   structuralUpsideDownsideRatio?: number;
+  potentialUpsidePct?: number;
+  potentialDownsidePct?: number;
+  potentialUpsideDownsideRatio?: number;
   valuationStatus: InvestorValuationStatus;
   fundamentalOutlook: InvestorFundamentalOutlook;
   calibration: "UNVALIDATED";
@@ -272,15 +279,28 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
   const low = direction === "bearish" ? validLevel(structure?.lastSwingLow, snapshot.price, "below") : undefined;
   const downside = direction === "bullish" ? validLevel(structure?.lastSwingLow, snapshot.price, "below") : undefined;
   const upside = direction === "bearish" ? validLevel(structure?.lastSwingHigh, snapshot.price, "above") : undefined;
-  const objective = high ?? low;
+  const structuralObjective = high ?? low;
+  const valuationPrice = fundamentalOutlook.valuationReference?.price;
+  const valuationObjective = direction === "bullish"
+    ? validLevel(valuationPrice, snapshot.price, "above")
+    : direction === "bearish"
+      ? validLevel(valuationPrice, snapshot.price, "below")
+      : undefined;
+  const objective = valuationObjective ?? structuralObjective;
   const invalidation = downside ?? upside;
-  let ratio: number | undefined;
-  if (objective !== undefined && invalidation !== undefined) {
-    const reward = Math.abs(objective - snapshot.price);
-    const risk = Math.abs(snapshot.price - invalidation);
-    if (reward > 0 && risk > 0) ratio = reward / risk;
+  const potentialUpsidePct = objective === undefined ? undefined : Math.abs((objective / snapshot.price - 1) * 100);
+  const potentialDownsidePct = invalidation === undefined ? undefined : Math.abs((invalidation / snapshot.price - 1) * 100);
+  let structuralRatio: number | undefined;
+  if (structuralObjective !== undefined && invalidation !== undefined) {
+    const structuralReward = Math.abs(structuralObjective - snapshot.price);
+    const structuralRisk = Math.abs(snapshot.price - invalidation);
+    if (structuralReward > 0 && structuralRisk > 0) structuralRatio = structuralReward / structuralRisk;
   }
-  if (objective !== undefined) evidence.push("Objective comes from the actual higher-timeframe external swing structure.");
+  const potentialRatio = potentialUpsidePct !== undefined && potentialDownsidePct !== undefined && potentialDownsidePct > 0
+    ? potentialUpsidePct / potentialDownsidePct
+    : undefined;
+  if (valuationObjective !== undefined) evidence.push("Directional objective uses a fresh, exact-instrument provider valuation reference; its source type remains explicit.");
+  else if (structuralObjective !== undefined) evidence.push("Objective comes from the actual higher-timeframe external swing structure.");
   if (invalidation !== undefined) evidence.push("Downside/invalidation comes from the actual opposing higher-timeframe swing structure.");
   if (direction === "neutral") limitations.push("Higher-timeframe structure is neutral or unavailable; no directional investment thesis is issued.");
   if (objective === undefined) limitations.push("No valid higher-timeframe swing objective beyond current price is available.");
@@ -289,9 +309,20 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
     direction,
     horizon,
     alternateScenarios: alternate,
-    objective: objective === undefined ? undefined : { price: objective, source: "higher-timeframe external swing", meaning: "Observed structural objective; not fair value" },
+    entry: direction === "bullish" ? { price: snapshot.price, source: "verified spot snapshot", meaning: "Current-price comparison reference only; not an instruction to buy" } : undefined,
+    accumulationReference: direction === "bullish" && downside !== undefined
+      ? { price: downside, source: "higher-timeframe external swing low", meaning: "Observed support reference; not a guaranteed accumulation fill" }
+      : undefined,
+    objective: objective === undefined ? undefined : {
+      price: objective,
+      source: valuationObjective !== undefined ? fundamentalOutlook.valuationReference!.kind : "higher-timeframe external swing",
+      meaning: valuationObjective !== undefined ? fundamentalOutlook.valuationReference!.description : "Observed structural objective; not fair value",
+    },
     invalidation: invalidation === undefined ? undefined : { price: invalidation, source: "higher-timeframe external swing", meaning: "Observed structural downside/invalidation" },
-    structuralUpsideDownsideRatio: ratio,
+    structuralUpsideDownsideRatio: structuralRatio,
+    potentialUpsidePct,
+    potentialDownsidePct,
+    potentialUpsideDownsideRatio: potentialRatio,
     valuationStatus: fundamentalOutlook.valuationStatus,
     fundamentalOutlook,
     calibration: "UNVALIDATED",

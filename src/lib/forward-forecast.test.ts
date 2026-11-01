@@ -84,8 +84,13 @@ describe("Phase 46 — forward forecast contract", () => {
     }));
     expect(forecast.investor.status).toBe("CONDITIONAL");
     expect(forecast.investor.direction).toBe("bullish");
+    expect(forecast.investor.entry?.price).toBe(100_000);
+    expect(forecast.investor.accumulationReference?.price).toBe(94_000);
     expect(forecast.investor.objective?.price).toBe(112_000);
     expect(forecast.investor.invalidation?.price).toBe(94_000);
+    expect(forecast.investor.potentialUpsidePct).toBeCloseTo(12);
+    expect(forecast.investor.potentialDownsidePct).toBeCloseTo(6);
+    expect(forecast.investor.potentialUpsideDownsideRatio).toBeCloseTo(2);
     expect(forecast.investor.structuralUpsideDownsideRatio).toBeCloseTo(12_000 / 6_000);
     expect(forecast.investor.valuationStatus).toBe("NOT_AVAILABLE");
     expect(forecast.investor.alternateScenarios?.[0]).toMatchObject({
@@ -166,6 +171,9 @@ describe("Phase 46 — forward forecast contract", () => {
       timestamp,
       priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
       htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      technicalData: {
+        htfContext: { timeframe: "D1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 115, lastSwingLow: 90, dataPoints: 80 },
+      } as AnalysisResult["technicalData"],
       universalIntelligenceContext: {
         instrument: "AAPL",
         assetClass: "equity",
@@ -219,6 +227,14 @@ describe("Phase 46 — forward forecast contract", () => {
       source: "Verified Valuation Provider",
     });
     expect(forecast.investor.fundamentalOutlook.valuationReference?.upsidePct).toBeCloseTo(20);
+    expect(forecast.investor.entry?.price).toBe(100);
+    expect(forecast.investor.accumulationReference?.price).toBe(90);
+    expect(forecast.investor.objective?.price).toBe(120);
+    expect(forecast.investor.objective?.source).toBe("PROVIDER_INTRINSIC_VALUE");
+    expect(forecast.investor.potentialUpsidePct).toBeCloseTo(20);
+    expect(forecast.investor.potentialDownsidePct).toBeCloseTo(10);
+    expect(forecast.investor.potentialUpsideDownsideRatio).toBeCloseTo(2);
+    expect(forecast.investor.structuralUpsideDownsideRatio).toBeCloseTo(15 / 10);
     expect(forecast.investor.fundamentalOutlook.evidence).toHaveLength(1);
     expect(forecast.investor.direction).toBe("bullish");
     expect(result.recommendation).toBe("NO_TRADE");

@@ -1540,8 +1540,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       <p className="text-muted-foreground">
                         window: {new Date(forecast.horizon.startsAt).toLocaleString()} – {new Date(forecast.horizon.endsAt).toLocaleString()}
                       </p>
-                      {"entry" in forecast && forecast.entry && <p>entry: <span className="text-foreground tabular-nums">{forecast.entry.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.entry.meaning, locale)})</span></p>}
-                      {forecast.objective && <p>objective: <span className="text-foreground tabular-nums">{forecast.objective.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.objective.meaning, locale)})</span></p>}
+                      {"entry" in forecast && forecast.entry && <p>entry/reference: <span className="text-foreground tabular-nums">{formatPrice(forecast.entry.price, result.instrumentType, result.instrument)}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.entry.meaning, locale)})</span></p>}
+                      {"accumulationReference" in forecast && forecast.accumulationReference && <p>accumulation/support reference: <span className="text-foreground tabular-nums">{formatPrice(forecast.accumulationReference.price, result.instrumentType, result.instrument)}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.accumulationReference.meaning, locale)})</span></p>}
+                      {forecast.objective && <p>objective: <span className="text-foreground tabular-nums">{formatPrice(forecast.objective.price, result.instrumentType, result.instrument)}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.objective.meaning, locale)})</span></p>}
                       {forecast.invalidation && <p>invalidation/downside: <span className="text-foreground tabular-nums">{forecast.invalidation.price}</span></p>}
                       {"rewardRisk" in forecast && forecast.rewardRisk !== undefined && (
                         <>
@@ -1550,6 +1551,9 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         </>
                       )}
                       {"structuralUpsideDownsideRatio" in forecast && forecast.structuralUpsideDownsideRatio !== undefined && <p>structural upside/downside: <span className="font-semibold text-primary">{forecast.structuralUpsideDownsideRatio.toFixed(2)} : 1</span></p>}
+                      {"potentialUpsidePct" in forecast && forecast.potentialUpsidePct !== undefined && <p>potential price upside: <span className="font-semibold text-primary">+{forecast.potentialUpsidePct.toFixed(2)}%</span></p>}
+                      {"potentialDownsidePct" in forecast && forecast.potentialDownsidePct !== undefined && <p>structural downside distance: <span className="font-semibold text-foreground">-{forecast.potentialDownsidePct.toFixed(2)}%</span></p>}
+                      {"potentialUpsideDownsideRatio" in forecast && forecast.potentialUpsideDownsideRatio !== undefined && <p>potential upside/downside: <span className="font-semibold text-primary">{forecast.potentialUpsideDownsideRatio.toFixed(2)} : 1</span></p>}
                       {"valuationStatus" in forecast && (
                         <p className="text-muted-foreground">
                           valuation reference: {forecast.valuationStatus.toLowerCase().replace(/_/g, " ")}
