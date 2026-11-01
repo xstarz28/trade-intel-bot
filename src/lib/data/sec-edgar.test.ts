@@ -128,7 +128,7 @@ describe("mapSecQuarterlyFundamentals", () => {
     const rows = mapSecQuarterlyFundamentals("AAPL", cik, facts, submissions);
     expect(rows).toHaveLength(1);
     expect(rows[0].eps).toBe(1.85);
-    expect(rows[0].revenue).toBeUndefined();
+    expect(rows[0].revenue).toBe(102000000000);
   });
 
   it("rejects CIK mismatches and ignores annual filings", () => {
