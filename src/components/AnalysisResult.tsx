@@ -1543,7 +1543,12 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                       {"entry" in forecast && forecast.entry && <p>entry: <span className="text-foreground tabular-nums">{forecast.entry.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.entry.meaning, locale)})</span></p>}
                       {forecast.objective && <p>objective: <span className="text-foreground tabular-nums">{forecast.objective.price}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.objective.meaning, locale)})</span></p>}
                       {forecast.invalidation && <p>invalidation/downside: <span className="text-foreground tabular-nums">{forecast.invalidation.price}</span></p>}
-                      {"rewardRisk" in forecast && forecast.rewardRisk !== undefined && <p>reward : risk: <span className="font-semibold text-primary">1 : {forecast.rewardRisk.toFixed(2)}</span></p>}
+                      {"rewardRisk" in forecast && forecast.rewardRisk !== undefined && (
+                        <>
+                          <p>gross R:R (before transaction costs): <span className="font-semibold text-primary">1 : {forecast.rewardRisk.toFixed(2)}</span></p>
+                          <p className="text-muted-foreground">net R:R is not asserted: instrument/venue-specific fees, spread, slippage, and (where applicable) funding or borrow costs are not attached to this forecast.</p>
+                        </>
+                      )}
                       {"structuralUpsideDownsideRatio" in forecast && forecast.structuralUpsideDownsideRatio !== undefined && <p>structural upside/downside: <span className="font-semibold text-primary">{forecast.structuralUpsideDownsideRatio.toFixed(2)} : 1</span></p>}
                       {"valuationStatus" in forecast && (
                         <p className="text-muted-foreground">
