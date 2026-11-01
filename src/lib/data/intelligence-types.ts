@@ -42,6 +42,7 @@ export interface SentimentData {
 /** Fundamental data for stocks (EPS, earnings, revenue, etc.). */
 export interface FundamentalData {
   provider: string;
+  /** Retrieval timestamp (Unix ms), not an as-of/effective date for every metric. */
   timestamp: number;
   instrumentType: "stock" | "forex" | "crypto" | "commodity" | "indices";
   // Stock-specific
@@ -79,7 +80,10 @@ export interface FundamentalData {
   fiftyTwoWeekLow?: number;
   // Earnings data
   latestEarnings?: {
+    /** Fiscal period end; retained for backward compatibility. */
     date?: string;
+    /** Provider-reported public release date; use this, not fiscal period end, for point-in-time eligibility. */
+    reportedDate?: string;
     eps?: number;
     revenue?: number;
   };
