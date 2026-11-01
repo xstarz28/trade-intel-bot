@@ -117,14 +117,15 @@ export const persistScan = internalMutation({
 });
 
 export const releaseScan = internalMutation({
-  args: { now: v.number(), error: v.string() },
-  handler: async (ctx, { now, error }) => {
+  args: { now: v.number(), cursor: v.number(), error: v.string() },
+  handler: async (ctx, { now, cursor, error }) => {
     const state = await ctx.db
       .query("marketRadarState")
       .withIndex("by_scope", (q) => q.eq("scope", GLOBAL_SCOPE))
       .unique();
     if (!state) return;
     await ctx.db.patch(state._id, {
+      cursor,
       leaseUntil: 0,
       errors: [error.slice(0, 500)],
       updatedAt: now,
