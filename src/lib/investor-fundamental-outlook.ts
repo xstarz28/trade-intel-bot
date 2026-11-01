@@ -12,6 +12,10 @@
 import type { AnalysisResult } from "@/types/analysis";
 import type { UniversalEvidenceItem } from "@/lib/data/universal/types";
 import type { CryptoEvidenceItem } from "@/lib/data/crypto/types";
+import { deriveCotEvidence, mapInstrumentToCot, type CotData } from "@/lib/data/cot";
+import { deriveEiaInventoryEvidence, type EiaData } from "@/lib/data/eia";
+import { deriveMacroYieldEvidence, type TreasuryData } from "@/lib/data/treasury";
+import { buildEquityFundamentalEvidence } from "@/lib/data/universal/equity-evidence";
 
 export type InvestorValuationStatus =
   | "AVAILABLE"
@@ -155,6 +159,223 @@ function mapCryptoEvidence(result: AnalysisResult): InvestorFundamentalEvidence[
   });
 }
 
+function observationDateTimestamp(value: string | undefined, notAfter: number): number | undefined {
+  if (typeof value !== "string" || !value.trim()) return undefined;
+  const parsed = Date.parse(value);
+  return validTimestamp(parsed, notAfter);
+}
+
+function directionFromEffect(effect: number): string {
+  return effect > 0 ? "SUPPORTING" : effect < 0 ? "CONFLICTING" : "NEUTRAL";
+}
+
+function strengthFromEffect(effect: number): string {
+  const magnitude = Math.abs(effect);
+  return magnitude >= 0.6 ? "STRONG" : magnitude >= 0.2 ? "MODERATE" : "WEAK";
+}
+
+function mapDirectProviderEvidence(
+  result: AnalysisResult,
+  spot?: number,
+): InvestorFundamentalEvidence[] {
+  const evidence: InvestorFundamentalEvidence[] = [];
+  const existing = [...mapUniversalEvidence(result), ...mapCryptoEvidence(result)];
+
+  // Alpha Vantage analyst-target evidence is independently timestamped and
+  // exact-symbol checked by the shared equity evidence builder.
+  if (!existing.some((item) => item.category === "VALUATION")) {
+    const fundamentals = result.fundamentalData;
+    const asOf = validTimestamp(fundamentals?.timestamp, result.timestamp);
+    if (fundamentals?.available && asOf !== undefined) {
+      const equityItems = buildEquityFundamentalEvidence(
+        result.instrument,
+        spot,
+        fundamentals,
+        result.timestamp,
+      );
+      for (const item of equityItems) {
+        if (!item.providerAvailable || normalizeInstrument(item.instrument) !== normalizeInstrument(result.instrument)) continue;
+        evidence.push({
+          source: item.source,
+          category: item.category,
+          direction: item.direction,
+          strength: item.strength,
+          quality: item.quality,
+          freshness: item.freshness,
+          dependencyGroup: item.dependencyGroup,
+          explanation: item.explanation,
+          asOf,
+        });
+      }
+    }
+  }
+
+  // CFTC positioning is mapped to the exact contract side. A quote-currency
+  // contract has the inverse effect on the pair; no fuzzy ticker matching.
+  const cot = result.cotContext as CotData | undefined;
+  if (cot?.available && cot.freshness !== "STALE" && !existing.some((item) => item.category === "POSITIONING")) {
+    const mapping = mapInstrumentToCot(result.instrument);
+    const asOf = observationDateTimestamp(cot.latest.reportDate, result.timestamp);
+    if (
+      mapping && mapping.sourceInstrument === cot.sourceInstrument &&
+      normalizeInstrument(cot.requestedInstrument) === normalizeInstrument(result.instrument) &&
+      asOf !== undefined
+    ) {
+      const derived = deriveCotEvidence(cot);
+      const effect = mapping.contractSide === "quote"
+        ? -derived.effectOnContractCurrency
+        : derived.effectOnContractCurrency;
+      if (effect !== 0 || derived.crowded) {
+        evidence.push({
+          source: cot.source,
+          category: "POSITIONING",
+          direction: directionFromEffect(effect),
+          strength: effect === 0 ? "WEAK" : strengthFromEffect(effect),
+          quality: "VERIFIED",
+          freshness: cot.freshness,
+          dependencyGroup: `CFTC_COT_${normalizeInstrument(mapping.sourceInstrument)}`,
+          explanation: [
+            `CFTC positioning for ${mapping.mappedAsset} is mapped to the ${mapping.contractSide} side of ${result.instrument}.`,
+            ...derived.notes,
+          ].join(" "),
+          asOf,
+        });
+      }
+    }
+  }
+
+  // EIA inventory direction is oil-specific. It is never applied to natural
+  // gas or unrelated commodities merely because they share the provider.
+  const eia = result.eiaContext as EiaData | undefined;
+  const instrumentKey = normalizeInstrument(result.instrument);
+  if (
+    eia?.available && eia.freshness !== "STALE" &&
+    /(WTI|BRENT|CRUDE)/.test(instrumentKey) &&
+    !existing.some((item) => item.category === "INVENTORY")
+  ) {
+    const derived = deriveEiaInventoryEvidence(eia);
+    const observationDates = eia.series
+      .map((series) => observationDateTimestamp(series.observationDate, result.timestamp))
+      .filter((value): value is number => value !== undefined);
+    const asOf = observationDates.length > 0 ? Math.min(...observationDates) : undefined;
+    if (derived.effectOnOilLong !== 0 && asOf !== undefined) {
+      evidence.push({
+        source: eia.source,
+        category: "INVENTORY",
+        direction: directionFromEffect(derived.effectOnOilLong),
+        strength: strengthFromEffect(derived.effectOnOilLong),
+        quality: "VERIFIED",
+        freshness: eia.freshness,
+        dependencyGroup: "EIA_WEEKLY_PETROLEUM_INVENTORY",
+        explanation: derived.notes.join(" "),
+        asOf,
+      });
+    }
+  }
+
+  // Treasury evidence is applied only where the measured exposure is explicit:
+  // real yields to gold, nominal USD yields to USD-base/quote FX pairs.
+  const treasury = result.treasuryContext as TreasuryData | undefined;
+  if (
+    treasury?.available && treasury.freshness !== "STALE" &&
+    !existing.some((item) => item.source === treasury.source && item.category === "MACRO")
+  ) {
+    const derived = deriveMacroYieldEvidence(treasury);
+    let effect = 0;
+    let exposure = "";
+    let observationDate: string | undefined;
+    if (instrumentKey.includes("XAU") || instrumentKey === "GOLD") {
+      effect = derived.goldLongEffect;
+      exposure = "US real-yield change mapped to gold";
+      observationDate = treasury.latest.real?.observationDate;
+    } else {
+      const pair = result.instrument.split(/[\\/_-]/).map((part) => part.trim().toUpperCase());
+      const base = pair[0];
+      const quote = pair[1];
+      if (base === "USD") {
+        effect = derived.usdStrengthEffect;
+        exposure = "US nominal-yield change mapped to USD base-currency strength";
+      } else if (quote === "USD") {
+        effect = -derived.usdStrengthEffect;
+        exposure = "US nominal-yield change inverted for USD quote-currency exposure";
+      }
+      observationDate = treasury.latest.nominal.observationDate;
+    }
+    const asOf = observationDateTimestamp(observationDate, result.timestamp);
+    if (effect !== 0 && asOf !== undefined) {
+      evidence.push({
+        source: treasury.source,
+        category: "MACRO",
+        direction: directionFromEffect(effect),
+        strength: strengthFromEffect(effect),
+        quality: "VERIFIED",
+        freshness: treasury.freshness,
+        dependencyGroup: "US_TREASURY_YIELD_CURVE",
+        explanation: [exposure, ...derived.notes].join(" "),
+        asOf,
+      });
+    }
+  }
+
+  return evidence;
+}
+
+function mapCoreFundamentalSummary(
+  result: AnalysisResult,
+  existingEvidence: InvestorFundamentalEvidence[],
+): InvestorFundamentalEvidence[] {
+  if (existingEvidence.some((item) => item.direction === "SUPPORTING" || item.direction === "CONFLICTING")) return [];
+  const score = result.breakdown?.fundamental;
+  if (typeof score !== "number" || !Number.isFinite(score) || Math.abs(score) < 1) return [];
+
+  const observations: Array<{ asOf: number; freshness: string }> = [];
+  const fundamentalTimestamp = validTimestamp(result.fundamentalData?.timestamp, result.timestamp);
+  if (result.fundamentalData?.available && fundamentalTimestamp !== undefined) {
+    const age = result.timestamp - fundamentalTimestamp;
+    observations.push({ asOf: fundamentalTimestamp, freshness: age <= 6 * 60 * 60 * 1000 ? "FRESH" : age <= 72 * 60 * 60 * 1000 ? "DELAYED" : "STALE" });
+  }
+  const macro = result.macroData as { timestamp?: number; available?: boolean; confidence?: string } | undefined;
+  const macroTimestamp = macro && macro.available !== false && macro.confidence !== "unavailable"
+    ? validTimestamp(macro.timestamp, result.timestamp)
+    : undefined;
+  if (macroTimestamp !== undefined) {
+    const age = result.timestamp - macroTimestamp;
+    observations.push({ asOf: macroTimestamp, freshness: age <= 6 * 60 * 60 * 1000 ? "FRESH" : age <= 72 * 60 * 60 * 1000 ? "DELAYED" : "STALE" });
+  }
+  const cot = result.cotContext as CotData | undefined;
+  if (cot?.available) {
+    const asOf = observationDateTimestamp(cot.latest.reportDate, result.timestamp);
+    if (asOf !== undefined) observations.push({ asOf, freshness: cot.freshness });
+  }
+  const eia = result.eiaContext as EiaData | undefined;
+  if (eia?.available) {
+    const dates = eia.series.map((series) => observationDateTimestamp(series.observationDate, result.timestamp)).filter((value): value is number => value !== undefined);
+    if (dates.length > 0) observations.push({ asOf: Math.min(...dates), freshness: eia.freshness });
+  }
+  const treasury = result.treasuryContext as TreasuryData | undefined;
+  if (treasury?.available) {
+    const asOf = observationDateTimestamp(treasury.latest.nominal.observationDate, result.timestamp);
+    if (asOf !== undefined) observations.push({ asOf, freshness: treasury.freshness });
+  }
+
+  const usable = observations.filter((item) => item.freshness === "FRESH" || item.freshness === "DELAYED");
+  if (usable.length === 0) return [];
+  const freshness = usable.some((item) => item.freshness === "DELAYED") ? "DELAYED" : "FRESH";
+  const asOf = Math.min(...usable.map((item) => item.asOf));
+  const magnitude = Math.abs(score);
+  return [{
+    source: "Core fundamental analysis engine",
+    category: "FUNDAMENTALS",
+    direction: score > 0 ? "SUPPORTING" : "CONFLICTING",
+    strength: magnitude >= 60 ? "STRONG" : magnitude >= 30 ? "MODERATE" : "WEAK",
+    quality: "DEGRADED",
+    freshness,
+    dependencyGroup: "CORE_FUNDAMENTAL_ENGINE_AGGREGATE",
+    explanation: `The existing fundamental layer produced a score of ${score.toFixed(1)} from the available asset-specific provider inputs. This is an aggregate summary, not an independent provider confirmation.`,
+    asOf,
+  }];
+}
+
 function buildValuationReference(
   result: AnalysisResult,
   spot: number | undefined,
@@ -235,12 +456,15 @@ function buildValuationReference(
 
 /** Build investor-facing fundamentals without allowing them to alter the trading decision. */
 export function buildInvestorFundamentalOutlook(result: AnalysisResult, spot?: number): InvestorFundamentalOutlook {
-  const evidence = [...mapUniversalEvidence(result), ...mapCryptoEvidence(result)];
+  const existingEvidence = [...mapUniversalEvidence(result), ...mapCryptoEvidence(result)];
+  const directEvidence = mapDirectProviderEvidence(result, spot);
+  const evidence = [...existingEvidence, ...directEvidence];
+  const evidenceWithAggregate = evidence.length > 0 ? evidence : mapCoreFundamentalSummary(result, evidence);
   const valuation = buildValuationReference(result, spot);
-  const hasDegraded = evidence.some((item) => item.quality === "DEGRADED");
+  const hasDegraded = evidenceWithAggregate.some((item) => item.quality === "DEGRADED");
   return {
-    evidenceStatus: evidence.length === 0 ? "UNAVAILABLE" : hasDegraded ? "DEGRADED" : "VERIFIED",
-    evidence,
+    evidenceStatus: evidenceWithAggregate.length === 0 ? "UNAVAILABLE" : hasDegraded ? "DEGRADED" : "VERIFIED",
+    evidence: evidenceWithAggregate,
     valuationStatus: valuation.status,
     valuationReference: valuation.reference,
     limitations: [
