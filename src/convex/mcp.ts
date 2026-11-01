@@ -50,7 +50,7 @@ export const mcp: McpServer<Id<"users">> = new McpServer(component, {
           timestamp: v.number(),
         })),
       }),
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       scope: "analysis:read",
       handler: async (ctx, args, user) => ({
         analyses: await ctx.runQuery(internalMcpData.listRecentAnalyses, {
@@ -82,7 +82,7 @@ export const mcp: McpServer<Id<"users">> = new McpServer(component, {
           updatedAt: v.number(),
         })),
       }),
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       scope: "analysis:read",
       handler: async (ctx, args, user) => ({
         entries: await ctx.runQuery(internalMcpData.listTradeJournal, {
@@ -112,7 +112,7 @@ export const mcp: McpServer<Id<"users">> = new McpServer(component, {
           lastUpdateAt: v.number(),
         })),
       }),
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       scope: "analysis:read",
       handler: async (ctx, args, user) => ({
         positions: await ctx.runQuery(internalMcpData.listMonitoredPositions, {
@@ -144,7 +144,7 @@ export const mcp: McpServer<Id<"users">> = new McpServer(component, {
           })),
         }),
       ),
-      annotations: { readOnlyHint: true, openWorldHint: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       scope: "analysis:read",
       handler: async (ctx, _args, user) =>
         await ctx.runQuery(internalMcpData.getRuntimeHealth, {
