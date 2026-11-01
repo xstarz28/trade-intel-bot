@@ -178,7 +178,13 @@ export const fetchIntelligence = action({
               ? mapAlphaVantageEarningsObservations(earningsJson)
               : [];
 
-            if (!providerSymbolMatches) {
+            if (!normalizedFundamentals.available) {
+              normalizedFundamentals.pointInTimeHistory = {
+                status: "SOURCE_IDENTITY_UNVERIFIED",
+                providerObservationCount: 0,
+                newlyPersistedCount: 0,
+              };
+            } else if (normalizedFundamentals.symbol !== ticker) {
               normalizedFundamentals.pointInTimeHistory = {
                 status: "SYMBOL_MISMATCH",
                 providerObservationCount: 0,
