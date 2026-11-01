@@ -334,10 +334,10 @@ function mapCoreFundamentalSummary(
     const age = result.timestamp - fundamentalTimestamp;
     observations.push({ asOf: fundamentalTimestamp, freshness: age <= 6 * 60 * 60 * 1000 ? "FRESH" : age <= 72 * 60 * 60 * 1000 ? "DELAYED" : "STALE" });
   }
-  const macroTimestamp = validTimestamp(
-    (result.macroData as { timestamp?: number } | undefined)?.timestamp,
-    result.timestamp,
-  );
+  const macro = result.macroData as { timestamp?: number; available?: boolean; confidence?: string } | undefined;
+  const macroTimestamp = macro && macro.available !== false && macro.confidence !== "unavailable"
+    ? validTimestamp(macro.timestamp, result.timestamp)
+    : undefined;
   if (macroTimestamp !== undefined) {
     const age = result.timestamp - macroTimestamp;
     observations.push({ asOf: macroTimestamp, freshness: age <= 6 * 60 * 60 * 1000 ? "FRESH" : age <= 72 * 60 * 60 * 1000 ? "DELAYED" : "STALE" });
