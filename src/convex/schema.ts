@@ -72,6 +72,21 @@ const schema = defineSchema(
       timestamp: v.number(),
     }).index("by_user", ["userId", "timestamp"]),
 
+
+    // Point-in-time fundamentals: immutable provider-reported earnings events.
+    fundamentalObservations: defineTable({
+      provider: v.string(),
+      instrument: v.string(),
+      fiscalPeriodEnd: v.optional(v.string()),
+      reportedDate: v.string(),
+      eps: v.optional(v.number()),
+      revenue: v.optional(v.number()),
+      firstObservedAt: v.number(),
+      lastRetrievedAt: v.number(),
+    })
+      .index("by_provider_instrument_reported_date", ["provider", "instrument", "reportedDate"])
+      .index("by_instrument_reported_date", ["instrument", "reportedDate"]),
+
     // Phase 31 — Trade journal entries
     journal: defineTable({
       userId: v.id("users"),
