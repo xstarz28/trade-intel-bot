@@ -399,7 +399,7 @@ describe("Phase 44 — C. Provider Capability Model", () => {
 
 describe("Phase 44 — D. Provider Routing", () => {
   it("routes OHLCV for BTC/USD to twelve-data", () => {
-    const route = findProviderRoutes("BTC/USD", "ohlcv");
+    const route = findProviderRoutes("BTC/USD", "ohlcv", (name) => name === "TWELVE_DATA_API_KEY" ? "configured" : undefined);
     expect(route.available).toBe(true);
     expect(route.assetClass).toBe("crypto");
     expect(route.routes.length).toBeGreaterThan(0);
@@ -424,7 +424,7 @@ describe("Phase 44 — D. Provider Routing", () => {
   });
 
   it("routes earnings for AAPL to alpha-vantage", () => {
-    const route = findProviderRoutes("AAPL", "earnings");
+    const route = findProviderRoutes("AAPL", "earnings", (name) => name === "ALPHA_VANTAGE_API_KEY" ? "configured" : undefined);
     expect(route.available).toBe(true);
     const avRoute = route.routes.find((r) => r.providerId === "alpha-vantage");
     expect(avRoute).toBeDefined();

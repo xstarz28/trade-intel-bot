@@ -23,17 +23,24 @@ import type {
   RouteResult,
 } from "./types";
 import { resolveInstrument, getProviderSymbol } from "./instruments";
+import { checkCredentials, type EnvReader } from "./live/credentials";
 
 // ═══════════════════════════════════════════════════════════════
 // PROVIDER PROFILES
 // ═══════════════════════════════════════════════════════════════
 
+/**
+ * Static provider metadata only. Credential availability is resolved at
+ * call-time from the server environment via the shared credential registry.
+ * The booleans below are conservative fallbacks for an unknown credential spec;
+ * they are never used for providers registered in credentials.ts.
+ */
 const PROVIDER_PROFILES: ProviderProfile[] = [
   {
     id: "twelve-data",
     name: "Twelve Data",
     authRequired: true,
-    credentialsAvailable: true, // configured in env
+    credentialsAvailable: false,
     rateLimitPerMinute: 800,
     timeoutMs: 15000,
     retryConfig: { maxRetries: 2, backoffMs: 1000 },
@@ -47,7 +54,7 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
     id: "alpha-vantage",
     name: "Alpha Vantage",
     authRequired: true,
-    credentialsAvailable: true,
+    credentialsAvailable: false,
     rateLimitPerMinute: 5,
     timeoutMs: 20000,
     retryConfig: { maxRetries: 1, backoffMs: 5000 },
@@ -80,7 +87,7 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
     id: "coinglass",
     name: "CoinGlass",
     authRequired: true,
-    credentialsAvailable: false, // requires user-provided key
+    credentialsAvailable: false,
     rateLimitPerMinute: 60,
     timeoutMs: 15000,
     retryConfig: { maxRetries: 2, backoffMs: 1000 },
@@ -190,17 +197,34 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
   },
 ];
 
+function resolveProviderProfiles(readEnv?: EnvReader): ProviderProfile[] {
+  return PROVIDER_PROFILES.map((provider) => {
+    const credentialStatus = checkCredentials(provider.id, readEnv);
+    return {
+      ...provider,
+      assetClasses: [...provider.assetClasses],
+      capabilities: provider.capabilities.map((capability) => ({
+        ...capability,
+        assetClasses: [...capability.assetClasses],
+      })),
+      credentialsAvailable: credentialStatus?.available ?? (!provider.authRequired && provider.credentialsAvailable),
+    };
+  });
+}
+
 // ═══════════════════════════════════════════════════════════════
 // ROUTING
 // ═══════════════════════════════════════════════════════════════
 
 /**
  * Find all providers that can serve a given capability for a given instrument.
- * Returns routes sorted by quality descending.
+ * Credential availability is read at call-time; credential values never leave
+ * the shared credential checker.
  */
 export function findProviderRoutes(
   instrument: string,
   capability: DataCapability,
+  readEnv?: EnvReader,
 ): RouteResult {
   const canonical = resolveInstrument(instrument);
   const assetClass = canonical?.assetClass ?? "unknown";
@@ -218,19 +242,14 @@ export function findProviderRoutes(
 
   const routes: ProviderRoute[] = [];
 
-  for (const provider of PROVIDER_PROFILES) {
-    // Check if provider supports this asset class
+  for (const provider of resolveProviderProfiles(readEnv)) {
     if (!provider.assetClasses.includes(assetClass)) continue;
-
-    // Check if provider has the requested capability
     const providerCap = provider.capabilities.find(
       (c) => c.capability === capability && c.assetClasses.includes(assetClass),
     );
     if (!providerCap) continue;
 
-    // Check if provider has a mapping for this specific instrument
     const symbol = getProviderSymbol(instrument, provider.id);
-
     routes.push({
       providerId: provider.id,
       providerName: provider.name,
@@ -241,7 +260,6 @@ export function findProviderRoutes(
     });
   }
 
-  // Sort by quality: FULL > PARTIAL > DEGRADED > UNAVAILABLE
   const qualityOrder: Record<CapabilityQuality, number> = {
     FULL: 0,
     PARTIAL: 1,
@@ -250,7 +268,9 @@ export function findProviderRoutes(
   };
   routes.sort((a, b) => qualityOrder[a.quality] - qualityOrder[b.quality]);
 
-  const availableRoutes = routes.filter((r) => r.quality !== "UNAVAILABLE" && r.credentialsAvailable);
+  const availableRoutes = routes.filter((route) =>
+    route.quality !== "UNAVAILABLE" && route.credentialsAvailable,
+  );
 
   return {
     instrument,
@@ -264,45 +284,29 @@ export function findProviderRoutes(
   };
 }
 
-/**
- * Get all providers registered in the system.
- */
-export function getAllProviders(): ProviderProfile[] {
-  return [...PROVIDER_PROFILES];
+/** Get all providers, with current credential presence resolved from env. */
+export function getAllProviders(readEnv?: EnvReader): ProviderProfile[] {
+  return resolveProviderProfiles(readEnv);
 }
 
-/**
- * Get a specific provider profile.
- */
-export function getProviderProfile(providerId: string): ProviderProfile | undefined {
-  return PROVIDER_PROFILES.find((p) => p.id === providerId);
+/** Get a specific provider profile with current credential presence resolved from env. */
+export function getProviderProfile(providerId: string, readEnv?: EnvReader): ProviderProfile | undefined {
+  return resolveProviderProfiles(readEnv).find((provider) => provider.id === providerId);
 }
 
-/**
- * Get all capabilities declared for a given asset class across all providers.
- */
-export function getCapabilitiesForAssetClass(assetClass: AssetClass): DataCapability[] {
-  const caps = new Set<DataCapability>();
-  for (const provider of PROVIDER_PROFILES) {
-    if (!provider.assetClasses.includes(assetClass)) continue;
-    for (const cap of provider.capabilities) {
-      if (cap.assetClasses.includes(assetClass)) {
-        caps.add(cap.capability);
-      }
-    }
-  }
-  return Array.from(caps);
-}
+/** Get all capabilities declared for a given asset class across all providers. */
 
 /**
- * Check if a specific provider supports a specific capability for an instrument.
+ * Check whether a provider declares support for a capability on an instrument.
+ * This is a capability/mapping check only; it does not assert credentials,
+ * provider health, or live data availability.
  */
 export function providerSupportsCapability(
   providerId: string,
   capability: DataCapability,
   instrument: string,
 ): boolean {
-  const provider = PROVIDER_PROFILES.find((p) => p.id === providerId);
+  const provider = PROVIDER_PROFILES.find((item) => item.id === providerId);
   if (!provider) return false;
 
   const canonical = resolveInstrument(instrument);
@@ -310,6 +314,17 @@ export function providerSupportsCapability(
 
   return provider.assetClasses.includes(canonical.assetClass) &&
     provider.capabilities.some(
-      (c) => c.capability === capability && c.assetClasses.includes(canonical.assetClass),
+      (item) => item.capability === capability && item.assetClasses.includes(canonical.assetClass),
     );
+}
+
+export function getCapabilitiesForAssetClass(assetClass: AssetClass): DataCapability[] {
+  const caps = new Set<DataCapability>();
+  for (const provider of PROVIDER_PROFILES) {
+    if (!provider.assetClasses.includes(assetClass)) continue;
+    for (const cap of provider.capabilities) {
+      if (cap.assetClasses.includes(assetClass)) caps.add(cap.capability);
+    }
+  }
+  return Array.from(caps);
 }
