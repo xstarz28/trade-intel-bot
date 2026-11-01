@@ -99,22 +99,25 @@ export const getRuntimeHealth = internalQuery({
       .order("desc")
       .first();
 
-    if (!row) return null;
+    if (!row) return { available: false as const };
 
     return {
-      overallStatus: row.overallStatus,
-      timestamp: row.timestamp,
-      intelligenceCycleStatus: row.intelligenceCycleStatus,
-      alertPipelineStatus: row.alertPipelineStatus,
-      persistenceStatus: row.persistenceStatus,
-      staleComponents: row.staleComponents,
-      unavailableComponents: row.unavailableComponents,
-      components: row.components.map((component) => ({
-        component: component.component,
-        status: component.status,
-        freshness: component.freshness,
-        consecutiveFailures: component.consecutiveFailures,
-      })),
+      available: true as const,
+      snapshot: {
+        overallStatus: row.overallStatus,
+        timestamp: row.timestamp,
+        intelligenceCycleStatus: row.intelligenceCycleStatus,
+        alertPipelineStatus: row.alertPipelineStatus,
+        persistenceStatus: row.persistenceStatus,
+        staleComponents: row.staleComponents,
+        unavailableComponents: row.unavailableComponents,
+        components: row.components.map((component) => ({
+          component: component.component,
+          status: component.status,
+          freshness: component.freshness,
+          consecutiveFailures: component.consecutiveFailures,
+        })),
+      },
     };
   },
 });
