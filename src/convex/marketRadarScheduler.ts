@@ -30,7 +30,7 @@ import type { LiveCandidateSource } from "../lib/liveCandidateBuilder";
 import type { MarketData, TechnicalData } from "../lib/data/market-types";
 
 const GLOBAL_SCOPE = "global";
-const SOURCE_LIMIT = 250;
+const SOURCE_LIMIT = 300;
 const LEASE_MS = 120_000;
 const CANDLES_TO_PERSIST = 40;
 
