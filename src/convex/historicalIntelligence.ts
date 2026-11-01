@@ -465,14 +465,17 @@ export const persistFundamentalObservations = internalMutation({
       if (seen.has(identity)) continue;
       seen.add(identity);
 
-      const existing = await ctx.db
+      const matchingReports = await ctx.db
         .query("fundamentalObservations")
         .withIndex("by_provider_instrument_reported_date", (q) =>
           q.eq("provider", args.provider)
             .eq("instrument", args.instrument)
             .eq("reportedDate", observation.reportedDate),
         )
-        .unique();
+        .collect();
+      const existing = matchingReports.find(
+        (record) => record.fiscalPeriodEnd === observation.fiscalPeriodEnd,
+      );
 
       if (existing) {
         await ctx.db.patch(existing._id, {
