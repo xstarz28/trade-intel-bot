@@ -164,6 +164,11 @@ export const runScheduledScan = internalAction({
       | { claimed: true; cursor: number; previousResults: Array<[string, RadarOpportunity[]]>; lastScanAt: number };
     if (!claim.claimed) return { skipped: true as const, reason: "previous scan still holds the lease" };
 
+    // Advance past a fatal instrument visit so one unexpected failure cannot
+    // pin the durable cursor forever. Provider-level failures remain isolated
+    // and are persisted normally by the successful scan path.
+    let failureCursor = claim.cursor + 1;
+
     try {
       const universe = DEFAULT_UNIVERSE.filter((entry) => entry.assetClass !== "macro");
       if (universe.length === 0) throw new Error("market radar universe is empty");
@@ -171,6 +176,7 @@ export const runScheduledScan = internalAction({
       // Three rotating passes cover H1/D1, H4/W1, and M5/H1. Two acquisitions
       // per minute preserve the shared provider request budget.
       const batch = selectBackgroundScanBatch(claim.cursor, universe.length);
+      failureCursor = batch.nextCursor;
       const entry = universe[batch.instrumentIndex]!;
       const instrumentType = toInstrumentType(entry.assetClass);
       const timeframes = batch.timeframes;
@@ -463,6 +469,7 @@ export const runScheduledScan = internalAction({
       const message = error instanceof Error ? error.message : String(error);
       await ctx.runMutation(anyApi.marketRadarInternal.releaseScan, {
         now: Date.now(),
+        cursor: failureCursor,
         error: message,
       });
       return { skipped: false as const, error: message.slice(0, 500) };
