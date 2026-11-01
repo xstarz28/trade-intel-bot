@@ -27,7 +27,7 @@ function finiteProviderNumber(value: unknown): number | undefined {
 
 
 function providerDate(value: unknown): string | undefined {
-  if (typeof value !== "string" || !/^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return undefined;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return undefined;
   const parsed = Date.parse(`${value}T00:00:00Z`);
   return Number.isFinite(parsed) && new Date(parsed).toISOString().slice(0, 10) === value
     ? value
