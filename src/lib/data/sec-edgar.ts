@@ -186,23 +186,24 @@ export function mapSecQuarterlyFundamentals(
       if (!eps && !revenue) continue;
 
       const acceptanceDateTime = recent.acceptanceDateTime?.[i];
+      const validAcceptanceDateTime = acceptanceDateTime && Number.isFinite(Date.parse(acceptanceDateTime))
+        ? acceptanceDateTime
+        : undefined;
+      const fiscalYear = recent.fy?.[i];
+      const fiscalPeriod = recent.fp?.[i];
       output.push({
         cik,
         ticker: normalizedTicker,
         accessionNumber,
         form,
         filingDate,
-        acceptanceDateTime: acceptanceDateTime && Number.isFinite(Date.parse(acceptanceDateTime))
-          ? acceptanceDateTime
-          : undefined,
+        ...(validAcceptanceDateTime ? { acceptanceDateTime: validAcceptanceDateTime } : {}),
         fiscalPeriodStart: period.start,
         fiscalPeriodEnd: period.end,
-        fiscalYear: recent.fy?.[i],
-        fiscalPeriod: recent.fp?.[i],
-        eps: eps?.value,
-        revenue: revenue?.value,
-        epsTag: eps?.tag,
-        revenueTag: revenue?.tag,
+        ...(fiscalYear !== undefined ? { fiscalYear } : {}),
+        ...(fiscalPeriod ? { fiscalPeriod } : {}),
+        ...(eps ? { eps: eps.value, epsTag: eps.tag } : {}),
+        ...(revenue ? { revenue: revenue.value, revenueTag: revenue.tag } : {}),
         sourceUrl: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accessionNumber.replace(/-/g, "")}/`,
       });
     }
