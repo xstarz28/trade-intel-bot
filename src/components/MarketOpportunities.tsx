@@ -559,7 +559,29 @@ export function MarketOpportunities({
       const previous = byIdentity.get(key);
       const observedAt = source.marketData?.price?.timestamp ?? 0;
       const previousObservedAt = previous?.marketData?.price?.timestamp ?? 0;
-      if (!previous || observedAt >= previousObservedAt) byIdentity.set(key, source);
+      if (!previous) {
+        byIdentity.set(key, source);
+        continue;
+      }
+
+      // Keep the newest exact market observation, but do not discard still-valid
+      // asset-specific context just because the background worker only refreshes
+      // price/technical data. Each context retains its own provider timestamp and
+      // downstream freshness/instrument checks.
+      const newest = observedAt >= previousObservedAt ? source : previous;
+      const older = newest === source ? previous : source;
+      byIdentity.set(key, {
+        ...older,
+        ...newest,
+        providerNative: newest.providerNative ?? older.providerNative,
+        analysisResult: newest.analysisResult ?? older.analysisResult,
+        universalIntelligence: newest.universalIntelligence ?? older.universalIntelligence,
+        derivativesData: newest.derivativesData ?? older.derivativesData,
+        calendarData: newest.calendarData ?? older.calendarData,
+        treasuryData: newest.treasuryData ?? older.treasuryData,
+        cotData: newest.cotData ?? older.cotData,
+        eiaData: newest.eiaData ?? older.eiaData,
+      });
     }
     return Array.from(byIdentity.values());
   }, [backgroundSources, liveSources]);
