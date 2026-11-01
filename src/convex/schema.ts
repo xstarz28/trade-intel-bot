@@ -87,6 +87,30 @@ const schema = defineSchema(
       .index("by_provider_instrument_reported_date", ["provider", "instrument", "reportedDate"])
       .index("by_instrument_reported_date", ["instrument", "reportedDate"]),
 
+    // SEC EDGAR filing facts. Filing date and acceptance metadata are kept
+    // separate; neither is asserted to be the exact public-availability time.
+    secEdgarObservations: defineTable({
+      ticker: v.string(),
+      cik: v.string(),
+      accessionNumber: v.string(),
+      form: v.string(),
+      filingDate: v.string(),
+      acceptanceDateTime: v.optional(v.string()),
+      fiscalPeriodStart: v.string(),
+      fiscalPeriodEnd: v.string(),
+      fiscalYear: v.optional(v.number()),
+      fiscalPeriod: v.optional(v.string()),
+      eps: v.optional(v.number()),
+      revenue: v.optional(v.number()),
+      epsTag: v.optional(v.string()),
+      revenueTag: v.optional(v.string()),
+      sourceUrl: v.string(),
+      firstObservedAt: v.number(),
+      lastRetrievedAt: v.number(),
+    })
+      .index("by_ticker_accession", ["ticker", "accessionNumber"])
+      .index("by_ticker_filing_date", ["ticker", "filingDate"]),
+
     // Phase 31 — Trade journal entries
     journal: defineTable({
       userId: v.id("users"),
