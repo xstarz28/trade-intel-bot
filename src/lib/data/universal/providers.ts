@@ -295,6 +295,29 @@ export function getProviderProfile(providerId: string, readEnv?: EnvReader): Pro
 }
 
 /** Get all capabilities declared for a given asset class across all providers. */
+
+/**
+ * Check whether a provider declares support for a capability on an instrument.
+ * This is a capability/mapping check only; it does not assert credentials,
+ * provider health, or live data availability.
+ */
+export function providerSupportsCapability(
+  providerId: string,
+  capability: DataCapability,
+  instrument: string,
+): boolean {
+  const provider = PROVIDER_PROFILES.find((item) => item.id === providerId);
+  if (!provider) return false;
+
+  const canonical = resolveInstrument(instrument);
+  if (!canonical) return false;
+
+  return provider.assetClasses.includes(canonical.assetClass) &&
+    provider.capabilities.some(
+      (item) => item.capability === capability && item.assetClasses.includes(canonical.assetClass),
+    );
+}
+
 export function getCapabilitiesForAssetClass(assetClass: AssetClass): DataCapability[] {
   const caps = new Set<DataCapability>();
   for (const provider of PROVIDER_PROFILES) {
