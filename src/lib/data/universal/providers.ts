@@ -325,6 +325,7 @@ export function providerSupportsCapability(
 
   const canonical = resolveInstrument(instrument);
   if (!canonical) return false;
+  if (providerId === "sec-edgar" && getProviderSymbol(instrument, providerId) === null) return false;
 
   return provider.assetClasses.includes(canonical.assetClass) &&
     provider.capabilities.some(
