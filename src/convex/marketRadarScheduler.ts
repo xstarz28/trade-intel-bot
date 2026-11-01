@@ -23,6 +23,10 @@ import {
 import type { RadarOpportunity } from "../lib/market-radar/types";
 import type { LiveCandidateSource } from "../lib/liveCandidateBuilder";
 import type { MarketData, TechnicalData } from "../lib/data/market-types";
+import { runAnalysis, type AnalysisInput, type AnalysisResult } from "../lib/analysis-engine";
+import { buildCryptoIntelligenceContext } from "../lib/data/crypto/intelligence";
+import { parseCoinGlassResult } from "../lib/data/crypto/coinglass-adapter";
+import { parseDeFiLlamaResult } from "../lib/data/crypto/defillama-adapter";
 
 const GLOBAL_SCOPE = "global";
 const SOURCE_LIMIT = 300;
@@ -36,6 +40,38 @@ function sourceKey(source: LiveCandidateSource): string {
 function compactSource(source: LiveCandidateSource): LiveCandidateSource {
   const marketData = source.marketData;
   if (!marketData) return source;
+  const analysis = source.analysisResult;
+  const compactAnalysis = analysis ? {
+    id: analysis.id,
+    instrument: analysis.instrument,
+    instrumentType: analysis.instrumentType,
+    timeframe: analysis.timeframe,
+    bias: analysis.bias,
+    confidence: analysis.confidence,
+    recommendation: analysis.recommendation,
+    conviction: analysis.conviction,
+    noTradeReasons: analysis.noTradeReasons,
+    tradingStyle: analysis.tradingStyle,
+    tradePlan: analysis.tradePlan,
+    projectedTradePlan: analysis.projectedTradePlan,
+    mtfSummary: analysis.mtfSummary,
+    longHorizonThesis: analysis.longHorizonThesis,
+    breakdown: analysis.breakdown,
+    dataCompleteness: analysis.dataCompleteness,
+    dataFlags: analysis.dataFlags,
+    priceSnapshot: analysis.priceSnapshot,
+    fundamentalData: analysis.fundamentalData,
+    sentimentData: analysis.sentimentData,
+    macroData: analysis.macroData,
+    derivativesData: analysis.derivativesData,
+    calendarData: analysis.calendarData,
+    treasuryContext: analysis.treasuryContext,
+    cotContext: analysis.cotContext,
+    eiaContext: analysis.eiaContext,
+    cryptoIntelligenceContext: analysis.cryptoIntelligenceContext,
+    universalIntelligenceContext: analysis.universalIntelligenceContext,
+    timestamp: analysis.timestamp,
+  } as AnalysisResult : undefined;
   const compact = {
     instrument: source.instrument,
     assetClass: source.assetClass,
@@ -48,10 +84,39 @@ function compactSource(source: LiveCandidateSource): LiveCandidateSource {
         : {}),
     },
     ...(source.technicalData ? { technicalData: source.technicalData } : {}),
+    ...(compactAnalysis ? { analysisResult: compactAnalysis } : {}),
+    ...(source.universalIntelligence ? { universalIntelligence: source.universalIntelligence } : {}),
+    ...(source.derivativesData ? { derivativesData: source.derivativesData } : {}),
+    ...(source.calendarData ? { calendarData: source.calendarData } : {}),
+    ...(source.treasuryData ? { treasuryData: source.treasuryData } : {}),
+    ...(source.cotData ? { cotData: source.cotData } : {}),
+    ...(source.eiaData ? { eiaData: source.eiaData } : {}),
   };
-  // Convex values cannot contain undefined; JSON round-tripping strips only
-  // absent optional fields before the snapshot is persisted.
+  // Convex values cannot contain undefined; JSON round-tripping strips absent
+  // optional fields before persistence while retaining provider timestamps.
   return JSON.parse(JSON.stringify(compact)) as LiveCandidateSource;
+}
+
+async function callOptionalProvider<T>(
+  run: () => Promise<T>,
+  label: string,
+  errors: string[],
+): Promise<T | undefined> {
+  try {
+    const result = await run();
+    const envelope = result as { success?: boolean; error?: string; errorCode?: string; status?: string };
+    if (envelope?.success === false) {
+      const reason = [envelope.errorCode, envelope.status, envelope.error].filter(Boolean).join(": ");
+      if (!(label === "DeFiLlama" && /UNSUPPORTED|NOT_SUPPORTED|NO_MAPPING/i.test(reason))) {
+        errors.push(`${label}: ${reason || "provider unavailable"}`);
+      }
+      return undefined;
+    }
+    return result;
+  } catch (error) {
+    errors.push(`${label}: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
 }
 
 function toInstrumentType(assetClass: string): "forex" | "crypto" | "stock" | "commodity" | "indices" | undefined {
@@ -128,6 +193,102 @@ export const runScheduledScan = internalAction({
       if (!instrumentType) {
         errors.push(`Unsupported asset class for ${entry.instrument}: ${entry.assetClass}`);
       } else {
+        // Asset-specific enrichment runs once per instrument visit and is
+        // reused across both timeframe analyses. Each provider is isolated:
+        // one outage never suppresses independent evidence from other sources.
+        const intelligencePromise = callOptionalProvider(
+          () => ctx.runAction(anyApi.alphaVantage.fetchIntelligence, {
+            instrument: entry.instrument, instrumentType,
+          }),
+          "Alpha Vantage intelligence",
+          errors,
+        );
+        const calendarPromise = callOptionalProvider(
+          () => ctx.runAction(anyApi.tradingEconomics.fetchCalendar, {
+            instrument: entry.instrument, instrumentType,
+          }),
+          "Economic calendar",
+          errors,
+        );
+        const treasuryPromise = entry.assetClass === "forex" || entry.assetClass === "commodity"
+          ? callOptionalProvider(
+              () => ctx.runAction(anyApi.treasury.fetchTreasuryYields, {}),
+              "Treasury yields",
+              errors,
+            )
+          : Promise.resolve(undefined);
+        const cotPromise = entry.requiredCapabilities.includes("cot")
+          ? callOptionalProvider(
+              () => ctx.runAction(anyApi.cot.fetchCotPositioning, { instrument: entry.instrument }),
+              "CFTC COT positioning",
+              errors,
+            )
+          : Promise.resolve(undefined);
+        const eiaPromise = entry.requiredCapabilities.includes("eia")
+          ? callOptionalProvider(
+              () => ctx.runAction(anyApi.eia.fetchEiaInventory, {}),
+              "EIA inventory",
+              errors,
+            )
+          : Promise.resolve(undefined);
+        const derivativesPromise = entry.assetClass === "crypto" && entry.requiredCapabilities.includes("derivatives")
+          ? callOptionalProvider(
+              () => ctx.runAction(anyApi.coinglass.fetchDerivatives, { instrument: entry.instrument }),
+              "CoinGlass derivatives",
+              errors,
+            )
+          : Promise.resolve(undefined);
+        const defiPromise = entry.assetClass === "crypto"
+          ? callOptionalProvider(
+              () => ctx.runAction(anyApi.coinglass.fetchDeFiLlamaFundamentals, { instrument: entry.instrument }),
+              "DeFiLlama",
+              errors,
+            )
+          : Promise.resolve(undefined);
+
+        const [intelligenceResult, calendarResult, treasuryResult, cotResult, eiaResult, derivativesResult, defiResult] =
+          await Promise.all([
+            intelligencePromise,
+            calendarPromise,
+            treasuryPromise,
+            cotPromise,
+            eiaPromise,
+            derivativesPromise,
+            defiPromise,
+          ]);
+
+        const intelligence = intelligenceResult as {
+          sentiment?: AnalysisInput["sentimentData"];
+          fundamentals?: AnalysisInput["fundamentalData"];
+          macro?: AnalysisInput["macroData"];
+        } | undefined;
+        const calendarData = (calendarResult as { data?: AnalysisInput["calendarData"] } | undefined)?.data;
+        const treasuryData = (treasuryResult as { data?: AnalysisInput["treasuryData"] } | undefined)?.data;
+        const cotData = (cotResult as { data?: AnalysisInput["cotData"] } | undefined)?.data;
+        const eiaData = (eiaResult as { data?: AnalysisInput["eiaData"] } | undefined)?.data;
+        const derivativesData = (derivativesResult as { data?: AnalysisInput["derivativesData"] } | undefined)?.data;
+
+        let cryptoIntelligenceContext: AnalysisInput["cryptoIntelligenceContext"];
+        if (entry.assetClass === "crypto") {
+          const derivativesEnvelope = derivativesResult as {
+            data?: Record<string, unknown> & { timestamp?: number };
+            tokenomics?: NonNullable<AnalysisInput["cryptoIntelligenceContext"]>["tokenomics"];
+          } | undefined;
+          const defiEnvelope = defiResult as { data?: Record<string, unknown>; observedAt?: number } | undefined;
+          const derivativesContext = derivativesEnvelope?.data
+            ? parseCoinGlassResult(derivativesEnvelope.data, entry.instrument, derivativesEnvelope.data.timestamp ?? now)
+            : undefined;
+          const defiContext = defiEnvelope?.data
+            ? parseDeFiLlamaResult(defiEnvelope.data, entry.instrument, defiEnvelope.observedAt ?? now)
+            : undefined;
+          cryptoIntelligenceContext = buildCryptoIntelligenceContext(
+            entry.instrument,
+            derivativesContext,
+            defiContext,
+            derivativesEnvelope?.tokenomics,
+          ) ?? undefined;
+        }
+
         for (const timeframe of timeframes) {
           const response = await ctx.runAction(anyApi.marketData.fetchMarketData, {
             instrument: entry.instrument,
@@ -143,11 +304,43 @@ export const runScheduledScan = internalAction({
             continue;
           }
 
+          let analysisResult: AnalysisResult | undefined;
+          try {
+            const tradingStyle: NonNullable<AnalysisInput["tradingStyle"]> =
+              timeframe === "M5" ? "scalping" : timeframe === "H1" ? "intraday" : "swing";
+            const analysisInput: AnalysisInput = {
+              instrument: entry.instrument,
+              instrumentType,
+              timeframe: timeframe as AnalysisInput["timeframe"],
+              tradingStyle,
+              marketData: response.data,
+              technicalData: response.technical,
+              sentimentData: intelligence?.sentiment,
+              fundamentalData: intelligence?.fundamentals,
+              macroData: intelligence?.macro,
+              derivativesData,
+              calendarData,
+              treasuryData,
+              cotData,
+              eiaData,
+              cryptoIntelligenceContext,
+            };
+            analysisResult = runAnalysis(analysisInput);
+          } catch (error) {
+            errors.push(`${entry.instrument} ${timeframe} analysis: ${error instanceof Error ? error.message : String(error)}`);
+          }
+
           const liveSource: LiveCandidateSource = compactSource({
             instrument: entry.instrument,
             assetClass: entry.assetClass,
             marketData: response.data as MarketData,
             ...(response.technical ? { technicalData: response.technical as TechnicalData } : {}),
+            ...(analysisResult ? { analysisResult } : {}),
+            ...(derivativesData ? { derivativesData } : {}),
+            ...(calendarData ? { calendarData } : {}),
+            ...(treasuryData ? { treasuryData } : {}),
+            ...(cotData ? { cotData } : {}),
+            ...(eiaData ? { eiaData } : {}),
           });
           const key = sourceKey(liveSource);
           sourceMap.set(key, liveSource);
