@@ -290,6 +290,8 @@ export const runScheduledScan = internalAction({
         }
 
         for (const timeframe of timeframes) {
+          const previousSource = sourceMap.get(`${entry.instrument.trim().toUpperCase()}|${timeframe}`);
+          const previousAnalysis = previousSource?.analysisResult;
           const response = await ctx.runAction(anyApi.marketData.fetchMarketData, {
             instrument: entry.instrument,
             instrumentType,
@@ -315,15 +317,24 @@ export const runScheduledScan = internalAction({
               tradingStyle,
               marketData: response.data,
               technicalData: response.technical,
-              sentimentData: intelligence?.sentiment,
-              fundamentalData: intelligence?.fundamentals,
-              macroData: intelligence?.macro,
-              derivativesData,
-              calendarData,
-              treasuryData,
-              cotData,
-              eiaData,
-              cryptoIntelligenceContext,
+              sentimentData: intelligence?.sentiment?.confidence !== "unavailable"
+                ? intelligence?.sentiment
+                : previousAnalysis?.sentimentData,
+              fundamentalData: intelligence?.fundamentals?.available
+                ? intelligence.fundamentals
+                : previousAnalysis?.fundamentalData,
+              macroData: intelligence?.macro?.confidence !== "unavailable"
+                ? intelligence?.macro
+                : previousAnalysis?.macroData,
+              derivativesData: derivativesData ?? previousSource?.derivativesData ?? previousAnalysis?.derivativesData,
+              calendarData: calendarData ?? previousSource?.calendarData ?? previousAnalysis?.calendarData,
+              treasuryData: treasuryData?.available ? treasuryData : previousSource?.treasuryData ?? previousAnalysis?.treasuryContext,
+              cotData: cotData?.available ? cotData : previousSource?.cotData ?? previousAnalysis?.cotContext,
+              eiaData: eiaData?.available ? eiaData : previousSource?.eiaData ?? previousAnalysis?.eiaContext,
+              cryptoIntelligenceContext: cryptoIntelligenceContext?.overallAvailability !== "UNAVAILABLE"
+                ? cryptoIntelligenceContext
+                : previousAnalysis?.cryptoIntelligenceContext ?? cryptoIntelligenceContext,
+              universalIntelligenceContext: previousSource?.universalIntelligence ?? previousAnalysis?.universalIntelligenceContext,
             };
             analysisResult = runAnalysis(analysisInput);
           } catch (error) {
@@ -336,11 +347,22 @@ export const runScheduledScan = internalAction({
             marketData: response.data as MarketData,
             ...(response.technical ? { technicalData: response.technical as TechnicalData } : {}),
             ...(analysisResult ? { analysisResult } : {}),
-            ...(derivativesData ? { derivativesData } : {}),
-            ...(calendarData ? { calendarData } : {}),
-            ...(treasuryData ? { treasuryData } : {}),
-            ...(cotData ? { cotData } : {}),
-            ...(eiaData ? { eiaData } : {}),
+            ...(previousSource?.universalIntelligence ? { universalIntelligence: previousSource.universalIntelligence } : {}),
+            ...((analysisResult?.derivativesData ?? derivativesData ?? previousSource?.derivativesData)
+              ? { derivativesData: analysisResult?.derivativesData ?? derivativesData ?? previousSource?.derivativesData }
+              : {}),
+            ...((analysisResult?.calendarData ?? calendarData ?? previousSource?.calendarData)
+              ? { calendarData: analysisResult?.calendarData ?? calendarData ?? previousSource?.calendarData }
+              : {}),
+            ...((treasuryData?.available ? treasuryData : previousSource?.treasuryData)
+              ? { treasuryData: treasuryData?.available ? treasuryData : previousSource?.treasuryData }
+              : {}),
+            ...((cotData?.available ? cotData : previousSource?.cotData)
+              ? { cotData: cotData?.available ? cotData : previousSource?.cotData }
+              : {}),
+            ...((eiaData?.available ? eiaData : previousSource?.eiaData)
+              ? { eiaData: eiaData?.available ? eiaData : previousSource?.eiaData }
+              : {}),
           });
           const key = sourceKey(liveSource);
           sourceMap.set(key, liveSource);
