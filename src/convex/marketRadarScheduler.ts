@@ -16,6 +16,7 @@ import {
 } from "./_generated/server";
 import { DEFAULT_UNIVERSE } from "../lib/market-radar/universe";
 import { ALL_SCAN_HORIZONS } from "../lib/liveScanner";
+import { selectBackgroundScanBatch } from "../lib/market-radar/background-schedule";
 import {
   scanRadar,
   type RadarState,
@@ -225,15 +226,10 @@ export const runScheduledScan = internalAction({
 
       // Three rotating passes cover H1/D1, H4/W1, and M5/H1. Two acquisitions
       // per minute preserve the shared provider request budget.
-      const instrumentIndex = claim.cursor % universe.length;
-      const timeframePass = Math.floor(claim.cursor / universe.length) % 3;
-      const entry = universe[instrumentIndex]!;
+      const batch = selectBackgroundScanBatch(claim.cursor, universe.length);
+      const entry = universe[batch.instrumentIndex]!;
       const instrumentType = toInstrumentType(entry.assetClass);
-      const timeframes = timeframePass === 0
-        ? ["H1", "D1"]
-        : timeframePass === 1
-          ? ["H4", "W1"]
-          : ["M5", "H1"];
+      const timeframes = batch.timeframes;
 
       const existingSources = await ctx.runQuery(internal.marketRadarScheduler.listSources, {});
       const sourceMap = new Map(existingSources.map((source) => [sourceKey(source), source]));
@@ -318,7 +314,7 @@ export const runScheduledScan = internalAction({
 
       const saved = await ctx.runMutation(internal.marketRadarScheduler.persistScan, {
         updates,
-        cursor: claim.cursor + 1,
+        cursor: batch.nextCursor,
         results: JSON.parse(JSON.stringify(Array.from(scan.results.entries()))),
         diffs: JSON.parse(JSON.stringify(scan.diffs)),
         metrics,
