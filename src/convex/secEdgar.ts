@@ -1,6 +1,6 @@
 "use node";
 
-import { action } from "./_generated/server";
+import { action, internalAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import {
@@ -51,20 +51,18 @@ async function getTickerDirectory(userAgent: string): Promise<Record<string, Sec
   return value;
 }
 
-/**
- * Fetch and persist SEC quarterly filing facts for a US equity ticker.
- * SEC filingDate is a daily eligibility boundary; acceptanceDateTime is
- * preserved as source metadata, not asserted to be exact public availability.
- */
-export const fetchCompanyFilingHistory = action({
-  args: { ticker: v.string() },
-  handler: async (ctx, args): Promise<SecEdgarFetchResult> => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) {
-      return { success: false, status: "AUTH_REQUIRED", observationCount: 0 };
-    }
+const SEC_BACKGROUND_REFRESH_TTL_MS = 6 * 60 * 60 * 1000;
 
-    const ticker = args.ticker.trim().toUpperCase();
+/**
+ * Shared SEC retrieval/persistence path. Public callers are authenticated;
+ * the scheduled worker uses the internal wrapper below and still obeys the
+ * SEC User-Agent requirement and the same point-in-time persistence rules.
+ */
+async function fetchCompanyFilingHistoryCore(
+  ctx: ActionCtx,
+  tickerInput: string,
+): Promise<SecEdgarFetchResult> {
+    const ticker = tickerInput.trim().toUpperCase();
     if (!/^[A-Z0-9.-]{1,15}$/.test(ticker)) {
       return { success: false, status: "INVALID_TICKER", observationCount: 0 };
     }
@@ -147,5 +145,46 @@ export const fetchCompanyFilingHistory = action({
         error: error instanceof Error ? error.message : "SEC EDGAR request failed",
       };
     }
+}
+
+/** User-facing SEC refresh remains authenticated. */
+export const fetchCompanyFilingHistory = action({
+  args: { ticker: v.string() },
+  handler: async (ctx, args): Promise<SecEdgarFetchResult> => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return { success: false, status: "AUTH_REQUIRED", observationCount: 0 };
+    return await fetchCompanyFilingHistoryCore(ctx, args.ticker);
   },
 });
+
+/**
+ * Owner-configured background refresh. Only internal scheduler code can call
+ * this action; recent filing history is reused for six hours to avoid needless
+ * SEC requests on every market scan rotation.
+ */
+export const refreshCompanyFilingHistoryForScanner = internalAction({
+  args: { ticker: v.string() },
+  handler: async (ctx, args): Promise<SecEdgarFetchResult> => {
+    const ticker = args.ticker.trim().toUpperCase();
+    const existing = await ctx.runQuery(
+      internal.historicalIntelligence.getLatestSecEdgarObservations,
+      { ticker, limit: 500 },
+    );
+    const lastRetrievedAt = existing.reduce(
+      (latest, row) => Math.max(latest, row.lastRetrievedAt),
+      0,
+    );
+    if (lastRetrievedAt > 0 && Date.now() - lastRetrievedAt < SEC_BACKGROUND_REFRESH_TTL_MS) {
+      return {
+        success: true,
+        status: "CACHED",
+        ticker,
+        observationCount: existing.length,
+        newlyPersistedCount: 0,
+        source: "SEC EDGAR point-in-time history cache",
+      };
+    }
+    return await fetchCompanyFilingHistoryCore(ctx, ticker);
+  },
+});
+
