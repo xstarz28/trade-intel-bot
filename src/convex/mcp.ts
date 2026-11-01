@@ -129,9 +129,9 @@ export const mcp: McpServer<Id<"users">> = new McpServer(component, {
         "Get the latest persisted runtime health snapshot for the authenticated user's account. " +
         "Reports component freshness and pipeline status; it does not trigger jobs or repair services.",
       args: {},
-      returns: v.union(
-        v.null(),
-        v.object({
+      returns: v.object({
+        available: v.boolean(),
+        snapshot: v.optional(v.object({
           overallStatus: v.string(),
           timestamp: v.number(),
           intelligenceCycleStatus: v.string(),
@@ -145,8 +145,8 @@ export const mcp: McpServer<Id<"users">> = new McpServer(component, {
             freshness: v.string(),
             consecutiveFailures: v.number(),
           })),
-        }),
-      ),
+        })),
+      }),
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
       scope: "analysis:read",
       handler: async (ctx, _args, user) =>
