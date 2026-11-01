@@ -317,21 +317,21 @@ export const runScheduledScan = internalAction({
               tradingStyle,
               marketData: response.data,
               technicalData: response.technical,
-              sentimentData: intelligence?.sentiment?.confidence !== "unavailable"
-                ? intelligence?.sentiment
+              sentimentData: intelligence?.sentiment && intelligence.sentiment.confidence !== "unavailable"
+                ? intelligence.sentiment
                 : previousAnalysis?.sentimentData,
               fundamentalData: intelligence?.fundamentals?.available
                 ? intelligence.fundamentals
                 : previousAnalysis?.fundamentalData,
-              macroData: intelligence?.macro?.confidence !== "unavailable"
-                ? intelligence?.macro
+              macroData: intelligence?.macro && intelligence.macro.confidence !== "unavailable"
+                ? intelligence.macro
                 : previousAnalysis?.macroData,
               derivativesData: derivativesData ?? previousSource?.derivativesData ?? previousAnalysis?.derivativesData,
               calendarData: calendarData ?? previousSource?.calendarData ?? previousAnalysis?.calendarData,
               treasuryData: treasuryData?.available ? treasuryData : previousSource?.treasuryData ?? previousAnalysis?.treasuryContext,
               cotData: cotData?.available ? cotData : previousSource?.cotData ?? previousAnalysis?.cotContext,
               eiaData: eiaData?.available ? eiaData : previousSource?.eiaData ?? previousAnalysis?.eiaContext,
-              cryptoIntelligenceContext: cryptoIntelligenceContext?.overallAvailability !== "UNAVAILABLE"
+              cryptoIntelligenceContext: cryptoIntelligenceContext && cryptoIntelligenceContext.overallAvailability !== "UNAVAILABLE"
                 ? cryptoIntelligenceContext
                 : previousAnalysis?.cryptoIntelligenceContext ?? cryptoIntelligenceContext,
               universalIntelligenceContext: previousSource?.universalIntelligence ?? previousAnalysis?.universalIntelligenceContext,
