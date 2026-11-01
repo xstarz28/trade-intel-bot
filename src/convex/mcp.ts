@@ -21,6 +21,9 @@ export const mcp: McpServer<Id<"users">> = new McpServer(component, {
   consentUrl:
     process.env.MCP_CONSENT_URL ??
     "https://xstarzanalysis.vercel.app/connect",
+  // ChatGPT publishes its OAuth client metadata on this host. Keeping the
+  // allowlist exact enables CIMD without allowing arbitrary backend fetches.
+  clientMetadataDocumentHosts: ["chatgpt.com"],
   scopes: {
     "analysis:read": "Read your own analyses, journal, monitored positions, and runtime health",
   },
