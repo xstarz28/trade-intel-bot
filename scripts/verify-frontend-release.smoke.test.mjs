@@ -9,7 +9,8 @@ import test from 'node:test';
 
 const verifierPath = fileURLToPath(new URL('./verify-frontend-release.mjs', import.meta.url));
 
-test('published verification checks auth labels in a lazy-loaded same-origin chunk', async (t) => {
+test('published verification checks lazy chunks and bypasses stale build-info CDN cache', async (t) => {
+  let buildInfoRequest = null;
   const server = createServer((req, res) => {
     const path = new URL(req.url || '/', 'http://127.0.0.1').pathname;
     if (path === '/') {
@@ -33,6 +34,7 @@ test('published verification checks auth labels in a lazy-loaded same-origin chu
       return;
     }
     if (path === '/build-info.json') {
+      buildInfoRequest = { url: req.url, cacheControl: req.headers['cache-control'], pragma: req.headers.pragma };
       res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' });
       res.end(JSON.stringify({ commit: 'deadbeef', branch: 'main', worktreeDirty: false, unsafeSource: false }));
       return;
@@ -84,6 +86,9 @@ test('published verification checks auth labels in a lazy-loaded same-origin chu
   assert.equal(check('Google auth surface')?.ok, true, stdout);
   assert.equal(check('guest auth surface')?.ok, true, stdout);
   assert.equal(check('published CSS assets loaded')?.ok, true, stdout);
+  assert.match(buildInfoRequest?.url ?? '', /[?&]verify=deadbeef(?:&|$)/);
+  assert.match(buildInfoRequest?.cacheControl ?? '', /no-cache/);
+  assert.equal(buildInfoRequest?.pragma, 'no-cache');
 });
 
 

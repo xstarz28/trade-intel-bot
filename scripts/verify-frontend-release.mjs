@@ -9,7 +9,16 @@ function args(argv){ const o={dist:'dist',url:null,commit:null,branch:null}; for
 function allFiles(dir,base=dir){const out=[]; for(const e of readdirSync(dir,{withFileTypes:true})){const p=join(dir,e.name); if(e.isDirectory())out.push(...allFiles(p,base)); else if(e.isFile())out.push(p.slice(base.length+1));} return out;}
 function legacyHits(text){const low=text.toLowerCase(); return LEGACY.filter(x=>low.includes(x.toLowerCase()));}
 function evaluate(text,expected){const checks=[]; const add=(name,ok,detail)=>checks.push({name,ok,detail}); let info=null; try{info=JSON.parse(text.buildInfo)}catch{} add('build-info.json valid',!!info,info?'valid':'missing/invalid'); add('commit matches',!expected.commit||String(info?.commit||'').toLowerCase()===String(expected.commit).toLowerCase(),String(info?.commit||'(none)')); add('branch matches',!expected.branch||String(info?.branch||'')===expected.branch,String(info?.branch||'(none)')); add('source worktree clean',info?.worktreeDirty===false,String(info?.worktreeDirty??'(unknown)')); add('unsafe source absent',info?.unsafeSource===false,String(info?.unsafeSource??'(unknown)')); add('XSTARZG brand',text.all.includes('XSTARZG'),'XSTARZG marker'); add('Google auth surface',text.all.includes('Continue with Google'),'Google marker'); add('guest auth surface',text.all.includes('Continue without an account'),'guest marker'); const hits=legacyHits(text.all); add('legacy platform/OTP surface absent',hits.length===0,hits.join(', ')||'none'); add('logo present',text.logoExists,'logo.svg'); return {ok:checks.every(x=>x.ok),checks};}
-async function fetchText(url){const r=await fetch(url,{redirect:'follow'}); return {r,text:await r.text(),url:r.url||url};}
+async function fetchText(url, options={}){
+  const r=await fetch(url,{
+    redirect:'follow',
+    ...(options.noCache ? {
+      cache:'no-store',
+      headers:{'cache-control':'no-cache, no-store, max-age=0','pragma':'no-cache'},
+    } : {}),
+  });
+  return {r,text:await r.text(),url:r.url||url};
+}
 
 // Vite keeps lazy route components in separate chunks. Follow same-origin JS
 // references so the published check examines the same code as the local build.
@@ -78,7 +87,12 @@ async function main(){
     try{const x=await fetchText(url);styles.push({url,ok:x.r.ok,text:x.text,status:x.r.status});}
     catch(error){styles.push({url,ok:false,text:'',status:String(error)});}
   }
-  const buildInfo=await fetchText(new URL('/build-info.json',got.url).href);
+  // build-info.json is a mutable root-level file. A CDN may briefly serve
+  // the previous release after a successful alias promotion, so force an
+  // origin revalidation and key the request by the expected commit.
+  const buildInfoUrl=new URL('/build-info.json',got.url);
+  buildInfoUrl.searchParams.set('verify',a.commit||String(Date.now()));
+  const buildInfo=await fetchText(buildInfoUrl.href,{noCache:true});
   const logo=await fetchText(new URL('/logo.svg',got.url).href);
   const loadedJavaScript=javascript.assets.filter(x=>x.ok).length;
   const loadedCss=styles.filter(x=>x.ok).length;
