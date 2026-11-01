@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeInstrumentCoverage, computeProviderSummaries } from "./coverage";
 import { getAllProviders } from "./providers";
+import { checkCredentials } from "./live/credentials";
 import { getAllInstrumentIds, getAllInstruments, getProviderSymbol, resolveInstrument } from "./instruments";
 
 describe("universal instrument registry integrity", () => {
@@ -55,7 +56,7 @@ describe("universal instrument registry integrity", () => {
   });
 
   it("marks a capability unavailable only when no mapped provider has usable credentials", () => {
-    const coverage = computeInstrumentCoverage("BTC/USD");
+    const coverage = computeInstrumentCoverage("BTC/USD", () => undefined);
     expect(coverage).not.toBeNull();
 
     expect(coverage?.supportedCapabilities).toContain("quote");
@@ -65,6 +66,45 @@ describe("universal instrument registry integrity", () => {
     // intentionally unavailable; this must not be presented as usable data.
     expect(coverage?.unsupportedCapabilities).toContain("open_interest");
     expect(coverage?.supportedCapabilities).not.toContain("open_interest");
+  });
+
+  it("resolves authenticated provider availability from the injected runtime environment", () => {
+    const env: Record<string, string | undefined> = {
+      TWELVE_DATA_API_KEY: "test-twelve-data-key",
+      COINGLASS_API_KEY: "test-coinglass-key",
+    };
+    const readEnv = (name: string) => env[name];
+
+    const twelveData = checkCredentials("twelve-data", readEnv);
+    expect(twelveData?.available).toBe(true);
+    expect(twelveData?.missingEnvVarNames).toEqual([]);
+    expect(twelveData).not.toHaveProperty("credentialValue");
+
+    const alphaVantage = checkCredentials("alpha-vantage", readEnv);
+    expect(alphaVantage?.available).toBe(false);
+    expect(alphaVantage?.missingEnvVarNames).toEqual(["ALPHA_VANTAGE_API_KEY"]);
+
+    expect(checkCredentials("coingecko", readEnv)?.available).toBe(true);
+    expect(checkCredentials("unknown-provider", readEnv)).toBeNull();
+
+    const providers = getAllProviders(readEnv);
+    expect(providers.find((provider) => provider.id === "twelve-data")?.credentialsAvailable).toBe(true);
+    expect(providers.find((provider) => provider.id === "coinglass")?.credentialsAvailable).toBe(true);
+    expect(providers.find((provider) => provider.id === "alpha-vantage")?.credentialsAvailable).toBe(false);
+
+    const coverage = computeInstrumentCoverage("BTC/USD", readEnv);
+    expect(coverage?.supportedCapabilities).toContain("open_interest");
+    expect(coverage?.supportedCapabilities).toContain("funding_rate");
+  });
+
+  it("treats blank credential values as missing without returning secret values", () => {
+    const status = checkCredentials("eia", (name) =>
+      name === "EIA_API_KEY" ? "   " : undefined,
+    );
+
+    expect(status?.available).toBe(false);
+    expect(status?.missingEnvVarNames).toEqual(["EIA_API_KEY"]);
+    expect(JSON.stringify(status)).not.toContain("EIA_API_KEY_VALUE");
   });
 
 });
