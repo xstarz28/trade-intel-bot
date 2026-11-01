@@ -21,6 +21,8 @@ const CREDENTIAL_SPECS: Record<string, ProviderCredentialSpec> = {
   coinglass: { providerId: "coinglass", requiredEnvVars: ["COINGLASS_API_KEY"] },
   tickatlas: { providerId: "tickatlas", requiredEnvVars: ["TICKATLAS_API_KEY"] },
   eia: { providerId: "eia", requiredEnvVars: ["EIA_API_KEY"] },
+  // SEC EDGAR is public, but requires a declared application/contact User-Agent.
+  "sec-edgar": { providerId: "sec-edgar", requiredEnvVars: ["SEC_USER_AGENT"] },
   // Public / keyless endpoints
   okx: { providerId: "okx", requiredEnvVars: [] },
   coingecko: { providerId: "coingecko", requiredEnvVars: [] },
