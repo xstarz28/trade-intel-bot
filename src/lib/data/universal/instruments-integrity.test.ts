@@ -70,8 +70,8 @@ describe("universal instrument registry integrity", () => {
 
   it("resolves authenticated provider availability from the injected runtime environment", () => {
     const env: Record<string, string | undefined> = {
-      TWELVE_DATA_API_KEY: "test-twelve-data-key",
-      COINGLASS_API_KEY: "test-coinglass-key",
+      TWELVE_DATA_API_KEY: "configured",
+      COINGLASS_API_KEY: "configured",
     };
     const readEnv = (name: string) => env[name];
 
