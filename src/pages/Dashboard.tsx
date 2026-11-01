@@ -98,6 +98,54 @@ function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   ]);
 }
 
+type DiscoveryRotationState = {
+  cryptoCursor: number;
+  crossAssetGroupCursor: number;
+  crossAssetCursors: { forex: number; equity: number; commodity: number };
+};
+
+const DISCOVERY_ROTATION_STORAGE_KEY = "trade-intel-discovery-rotation-v1";
+
+function readDiscoveryRotationState(): DiscoveryRotationState {
+  const fallback: DiscoveryRotationState = {
+    cryptoCursor: 0,
+    crossAssetGroupCursor: 0,
+    crossAssetCursors: { forex: 0, equity: 0, commodity: 0 },
+  };
+  if (typeof window === "undefined") return fallback;
+  try {
+    const raw = window.localStorage.getItem(DISCOVERY_ROTATION_STORAGE_KEY);
+    if (!raw) return fallback;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return fallback;
+    const value = parsed as Partial<DiscoveryRotationState>;
+    const cursor = (candidate: unknown) =>
+      typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0
+        ? candidate
+        : 0;
+    return {
+      cryptoCursor: cursor(value.cryptoCursor),
+      crossAssetGroupCursor: cursor(value.crossAssetGroupCursor),
+      crossAssetCursors: {
+        forex: cursor(value.crossAssetCursors?.forex),
+        equity: cursor(value.crossAssetCursors?.equity),
+        commodity: cursor(value.crossAssetCursors?.commodity),
+      },
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function persistDiscoveryRotationState(state: DiscoveryRotationState): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(DISCOVERY_ROTATION_STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Storage can be disabled or full; scanning must continue in memory.
+  }
+}
+
 function mergeLiveSourcesByTimeframe(
   ...collections: Iterable<LiveCandidateSource>[]
 ): LiveCandidateSource[] {
@@ -175,9 +223,10 @@ export default function Dashboard() {
   // Phase 153 — retain the latest verified live market snapshot per instrument.
   // This is runtime-only state and is intentionally NOT reconstructed from history.
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  const discoveryCursorRef = useRef(0);
-  const crossAssetDiscoveryCursorRef = useRef({ forex: 0, equity: 0, commodity: 0 });
-  const crossAssetGroupRotationRef = useRef(0);
+  const [initialRotationState] = useState(readDiscoveryRotationState);
+  const discoveryCursorRef = useRef(initialRotationState.cryptoCursor);
+  const crossAssetDiscoveryCursorRef = useRef(initialRotationState.crossAssetCursors);
+  const crossAssetGroupRotationRef = useRef(initialRotationState.crossAssetGroupCursor);
   const crossAssetScanLastAtRef = useRef(0);
   const initialScanStartedRef = useRef(false);
   const liveRecommendationSourceRef = useRef(new Map<string, LiveCandidateSource>());
@@ -1082,6 +1131,11 @@ export default function Dashboard() {
                 8,
               );
               discoveryCursorRef.current = nextCursor;
+              persistDiscoveryRotationState({
+                cryptoCursor: nextCursor,
+                crossAssetGroupCursor: crossAssetGroupRotationRef.current,
+                crossAssetCursors: crossAssetDiscoveryCursorRef.current,
+              });
 
               // Acquire distinct real candles for scalping, intraday, and swing.
               const nativeInputs = batch.flatMap((item) =>
@@ -1205,6 +1259,11 @@ export default function Dashboard() {
         ];
         const selectedGroup = groups[crossAssetGroupRotationRef.current % groups.length];
         crossAssetGroupRotationRef.current = (crossAssetGroupRotationRef.current + 1) % groups.length;
+        persistDiscoveryRotationState({
+          cryptoCursor: discoveryCursorRef.current,
+          crossAssetGroupCursor: crossAssetGroupRotationRef.current,
+          crossAssetCursors: crossAssetDiscoveryCursorRef.current,
+        });
         const selected = groups.filter((group) => group.key === selectedGroup.key).map((group) => {
           const rows = catalog.filter((item) =>
             item.assetClass === group.assetClass && item.isActive &&
@@ -1222,6 +1281,11 @@ export default function Dashboard() {
             )) {
               chosen = candidate;
               crossAssetDiscoveryCursorRef.current[group.key] = (cursor + offset + 1) % rows.length;
+              persistDiscoveryRotationState({
+                cryptoCursor: discoveryCursorRef.current,
+                crossAssetGroupCursor: crossAssetGroupRotationRef.current,
+                crossAssetCursors: crossAssetDiscoveryCursorRef.current,
+              });
               break;
             }
           }
