@@ -14,7 +14,7 @@ import type {
   MacroData,
   IntelligenceResult,
 } from "../lib/data/intelligence-types";
-import { mapAlphaVantageFundamentalMetrics } from "../lib/data/alpha-vantage-fundamentals";
+import { mapAlphaVantageFundamentalMetrics, mapAlphaVantageLatestEarnings } from "../lib/data/alpha-vantage-fundamentals";
 
 // ── Simple in-memory cache (resets per Convex action instance) ──
 // For production, use Convex scheduled functions or a database cache.
@@ -321,14 +321,10 @@ function normalizeFundamentalsFromAV(
   base.fiftyTwoWeekHigh = safeNum(overview.FiftyTwoWeekHigh);
   base.fiftyTwoWeekLow = safeNum(overview.FiftyTwoWeekLow);
 
-  if (earnings?.quarterlyEarnings?.length) {
-    const latest = earnings.quarterlyEarnings[0];
-    base.latestEarnings = {
-      date: latest.fiscalDateEnding,
-      eps: safeNum(latest.reportedEPS),
-      revenue: safeNum(latest.reportedRevenue),
-    };
-  }
+  // Keep fiscal period end separate from the actual public release date.
+  // A fiscal period end must never be treated as the date the market knew
+  // those earnings; the mapper preserves reportedDate only when valid.
+  base.latestEarnings = mapAlphaVantageLatestEarnings(earnings);
 
   return base;
 }
