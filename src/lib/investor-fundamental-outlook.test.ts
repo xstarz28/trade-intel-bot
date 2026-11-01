@@ -168,3 +168,51 @@ describe("investor outlook direct provider evidence", () => {
     });
   });
 });
+
+
+describe("SEC EDGAR point-in-time investor evidence", () => {
+  it("maps year-over-year revenue and EPS growth using filing date, excluding future filings", () => {
+    const secEdgarObservations = [
+      {
+        ticker: "AAPL", cik: "0000320193", accessionNumber: "0000320193-25-000001",
+        form: "10-Q", filingDate: "2025-08-01", acceptanceDateTime: "2025-08-01T12:00:00Z",
+        fiscalPeriodStart: "2025-04-01", fiscalPeriodEnd: "2025-06-30", fiscalYear: 2025, fiscalPeriod: "Q2",
+        revenue: 100, eps: 1, sourceUrl: "https://www.sec.gov/Archives/edgar/data/320193/2025/q2.htm",
+      },
+      {
+        ticker: "AAPL", cik: "0000320193", accessionNumber: "0000320193-26-000001",
+        form: "10-Q", filingDate: "2026-08-01", acceptanceDateTime: "2026-08-01T12:00:00Z",
+        fiscalPeriodStart: "2026-04-01", fiscalPeriodEnd: "2026-06-30", fiscalYear: 2026, fiscalPeriod: "Q2",
+        revenue: 120, eps: 1.5, sourceUrl: "https://www.sec.gov/Archives/edgar/data/320193/2026/q2.htm",
+      },
+      {
+        ticker: "AAPL", cik: "0000320193", accessionNumber: "0000320193-26-000099",
+        form: "10-Q", filingDate: "2026-11-02", acceptanceDateTime: "2026-11-02T12:00:00Z",
+        fiscalPeriodStart: "2026-07-01", fiscalPeriodEnd: "2026-09-30", fiscalYear: 2027, fiscalPeriod: "Q3",
+        revenue: 200, eps: 2, sourceUrl: "https://www.sec.gov/Archives/edgar/data/320193/2026/q3.htm",
+      },
+    ];
+    const outlook = buildInvestorFundamentalOutlook(
+      providerResult("AAPL", "stock", { secEdgarObservations }),
+      100,
+    );
+    expect(outlook.evidenceStatus).toBe("VERIFIED");
+    expect(outlook.evidence).toHaveLength(2);
+    expect(outlook.evidence.map((item) => item.category).sort()).toEqual(["EPS_GROWTH", "REVENUE_GROWTH"]);
+    expect(outlook.evidence.every((item) => item.direction === "SUPPORTING")).toBe(true);
+    expect(outlook.evidence.every((item) => item.asOf === Date.parse("2026-08-01T00:00:00.000Z"))).toBe(true);
+    expect(outlook.evidence.every((item) => item.source === "SEC EDGAR Form 10-Q")).toBe(true);
+  });
+
+  it("does not create a growth signal without a prior same-period filing", () => {
+    const secEdgarObservations = [{
+      ticker: "MSFT", cik: "0000789019", accessionNumber: "0000789019-26-000001",
+      form: "10-K", filingDate: "2026-10-01", fiscalPeriodStart: "2025-07-01",
+      fiscalPeriodEnd: "2026-06-30", fiscalYear: 2026, fiscalPeriod: "FY",
+      revenue: 200, eps: 8, sourceUrl: "https://www.sec.gov/Archives/edgar/data/789019/2026/fy.htm",
+    }];
+    const outlook = buildInvestorFundamentalOutlook(providerResult("MSFT", "stock", { secEdgarObservations }));
+    expect(outlook.evidence).toHaveLength(0);
+    expect(outlook.evidenceStatus).toBe("UNAVAILABLE");
+  });
+});
