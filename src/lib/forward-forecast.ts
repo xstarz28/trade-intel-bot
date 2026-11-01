@@ -290,10 +290,15 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
   const invalidation = downside ?? upside;
   const potentialUpsidePct = objective === undefined ? undefined : Math.abs((objective / snapshot.price - 1) * 100);
   const potentialDownsidePct = invalidation === undefined ? undefined : Math.abs((invalidation / snapshot.price - 1) * 100);
-  let ratio: number | undefined;
-  if (potentialUpsidePct !== undefined && potentialDownsidePct !== undefined && potentialDownsidePct > 0) {
-    ratio = potentialUpsidePct / potentialDownsidePct;
+  let structuralRatio: number | undefined;
+  if (structuralObjective !== undefined && invalidation !== undefined) {
+    const structuralReward = Math.abs(structuralObjective - snapshot.price);
+    const structuralRisk = Math.abs(snapshot.price - invalidation);
+    if (structuralReward > 0 && structuralRisk > 0) structuralRatio = structuralReward / structuralRisk;
   }
+  const potentialRatio = potentialUpsidePct !== undefined && potentialDownsidePct !== undefined && potentialDownsidePct > 0
+    ? potentialUpsidePct / potentialDownsidePct
+    : undefined;
   if (valuationObjective !== undefined) evidence.push("Directional objective uses a fresh, exact-instrument provider valuation reference; its source type remains explicit.");
   else if (structuralObjective !== undefined) evidence.push("Objective comes from the actual higher-timeframe external swing structure.");
   if (invalidation !== undefined) evidence.push("Downside/invalidation comes from the actual opposing higher-timeframe swing structure.");
@@ -314,10 +319,10 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
       meaning: valuationObjective !== undefined ? fundamentalOutlook.valuationReference!.description : "Observed structural objective; not fair value",
     },
     invalidation: invalidation === undefined ? undefined : { price: invalidation, source: "higher-timeframe external swing", meaning: "Observed structural downside/invalidation" },
-    structuralUpsideDownsideRatio: ratio,
+    structuralUpsideDownsideRatio: structuralRatio,
     potentialUpsidePct,
     potentialDownsidePct,
-    potentialUpsideDownsideRatio: ratio,
+    potentialUpsideDownsideRatio: potentialRatio,
     valuationStatus: fundamentalOutlook.valuationStatus,
     fundamentalOutlook,
     calibration: "UNVALIDATED",
