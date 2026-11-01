@@ -113,6 +113,8 @@ describe("mapSecQuarterlyFundamentals", () => {
       start: "2026-04-01",
       end,
       val: 99,
+      fy: 2026,
+      fp: "Q3",
     });
     gaap.RevenueFromContractWithCustomerExcludingAssessedTax.units.USD.push({
       accn: accession,
@@ -120,6 +122,8 @@ describe("mapSecQuarterlyFundamentals", () => {
       start: "2026-04-01",
       end,
       val: 999,
+      fy: 2026,
+      fp: "Q3",
     });
     const rows = mapSecQuarterlyFundamentals("AAPL", cik, facts, submissions);
     expect(rows).toHaveLength(1);
