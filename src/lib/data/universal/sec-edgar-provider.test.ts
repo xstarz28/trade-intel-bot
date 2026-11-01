@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { checkCredentials } from "./live/credentials";
-import { findProviderRoutes } from "./providers";
-import { getProviderSymbol, providerSupportsCapability } from "./instruments";
+import { findProviderRoutes, providerSupportsCapability } from "./providers";
+import { getProviderSymbol } from "./instruments";
 
 describe("SEC EDGAR provider registration", () => {
   const configuredEnv = (name: string) =>
