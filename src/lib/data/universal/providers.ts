@@ -72,7 +72,7 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
   {
     id: "sec-edgar",
     name: "SEC EDGAR",
-    authRequired: true,
+    authRequired: false,
     credentialsAvailable: false,
     rateLimitPerMinute: 600,
     timeoutMs: 20000,
