@@ -57,7 +57,7 @@ export const fetchCompanyFilingHistory = action({
     }
 
     const userAgent = process.env.SEC_USER_AGENT?.trim();
-    if (!userAgent || !/\([^)]*@[^)]+\)/.test(userAgent)) {
+    if (!userAgent || userAgent.length > 250 || /[\r\n]/.test(userAgent) || !/\([^)]*@[^)]+\)/.test(userAgent)) {
       return {
         success: false,
         status: "USER_AGENT_NOT_CONFIGURED",
