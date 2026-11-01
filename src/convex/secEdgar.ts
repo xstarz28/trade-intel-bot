@@ -74,23 +74,23 @@ export const fetchCompanyFilingHistory = action({
       }
 
       const cik = String(company.cik_str).padStart(10, "0");
-      const [submissions, companyFacts] = await Promise.all([
-        fetchSecJson<SecSubmissions>(
-          `${SEC_DATA_BASE}/submissions/CIK${cik}.json`,
-          userAgent,
-        ),
-        fetchSecJson<{
-          cik?: number;
-          entityName?: string;
-          facts?: { "us-gaap"?: Record<string, { units?: Record<string, Array<{
-            accn?: string; filed?: string; start?: string; end?: string; val?: number;
-            fy?: number; fp?: string; form?: string; frame?: string;
-          }>> }> };
-        }>(
-          `${SEC_DATA_BASE}/api/xbrl/companyfacts/CIK${cik}.json`,
-          userAgent,
-        ),
-      ]);
+      // Keep requests sequential within an invocation; callers must not fan out
+      // unbounded ticker batches against the SEC public endpoints.
+      const submissions = await fetchSecJson<SecSubmissions>(
+        `${SEC_DATA_BASE}/submissions/CIK${cik}.json`,
+        userAgent,
+      );
+      const companyFacts = await fetchSecJson<{
+        cik?: number;
+        entityName?: string;
+        facts?: { "us-gaap"?: Record<string, { units?: Record<string, Array<{
+          accn?: string; filed?: string; start?: string; end?: string; val?: number;
+          fy?: number; fp?: string; form?: string; frame?: string;
+        }>> }> };
+      }>(
+        `${SEC_DATA_BASE}/api/xbrl/companyfacts/CIK${cik}.json`,
+        userAgent,
+      );
 
       const observations = mapSecQuarterlyFundamentals(
         ticker,
