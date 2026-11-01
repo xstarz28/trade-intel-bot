@@ -190,7 +190,7 @@ export function mapSecQuarterlyFundamentals(
       const revenue = factsForTag(
         facts, REVENUE_TAGS, accessionNumber, filingDate,
         (unit) => unit === "USD",
-        period.start, period.end,
+        period.start, period.end, recent.fy?.[i], recent.fp?.[i],
       );
       if (!eps && !revenue) continue;
 
