@@ -26,6 +26,7 @@ import type * as notifications from "../notifications.js";
 import type * as okx from "../okx.js";
 import type * as positionProtection from "../positionProtection.js";
 import type * as runtimeHealth from "../runtimeHealth.js";
+import type * as secEdgar from "../secEdgar.js";
 import type * as tradingEconomics from "../tradingEconomics.js";
 import type * as treasury from "../treasury.js";
 import type * as users from "../users.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   okx: typeof okx;
   positionProtection: typeof positionProtection;
   runtimeHealth: typeof runtimeHealth;
+  secEdgar: typeof secEdgar;
   tradingEconomics: typeof tradingEconomics;
   treasury: typeof treasury;
   users: typeof users;
