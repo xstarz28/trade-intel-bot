@@ -212,7 +212,7 @@ function mapSecEdgarEvidence(result: AnalysisResult): InvestorFundamentalEvidenc
         if (!existing || row.asOf >= existing.asOf) byYear.set(row.year, row);
       }
       const ordered = [...byYear.values()].sort((a, b) => a.year - b.year);
-      const latest = ordered.at(-1);
+      const latest = ordered.length > 0 ? ordered[ordered.length - 1] : undefined;
       if (!latest) continue;
       const previous = byYear.get(latest.year - 1);
       if (!previous) continue;
