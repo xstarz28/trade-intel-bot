@@ -174,12 +174,101 @@ function strengthFromEffect(effect: number): string {
   return magnitude >= 0.6 ? "STRONG" : magnitude >= 0.2 ? "MODERATE" : "WEAK";
 }
 
+function mapSecEdgarEvidence(result: AnalysisResult): InvestorFundamentalEvidence[] {
+  if (result.instrumentType !== "stock") return [];
+  const ticker = normalizeInstrument(result.instrument);
+  const groups = new Map<string, Array<{
+    observation: NonNullable<AnalysisResult["secEdgarObservations"]>[number];
+    year: number;
+    asOf: number;
+  }>>();
+
+  for (const observation of result.secEdgarObservations ?? []) {
+    if (normalizeInstrument(observation.ticker) !== ticker) continue;
+    const form = observation.form.trim().toUpperCase();
+    if (form !== "10-K" && form !== "10-Q") continue;
+    const fiscalPeriod = observation.fiscalPeriod?.trim().toUpperCase() || (form === "10-K" ? "FY" : "");
+    if (!fiscalPeriod) continue;
+    const year = observation.fiscalYear ?? new Date(observation.fiscalPeriodEnd).getUTCFullYear();
+    if (!Number.isSafeInteger(year) || year < 1900) continue;
+    // SEC filingDate is the daily point-in-time eligibility boundary. Fiscal
+    // period end is used only to align year-over-year comparisons.
+    const asOf = validTimestamp(Date.parse(observation.filingDate), result.timestamp);
+    if (asOf === undefined) continue;
+    const key = `${form}|${fiscalPeriod}`;
+    const rows = groups.get(key) ?? [];
+    rows.push({ observation, year, asOf });
+    groups.set(key, rows);
+  }
+
+  const buildMetricEvidence = (
+    metric: "revenue" | "eps",
+  ): InvestorFundamentalEvidence | undefined => {
+    const candidates: InvestorFundamentalEvidence[] = [];
+    for (const rows of groups.values()) {
+      const byYear = new Map<number, (typeof rows)[number]>();
+      for (const row of [...rows].sort((a, b) => a.asOf - b.asOf)) {
+        const existing = byYear.get(row.year);
+        if (!existing || row.asOf >= existing.asOf) byYear.set(row.year, row);
+      }
+      const ordered = [...byYear.values()].sort((a, b) => a.year - b.year);
+      const latest = ordered.at(-1);
+      if (!latest) continue;
+      const previous = byYear.get(latest.year - 1);
+      if (!previous) continue;
+      const latestValue = latest.observation[metric];
+      const previousValue = previous.observation[metric];
+      if (typeof latestValue !== "number" || !Number.isFinite(latestValue) ||
+          typeof previousValue !== "number" || !Number.isFinite(previousValue)) continue;
+      if (metric === "revenue" && previousValue === 0) continue;
+
+      const change = latestValue - previousValue;
+      const normalizedChange = metric === "revenue"
+        ? change / Math.abs(previousValue)
+        : change / Math.max(Math.abs(previousValue), 0.05);
+      const threshold = metric === "revenue" ? 0.03 : 0.05;
+      const direction = normalizedChange > threshold
+        ? "SUPPORTING"
+        : normalizedChange < -threshold
+          ? "CONFLICTING"
+          : "NEUTRAL";
+      const age = Math.max(0, result.timestamp - latest.asOf);
+      const form = latest.observation.form.toUpperCase();
+      const freshness = form === "10-Q"
+        ? age <= 120 * 24 * 60 * 60 * 1000 ? "FRESH" : age <= 240 * 24 * 60 * 60 * 1000 ? "DELAYED" : "STALE"
+        : age <= 400 * 24 * 60 * 60 * 1000 ? "FRESH" : age <= 550 * 24 * 60 * 60 * 1000 ? "DELAYED" : "STALE";
+      if (freshness === "STALE") continue;
+
+      const magnitude = Math.abs(normalizedChange);
+      const period = latest.observation.fiscalPeriod ?? (form === "10-K" ? "FY" : "quarter");
+      const metricLabel = metric === "revenue" ? "Revenue" : "Diluted EPS";
+      const percent = normalizedChange * 100;
+      candidates.push({
+        source: `SEC EDGAR Form ${form}`,
+        category: metric === "revenue" ? "REVENUE_GROWTH" : "EPS_GROWTH",
+        direction,
+        strength: magnitude >= 0.25 ? "STRONG" : magnitude >= 0.1 ? "MODERATE" : "WEAK",
+        quality: "VERIFIED",
+        freshness,
+        dependencyGroup: "SEC_EDGAR_FINANCIALS",
+        explanation: `${metricLabel} changed ${percent >= 0 ? "+" : ""}${percent.toFixed(1)}% year over year for ${period} FY${latest.year} versus FY${previous.year}. Eligibility is based on SEC filing date ${latest.observation.filingDate}, not fiscal period end. ${latest.observation.sourceUrl}`,
+        asOf: latest.asOf,
+      });
+    }
+    return candidates.sort((a, b) => b.asOf - a.asOf)[0];
+  };
+
+  return [buildMetricEvidence("revenue"), buildMetricEvidence("eps")]
+    .filter((item): item is InvestorFundamentalEvidence => item !== undefined);
+}
+
 function mapDirectProviderEvidence(
   result: AnalysisResult,
   spot?: number,
 ): InvestorFundamentalEvidence[] {
   const evidence: InvestorFundamentalEvidence[] = [];
   const existing = [...mapUniversalEvidence(result), ...mapCryptoEvidence(result)];
+  evidence.push(...mapSecEdgarEvidence(result));
 
   // Alpha Vantage analyst-target evidence is independently timestamped and
   // exact-symbol checked by the shared equity evidence builder.
