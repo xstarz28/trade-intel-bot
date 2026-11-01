@@ -21,6 +21,8 @@ import type * as http from "../http.js";
 import type * as journal from "../journal.js";
 import type * as liveProtection from "../liveProtection.js";
 import type * as marketData from "../marketData.js";
+import type * as marketRadarInternal from "../marketRadarInternal.js";
+import type * as marketRadarScheduler from "../marketRadarScheduler.js";
 import type * as notificationPreferences from "../notificationPreferences.js";
 import type * as notifications from "../notifications.js";
 import type * as okx from "../okx.js";
@@ -51,6 +53,8 @@ declare const fullApi: ApiFromModules<{
   journal: typeof journal;
   liveProtection: typeof liveProtection;
   marketData: typeof marketData;
+  marketRadarInternal: typeof marketRadarInternal;
+  marketRadarScheduler: typeof marketRadarScheduler;
   notificationPreferences: typeof notificationPreferences;
   notifications: typeof notifications;
   okx: typeof okx;

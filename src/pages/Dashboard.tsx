@@ -245,6 +245,13 @@ export default function Dashboard() {
   // Convex persistence
   const saveAnalysis = useMutation(api.analyses.save);
   const dbHistory = useQuery(api.analyses.list);
+  // Keep the frontend compatible with the current Convex production schema
+  // until the owner manually deploys the scheduler and enables this feature.
+  const backgroundMarketRadarEnabled = import.meta.env.VITE_BACKGROUND_MARKET_RADAR_ENABLED === "true";
+  const backgroundMarketRadar = useQuery(
+    api.marketRadarScheduler.getLatest,
+    backgroundMarketRadarEnabled ? {} : "skip",
+  );
 
   // Convex actions for server-side data fetching
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
@@ -1583,6 +1590,8 @@ export default function Dashboard() {
                   providerCoverage: "PARTIAL",
                 } as CandidateInput))}
                 liveSources={liveSources}
+                backgroundSources={backgroundMarketRadar?.sources ?? []}
+                backgroundScanAt={backgroundMarketRadar?.lastScanAt}
                 isScanning={isScanning}
                 scanResult={scanResult ?? undefined}
                 radarResult={radarResult ?? undefined}
