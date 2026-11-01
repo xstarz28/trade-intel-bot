@@ -41,17 +41,22 @@ function sourceKey(source: LiveCandidateSource): string {
 function compactSource(source: LiveCandidateSource): LiveCandidateSource {
   const marketData = source.marketData;
   if (!marketData) return source;
-  return {
+  const compact = {
     instrument: source.instrument,
     assetClass: source.assetClass,
     ...(source.providerNative ? { providerNative: source.providerNative } : {}),
     marketData: {
       ...marketData,
       candles: marketData.candles.slice(-CANDLES_TO_PERSIST),
-      higherTimeframeCandles: marketData.higherTimeframeCandles?.slice(-CANDLES_TO_PERSIST),
+      ...(marketData.higherTimeframeCandles
+        ? { higherTimeframeCandles: marketData.higherTimeframeCandles.slice(-CANDLES_TO_PERSIST) }
+        : {}),
     },
     ...(source.technicalData ? { technicalData: source.technicalData } : {}),
   };
+  // Convex values cannot contain undefined; JSON round-tripping strips only
+  // absent optional fields before the snapshot is persisted.
+  return JSON.parse(JSON.stringify(compact)) as LiveCandidateSource;
 }
 
 function toInstrumentType(assetClass: string): "forex" | "crypto" | "stock" | "commodity" | "indices" | undefined {
@@ -314,8 +319,8 @@ export const runScheduledScan = internalAction({
       const saved = await ctx.runMutation(internal.marketRadarScheduler.persistScan, {
         updates,
         cursor: claim.cursor + 1,
-        results: Array.from(scan.results.entries()),
-        diffs: scan.diffs,
+        results: JSON.parse(JSON.stringify(Array.from(scan.results.entries()))),
+        diffs: JSON.parse(JSON.stringify(scan.diffs)),
         metrics,
         errors,
         lastScanAt: now,
