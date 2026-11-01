@@ -27,6 +27,7 @@ import {
   getAllInstrumentIds,
   type ResolutionStatus,
 } from "./instruments";
+import { getAllProviders } from "./providers";
 
 // ═══════════════════════════════════════════════════════════════
 // COVERAGE MATRIX TYPES
@@ -106,110 +107,8 @@ export interface CoverageMatrix {
 // PROVIDER PROFILES (duplicated for coverage computation)
 // ═══════════════════════════════════════════════════════════════
 
-interface ProviderSpec {
-  id: string;
-  name: string;
-  authRequired: boolean;
-  credentialsAvailable: boolean;
-  assetClasses: AssetClass[];
-  capabilities: { capability: DataCapability; quality: string; assetClasses: AssetClass[] }[];
-}
-
-const PROVIDER_SPECS: ProviderSpec[] = [
-  {
-    id: "twelve-data", name: "Twelve Data", authRequired: true, credentialsAvailable: true,
-    assetClasses: ["crypto", "forex", "equity", "commodity", "indices"],
-    capabilities: [
-      { capability: "ohlcv", quality: "FULL", assetClasses: ["crypto", "forex", "equity", "commodity", "indices"] },
-      { capability: "quote", quality: "FULL", assetClasses: ["crypto", "forex", "equity", "commodity", "indices"] },
-    ],
-  },
-  {
-    id: "alpha-vantage", name: "Alpha Vantage", authRequired: true, credentialsAvailable: true,
-    assetClasses: ["forex", "equity"],
-    capabilities: [
-      { capability: "ohlcv", quality: "FULL", assetClasses: ["forex", "equity"] },
-      { capability: "earnings", quality: "FULL", assetClasses: ["equity"] },
-      { capability: "financial_statements", quality: "FULL", assetClasses: ["equity"] },
-      { capability: "valuation", quality: "PARTIAL", assetClasses: ["equity"] },
-      { capability: "news", quality: "FULL", assetClasses: ["forex", "equity"] },
-      { capability: "sentiment", quality: "PARTIAL", assetClasses: ["forex", "equity"] },
-      { capability: "macroeconomic_data", quality: "PARTIAL", assetClasses: ["forex"] },
-    ],
-  },
-  {
-    id: "coingecko", name: "CoinGecko", authRequired: false, credentialsAvailable: true,
-    assetClasses: ["crypto"],
-    capabilities: [
-      { capability: "quote", quality: "FULL", assetClasses: ["crypto"] },
-      { capability: "tokenomics", quality: "PARTIAL", assetClasses: ["crypto"] },
-    ],
-  },
-  {
-    id: "coinglass", name: "CoinGlass", authRequired: true, credentialsAvailable: false,
-    assetClasses: ["crypto"],
-    capabilities: [
-      { capability: "open_interest", quality: "FULL", assetClasses: ["crypto"] },
-      { capability: "funding_rate", quality: "FULL", assetClasses: ["crypto"] },
-      { capability: "liquidations", quality: "FULL", assetClasses: ["crypto"] },
-      { capability: "long_short_positioning", quality: "FULL", assetClasses: ["crypto"] },
-    ],
-  },
-  {
-    id: "defillama", name: "DeFiLlama", authRequired: false, credentialsAvailable: true,
-    assetClasses: ["crypto"],
-    capabilities: [
-      { capability: "tvl", quality: "FULL", assetClasses: ["crypto"] },
-      { capability: "defi_fees", quality: "FULL", assetClasses: ["crypto"] },
-    ],
-  },
-  {
-    id: "tokenomist", name: "Tokenomist", authRequired: false, credentialsAvailable: true,
-    assetClasses: ["crypto"],
-    capabilities: [
-      { capability: "tokenomics", quality: "FULL", assetClasses: ["crypto"] },
-    ],
-  },
-  {
-    id: "tickatlas", name: "TickAtlas", authRequired: true, credentialsAvailable: false,
-    assetClasses: ["forex", "equity", "commodity", "crypto"],
-    capabilities: [
-      { capability: "economic_calendar", quality: "FULL", assetClasses: ["forex", "equity", "commodity", "crypto"] },
-    ],
-  },
-  {
-    id: "treasury", name: "US Treasury", authRequired: false, credentialsAvailable: true,
-    assetClasses: ["macro", "forex"],
-    capabilities: [
-      { capability: "yield_curves", quality: "FULL", assetClasses: ["macro", "forex"] },
-      { capability: "interest_rates", quality: "FULL", assetClasses: ["macro", "forex"] },
-    ],
-  },
-  {
-    id: "cftc", name: "CFTC", authRequired: false, credentialsAvailable: true,
-    assetClasses: ["forex", "commodity", "indices"],
-    capabilities: [
-      { capability: "cot_positioning", quality: "FULL", assetClasses: ["forex", "commodity", "indices"] },
-    ],
-  },
-  {
-    id: "eia", name: "EIA", authRequired: true, credentialsAvailable: false,
-    assetClasses: ["commodity"],
-    capabilities: [
-      { capability: "inventory", quality: "FULL", assetClasses: ["commodity"] },
-      { capability: "supply_demand", quality: "PARTIAL", assetClasses: ["commodity"] },
-    ],
-  },
-  {
-    id: "okx", name: "OKX", authRequired: false, credentialsAvailable: true,
-    assetClasses: ["crypto"],
-    capabilities: [
-      { capability: "ohlcv", quality: "FULL", assetClasses: ["crypto"] },
-      { capability: "quote", quality: "FULL", assetClasses: ["crypto"] },
-      { capability: "order_book", quality: "PARTIAL", assetClasses: ["crypto"] },
-    ],
-  },
-];
+// Use the canonical provider registry so routing and coverage cannot drift.
+const PROVIDER_SPECS = getAllProviders();
 
 // ═══════════════════════════════════════════════════════════════
 // COVERAGE MATRIX ASSEMBLY
@@ -225,6 +124,7 @@ export function computeInstrumentCoverage(instrument: string): InstrumentCoverag
   const coverage: ProviderCoverageEntry[] = [];
   const supportedCapabilities = new Set<DataCapability>();
   const unsupportedCapabilities = new Set<DataCapability>();
+  const allCapabilities = new Set<DataCapability>();
 
   for (const spec of PROVIDER_SPECS) {
     if (!spec.assetClasses.includes(canonical.assetClass)) continue;
@@ -233,6 +133,7 @@ export function computeInstrumentCoverage(instrument: string): InstrumentCoverag
       if (!cap.assetClasses.includes(canonical.assetClass)) continue;
 
       const providerSymbol = getProviderSymbol(instrument, spec.id);
+      allCapabilities.add(cap.capability);
 
       coverage.push({
         providerId: spec.id,
@@ -246,10 +147,12 @@ export function computeInstrumentCoverage(instrument: string): InstrumentCoverag
 
       if (providerSymbol && spec.credentialsAvailable) {
         supportedCapabilities.add(cap.capability);
-      } else {
-        unsupportedCapabilities.add(cap.capability);
       }
     }
+  }
+
+  for (const capability of allCapabilities) {
+    if (!supportedCapabilities.has(capability)) unsupportedCapabilities.add(capability);
   }
 
   const availableCapabilityCount = supportedCapabilities.size;

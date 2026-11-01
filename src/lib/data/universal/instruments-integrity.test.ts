@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { computeInstrumentCoverage, computeProviderSummaries } from "./coverage";
+import { getAllProviders } from "./providers";
 import { getAllInstrumentIds, getAllInstruments, getProviderSymbol, resolveInstrument } from "./instruments";
 
 describe("universal instrument registry integrity", () => {
@@ -34,4 +36,35 @@ describe("universal instrument registry integrity", () => {
     expect(getProviderSymbol("NOT-A-REAL-INSTRUMENT", "twelve-data")).toBeNull();
     expect(getProviderSymbol("", "twelve-data")).toBeNull();
   });
+  it("keeps provider coverage aligned with the canonical provider registry", () => {
+    const providers = getAllProviders();
+    const summaries = computeProviderSummaries();
+
+    expect(summaries.map((provider) => provider.providerId).sort()).toEqual(
+      providers.map((provider) => provider.id).sort(),
+    );
+
+    for (const provider of providers) {
+      const summary = summaries.find((item) => item.providerId === provider.id);
+      expect(summary?.credentialsAvailable).toBe(provider.credentialsAvailable);
+      expect(summary?.assetClasses).toEqual(provider.assetClasses);
+      expect(summary?.capabilities).toEqual(
+        provider.capabilities.map((capability) => capability.capability),
+      );
+    }
+  });
+
+  it("marks a capability unavailable only when no mapped provider has usable credentials", () => {
+    const coverage = computeInstrumentCoverage("BTC/USD");
+    expect(coverage).not.toBeNull();
+
+    expect(coverage?.supportedCapabilities).toContain("quote");
+    expect(coverage?.unsupportedCapabilities).not.toContain("quote");
+
+    // CoinGlass has an instrument mapping, but its provider credentials are
+    // intentionally unavailable; this must not be presented as usable data.
+    expect(coverage?.unsupportedCapabilities).toContain("open_interest");
+    expect(coverage?.supportedCapabilities).not.toContain("open_interest");
+  });
+
 });
