@@ -70,6 +70,20 @@ const PROVIDER_PROFILES: ProviderProfile[] = [
     ],
   },
   {
+    id: "sec-edgar",
+    name: "SEC EDGAR",
+    authRequired: true,
+    credentialsAvailable: false,
+    rateLimitPerMinute: 600,
+    timeoutMs: 20000,
+    retryConfig: { maxRetries: 1, backoffMs: 1000 },
+    assetClasses: ["equity"],
+    capabilities: [
+      { capability: "earnings", quality: "PARTIAL", assetClasses: ["equity"] },
+      { capability: "financial_statements", quality: "PARTIAL", assetClasses: ["equity"] },
+    ],
+  },
+  {
     id: "coingecko",
     name: "CoinGecko",
     authRequired: false,
