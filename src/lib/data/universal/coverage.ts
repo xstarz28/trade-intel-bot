@@ -124,6 +124,7 @@ export function computeInstrumentCoverage(instrument: string): InstrumentCoverag
   const coverage: ProviderCoverageEntry[] = [];
   const supportedCapabilities = new Set<DataCapability>();
   const unsupportedCapabilities = new Set<DataCapability>();
+  const allCapabilities = new Set<DataCapability>();
 
   for (const spec of PROVIDER_SPECS) {
     if (!spec.assetClasses.includes(canonical.assetClass)) continue;
@@ -132,6 +133,7 @@ export function computeInstrumentCoverage(instrument: string): InstrumentCoverag
       if (!cap.assetClasses.includes(canonical.assetClass)) continue;
 
       const providerSymbol = getProviderSymbol(instrument, spec.id);
+      allCapabilities.add(cap.capability);
 
       coverage.push({
         providerId: spec.id,
@@ -145,10 +147,12 @@ export function computeInstrumentCoverage(instrument: string): InstrumentCoverag
 
       if (providerSymbol && spec.credentialsAvailable) {
         supportedCapabilities.add(cap.capability);
-      } else {
-        unsupportedCapabilities.add(cap.capability);
       }
     }
+  }
+
+  for (const capability of allCapabilities) {
+    if (!supportedCapabilities.has(capability)) unsupportedCapabilities.add(capability);
   }
 
   const availableCapabilityCount = supportedCapabilities.size;
