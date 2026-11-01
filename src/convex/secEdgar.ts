@@ -1,7 +1,7 @@
 "use node";
 
 import { action, internalAction, type ActionCtx } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { anyApi, internal } from "./_generated/api";
 import { v } from "convex/values";
 import {
   findSecTickerRecord,
@@ -167,7 +167,7 @@ export const refreshCompanyFilingHistoryForScanner = internalAction({
   handler: async (ctx, args): Promise<SecEdgarFetchResult> => {
     const ticker = args.ticker.trim().toUpperCase();
     const existing = await ctx.runQuery(
-      internal.historicalIntelligence.getLatestSecEdgarObservations,
+      anyApi.historicalIntelligence.getLatestSecEdgarObservations,
       { ticker, limit: 500 },
     );
     const lastRetrievedAt = existing.reduce(
