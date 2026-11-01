@@ -1,8 +1,7 @@
 name: Production deploy
 
+# Convex production deployment is owner-controlled and must never run as a side effect of merging code.
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
     inputs:
       ref:
