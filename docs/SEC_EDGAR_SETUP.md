@@ -36,9 +36,10 @@ Company Facts only; it does not cover IDX issuers such as BBCA.
 
 ## Operational limits
 
-SEC requests include the configured User-Agent and are kept below the SEC's published
-10 requests/second ceiling per process. The ticker directory is cached in the action
-runtime for 24 hours. Provider credential presence means the User-Agent is configured;
+SEC requests include the configured User-Agent and are sequential within each action
+invocation. The ticker directory is cached in the action runtime for 24 hours. There is
+no distributed cross-instance rate limiter, so callers must not fan out unbounded ticker
+batches. Provider credential presence means the User-Agent is configured;
 it does not prove SEC authentication/availability or that every ticker has usable facts.
 
 After setting the production variable, deploy the Convex functions and run an
