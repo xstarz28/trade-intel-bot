@@ -253,8 +253,9 @@ export const runScheduledScan = internalAction({
             timeframe,
           });
           if (!response.success || !response.data) {
-            errors.push(`${entry.instrument} ${timeframe}: ${response.error ?? "provider returned no market data"}`);
-            if (response.errorCode === "RATE_LIMIT") break;
+            const failure = response as { error?: string; errorCode?: string };
+            errors.push(`${entry.instrument} ${timeframe}: ${failure.error ?? "provider returned no market data"}`);
+            if (failure.errorCode === "RATE_LIMIT") break;
             continue;
           }
 
