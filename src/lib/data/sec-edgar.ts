@@ -111,6 +111,8 @@ function factsForTag(
   unitMatcher: (unit: string) => boolean,
   start: string,
   end: string,
+  fiscalYear?: number,
+  fiscalPeriod?: string,
 ): { value: number; tag: string } | undefined {
   const gaap = facts.facts?.["us-gaap"];
   if (!gaap) return undefined;
@@ -125,6 +127,8 @@ function factsForTag(
         item.filed === filingDate &&
         item.start === start &&
         item.end === end &&
+        (item.fy === undefined || fiscalYear === undefined || item.fy === fiscalYear) &&
+        (item.fp === undefined || fiscalPeriod === undefined || item.fp === fiscalPeriod) &&
         typeof item.val === "number" &&
         Number.isFinite(item.val),
       );
@@ -163,7 +167,12 @@ export function mapSecQuarterlyFundamentals(
 
     const accessionFacts = Object.values(facts.facts?.["us-gaap"] ?? {})
       .flatMap((entry) => Object.values(entry.units ?? {}).flat())
-      .filter((row) => row.accn === accessionNumber && row.filed === filingDate);
+      .filter((row) =>
+        row.accn === accessionNumber &&
+        row.filed === filingDate &&
+        (row.fy === undefined || recent.fy?.[i] === undefined || row.fy === recent.fy[i]) &&
+        (row.fp === undefined || recent.fp?.[i] === undefined || row.fp === recent.fp[i]),
+      );
     const periods = new Map<string, { start: string; end: string }>();
     for (const row of accessionFacts) {
       if (!validDate(row.start) || !validDate(row.end)) continue;
@@ -176,7 +185,7 @@ export function mapSecQuarterlyFundamentals(
       const eps = factsForTag(
         facts, EPS_TAGS, accessionNumber, filingDate,
         (unit) => /USD\s*\/\s*shares?/i.test(unit),
-        period.start, period.end,
+        period.start, period.end, recent.fy?.[i], recent.fp?.[i],
       );
       const revenue = factsForTag(
         facts, REVENUE_TAGS, accessionNumber, filingDate,
