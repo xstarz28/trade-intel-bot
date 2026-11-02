@@ -133,11 +133,12 @@ function constrainByProviderFreshness(
 }
 
 /**
- * Availability is based on the provider inputs consumed by analysis-engine,
- * not on whether the resulting signed FactorScore happened to be non-zero.
- * A real neutral reading is still measured evidence.
+ * Availability is based on verified asset-specific evidence and the provider
+ * inputs consumed by analysis-engine, not on whether the signed FactorScore
+ * happened to be non-zero. Crypto fundamental evidence is intentionally
+ * read-only today, so it remains neutral-scored but still available.
  */
-function hasScoredFundamentalEvidence(result: AnalysisResult | undefined): boolean {
+function hasFundamentalEvidence(result: AnalysisResult | undefined, source: LiveCandidateSource): boolean {
   if (!result) return false;
   const fund = result.fundamentalData;
   const hasStockMetrics = result.instrumentType === "stock" && fund?.available === true && (
@@ -173,7 +174,19 @@ function hasScoredFundamentalEvidence(result: AnalysisResult | undefined): boole
       return Number.isFinite(actual) && Number.isFinite(forecast);
     })
   );
-  return hasStockMetrics || hasMacroIndicators || hasReleasedHighImportanceSurprise;
+  const crypto = source.cryptoIntelligenceContext ?? result.cryptoIntelligenceContext;
+  const hasVerifiedCryptoFundamentals = !!(
+    result.instrumentType === "crypto" &&
+    crypto?.instrument === result.instrument &&
+    crypto.instrumentType === "crypto" &&
+    crypto.evidence.some((item) =>
+      item.category !== "DERIVATIVES" &&
+      item.providerAvailable &&
+      item.quality === "VERIFIED" &&
+      (item.freshness === "FRESH" || item.freshness === "DELAYED")
+    )
+  );
+  return hasStockMetrics || hasMacroIndicators || hasReleasedHighImportanceSurprise || hasVerifiedCryptoFundamentals;
 }
 
 /**
@@ -794,7 +807,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     // Availability here means signed directional evidence was actually
     // produced by the analysis engine. Raw fundamentals/calendar presence and
     // default-zero breakdown fields are not themselves directional signals.
-    fundamentalEvidenceAvailable: hasScoredFundamentalEvidence(ar),
+    fundamentalEvidenceAvailable: hasFundamentalEvidence(ar, source),
     positioningEvidenceAvailable: hasScoredPositioningEvidence(ar),
     macroScore: (() => {
       if (source.treasuryData?.available && source.assetClass === "commodity") {
