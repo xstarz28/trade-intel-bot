@@ -113,7 +113,7 @@ async function fetchCompanyFilingHistoryCore(
       if (observations.length === 0) {
         return {
           success: true,
-          status: "NO_QUARTERLY_FACTS",
+          status: "NO_USABLE_FILING_FACTS",
           ticker,
           cik,
           observationCount: 0,
