@@ -391,6 +391,10 @@ describe("Radar investment price projections", () => {
       ...liveSource,
       technicalData: {
         structure: "HH/HL",
+        supportLevels: [],
+        resistanceLevels: [],
+        swingHighs: [],
+        swingLows: [],
         htfContext: {
           timeframe: "W1",
           structure: "HH/HL",
