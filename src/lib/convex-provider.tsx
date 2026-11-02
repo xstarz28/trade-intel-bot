@@ -40,7 +40,9 @@ function readStorage<T>(key: string, fallback: T): T {
 function writeStorage<T>(key: string, value: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {}
+  } catch {
+    // Storage persistence is best-effort when the browser blocks localStorage.
+  }
 }
 
 const listeners = new Set<() => void>();

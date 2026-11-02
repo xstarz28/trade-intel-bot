@@ -29,7 +29,7 @@ export function toBinanceUsdtFuturesSymbol(instrument: string): string | null {
   const cleaned = instrument.trim().toUpperCase();
   if (!isCryptoInstrument(cleaned)) return null;
   const knownBase = toCoinGlassSymbol(cleaned);
-  const base = knownBase ?? cleaned.split(/[\/-]/)[0];
+  const base = knownBase ?? cleaned.split(/[/-]/)[0];
   if (!base || !/^[A-Z0-9]{2,20}$/.test(base)) return null;
   return base + "USDT";
 }
