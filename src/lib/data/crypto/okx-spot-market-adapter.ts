@@ -4,7 +4,7 @@ export const OKX_SPOT_MARKET_PROVIDER = "okx-spot-public";
 const BASE_URL = "https://www.okx.com";
 
 export function toOkxSpotInstrument(symbol: string): string | null {
-  const parts = symbol.trim().toUpperCase().replace(/\s/g, "").split(/[\/-]/);
+  const parts = symbol.trim().toUpperCase().replace(/\s/g, "").split(/[/-]/);
   if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
   const base = parts[0];
   const quote = parts[1] === "USD" ? "USDT" : parts[1];
