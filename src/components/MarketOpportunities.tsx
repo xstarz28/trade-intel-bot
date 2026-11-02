@@ -418,6 +418,56 @@ function RadarCard({ opp }: { opp: RadarOpportunity }) {
         </p>
       )}
 
+      {opp.investmentProjection && (
+        <div className="mt-2 rounded-md border border-primary/20 bg-background/30 p-2 space-y-1.5" data-testid="radar-investment-projection">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="text-[9px] font-sans font-semibold text-primary/80">
+              INVESTMENT OUTLOOK · {mapHorizon(opp.investmentProjection.horizon, t)}
+            </span>
+            <Badge variant="outline" className="text-[8px] font-sans border-border/50">
+              {opp.investmentProjection.status.replace(/_/g, " ")}
+            </Badge>
+          </div>
+          <p className="text-[9px] font-sans text-muted-foreground">
+            Direction: <span className="text-foreground">{opp.investmentProjection.direction}</span>
+          </p>
+          {opp.investmentProjection.entryReference !== undefined && (
+            <p className="text-[9px] font-sans text-foreground/80">
+              Spot reference {formatPrice(opp.investmentProjection.entryReference)} · not an entry order
+            </p>
+          )}
+          {opp.investmentProjection.accumulationZone && (
+            <p className="text-[9px] font-sans text-foreground/80">
+              Accumulation zone ({opp.investmentProjection.accumulationZone.timeframe}) {formatPrice(opp.investmentProjection.accumulationZone.lower)} – {formatPrice(opp.investmentProjection.accumulationZone.upper)}
+            </p>
+          )}
+          {opp.investmentProjection.objective && (
+            <p className="text-[9px] font-sans text-foreground/80">
+              Objective {formatPrice(opp.investmentProjection.objective.price)} · {opp.investmentProjection.objective.meaning}
+            </p>
+          )}
+          {opp.investmentProjection.invalidation && (
+            <p className="text-[9px] font-sans text-foreground/80">
+              Invalidation {formatPrice(opp.investmentProjection.invalidation.price)}
+            </p>
+          )}
+          {opp.investmentProjection.rewardRiskRatio !== undefined && (
+            <p className="text-[9px] font-sans font-semibold text-primary">
+              Structural reward / invalidation distance {opp.investmentProjection.rewardRiskRatio.toFixed(2)} : 1
+            </p>
+          )}
+          {opp.investmentProjection.evidence.slice(0, 2).map((item, i) => (
+            <p key={i} className="text-[8px] font-sans text-emerald-400/70">✓ {item}</p>
+          ))}
+          {opp.investmentProjection.limitations.slice(0, 3).map((item, i) => (
+            <p key={i} className="text-[8px] font-sans text-muted-foreground/70">! {item}</p>
+          ))}
+          <p className="text-[8px] font-sans text-muted-foreground/60">
+            Conditional research levels only. Ratio is not a probability, and this is not an order or investment instruction.
+          </p>
+        </div>
+      )}
+
       {opp.conditionalScenarios && opp.conditionalScenarios.length > 0 && (
         <div className="mt-2 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2 text-[9px] font-sans text-muted-foreground/70">

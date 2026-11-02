@@ -9,8 +9,10 @@
  */
 
 import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation-engine";
-import type { MarketSnapshot, FreshnessLevel } from "./types";
+import type { MarketSnapshot, FreshnessLevel, InvestorOpportunityProjection } from "./types";
 import type { UniverseEntry } from "./types";
+import type { TechnicalData, TimeframeStructureContext } from "../data/market-types";
+import { buildInvestorFundamentalOutlook } from "../investor-fundamental-outlook";
 import { assessFreshness } from "./freshness";
 import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
 import { calculateTechnical } from "../data/technical";
@@ -33,6 +35,8 @@ export interface RadarCandidateSource {
   confluenceCount?: number;
   /** Conditional entry/invalidations/targets derived from this exact candle snapshot. */
   conditionalScenarios?: ConditionalEntryScenario[];
+  /** Structural and valuation-backed price plan for investment horizons only. */
+  investmentProjection?: Omit<InvestorOpportunityProjection, "horizon">;
   /** Optional additional intelligence. */
   derivatives?: {
     fundingRate?: number;
@@ -124,6 +128,195 @@ const RADAR_SOURCE_TIMEFRAME_MS: Record<string, number> = {
   D1: 24 * 60 * 60_000,
   W1: 7 * 24 * 60 * 60_000,
 };
+
+const RADAR_SOURCE_TIMEFRAME_RANK: Record<string, number> = {
+  M1: 1, M5: 2, M15: 3, H1: 4, H4: 5, D1: 6, W1: 7,
+};
+
+function getInvestorStructure(
+  technical: TechnicalData | undefined,
+  currentTimeframe: string,
+): TimeframeStructureContext | undefined {
+  const currentRank = RADAR_SOURCE_TIMEFRAME_RANK[currentTimeframe] ?? 0;
+  const candidates = [
+    technical?.htfContext,
+    ...(technical?.mtf?.timeframes ?? [])
+      .filter((item) => item.available && (item.role === "macro" || item.role === "structure"))
+      .map((item) => item.smc?.internalExternal.external),
+  ].filter((item): item is TimeframeStructureContext =>
+    !!item &&
+    (RADAR_SOURCE_TIMEFRAME_RANK[item.timeframe] ?? 0) > currentRank &&
+    (item.structure === "HH/HL" || item.structure === "LH/LL"),
+  );
+  return candidates.sort((a, b) =>
+    (RADAR_SOURCE_TIMEFRAME_RANK[b.timeframe] ?? 0) -
+    (RADAR_SOURCE_TIMEFRAME_RANK[a.timeframe] ?? 0),
+  )[0];
+}
+
+function getInvestorAccumulationZone(
+  technical: TechnicalData | undefined,
+  currentTimeframe: string | undefined,
+  spot: number,
+  asOf: number,
+): InvestorOpportunityProjection["accumulationZone"] {
+  const currentRank = RADAR_SOURCE_TIMEFRAME_RANK[currentTimeframe ?? ""] ?? 0;
+  const candidates = (technical?.mtf?.timeframes ?? [])
+    .filter((item) =>
+      item.available &&
+      (item.role === "macro" || item.role === "structure") &&
+      (RADAR_SOURCE_TIMEFRAME_RANK[item.timeframe] ?? 0) > currentRank &&
+      item.smc,
+    )
+    .flatMap((item) => (item.smc?.orderBlocks ?? []).flatMap((block) => {
+      if (
+        block.direction !== "bullish" ||
+        block.status !== "fresh" ||
+        !block.evidence.precedingOpposingCandle ||
+        !block.evidence.displacementAfter ||
+        !block.evidence.structuralBreakAfter ||
+        !Number.isFinite(block.createdAt) ||
+        block.createdAt <= 0 ||
+        block.createdAt > asOf ||
+        !Number.isFinite(block.lower) ||
+        !Number.isFinite(block.upper) ||
+        block.lower <= 0 ||
+        block.upper <= block.lower ||
+        block.lower >= spot
+      ) return [];
+      return [{
+        lower: block.lower,
+        upper: block.upper,
+        timeframe: item.timeframe,
+        createdAt: block.createdAt,
+        source: "validated_bullish_order_block" as const,
+      }];
+    }));
+  return candidates.sort((a, b) =>
+    (RADAR_SOURCE_TIMEFRAME_RANK[b.timeframe] ?? 0) - (RADAR_SOURCE_TIMEFRAME_RANK[a.timeframe] ?? 0) ||
+    Math.max(0, spot - a.upper) - Math.max(0, spot - b.upper),
+  )[0];
+}
+
+function buildInvestmentProjection(
+  market: LiveCandidateSource["marketData"],
+  technical: TechnicalData | undefined,
+  analysis: LiveCandidateSource["analysisResult"],
+): Omit<InvestorOpportunityProjection, "horizon"> | undefined {
+  if (!market) return undefined;
+  const spot = market.price?.price;
+  const asOf = market.price?.timestamp;
+  const empty: Omit<InvestorOpportunityProjection, "horizon"> = {
+    status: "UNAVAILABLE",
+    direction: "neutral",
+    evidence: [],
+    limitations: [],
+  };
+  if (!Number.isFinite(spot) || (spot ?? 0) <= 0 || !Number.isFinite(asOf) || (asOf ?? 0) <= 0 || (asOf ?? 0) > market.fetchTimestamp) {
+    return { ...empty, limitations: ["A valid exact-instrument price and non-future source timestamp are required."] };
+  }
+  if (market.dataFreshness === "stale" || market.dataFreshness === "unavailable") {
+    return {
+      ...empty,
+      status: "BLOCKED_DATA_QUALITY",
+      limitations: ["Primary market data is stale or unavailable; investment price levels are suppressed."],
+    };
+  }
+
+  const price = spot!;
+  const observedAt = asOf!;
+  const structure = getInvestorStructure(technical, market.timeframe);
+  const structuralDirection = structure?.structure === "HH/HL"
+    ? "bullish"
+    : structure?.structure === "LH/LL"
+      ? "bearish"
+      : "neutral";
+  const mtfDirection = technical?.mtf?.htfBias === "long"
+    ? "bullish"
+    : technical?.mtf?.htfBias === "short"
+      ? "bearish"
+      : "neutral";
+  // A disagreement between the MTF bias and the selected external structure
+  // blocks a directional investment plan instead of choosing the convenient side.
+  const direction = structuralDirection !== "neutral" &&
+    (mtfDirection === "neutral" || mtfDirection === structuralDirection)
+    ? structuralDirection
+    : "neutral";
+  const structuralObjective = direction === "bullish"
+    ? structure?.lastSwingHigh
+    : direction === "bearish"
+      ? structure?.lastSwingLow
+      : undefined;
+  const structuralInvalidation = direction === "bullish"
+    ? structure?.lastSwingLow
+    : direction === "bearish"
+      ? structure?.lastSwingHigh
+      : undefined;
+  const validObjective = Number.isFinite(structuralObjective) && (
+    direction === "bullish" ? structuralObjective! > price : direction === "bearish" ? structuralObjective! < price : false
+  ) ? structuralObjective : undefined;
+  const validInvalidation = Number.isFinite(structuralInvalidation) && (
+    direction === "bullish" ? structuralInvalidation! < price : direction === "bearish" ? structuralInvalidation! > price : false
+  ) ? structuralInvalidation : undefined;
+
+  const fundamentalOutlook = analysis
+    ? buildInvestorFundamentalOutlook(analysis, price)
+    : undefined;
+  const valuationReference = fundamentalOutlook?.valuationReference;
+  const valuationObjective = valuationReference && (
+    direction === "bullish" ? valuationReference.price > price :
+    direction === "bearish" ? valuationReference.price < price : false
+  ) ? valuationReference : undefined;
+  const objective = valuationObjective?.price ?? validObjective;
+  const invalidation = validInvalidation;
+  const risk = invalidation === undefined ? undefined : Math.abs(price - invalidation);
+  const reward = objective === undefined ? undefined : Math.abs(objective - price);
+  const rewardRiskRatio = reward !== undefined && risk !== undefined && reward > 0 && risk > 0
+    ? reward / risk
+    : undefined;
+  const accumulationZone = direction === "bullish"
+    ? getInvestorAccumulationZone(technical, market.timeframe, price, observedAt)
+    : undefined;
+  const qualified = direction !== "neutral" &&
+    objective !== undefined &&
+    invalidation !== undefined &&
+    rewardRiskRatio !== undefined;
+  const evidence = !qualified
+    ? []
+    : [
+        "Direction is derived from the available higher-timeframe external structure.",
+        ...(valuationObjective ? ["Objective uses the exact-instrument " + valuationObjective.kind.toLowerCase() + " reference from " + valuationObjective.source + "."] : ["Objective is an observed higher-timeframe swing level, not a guaranteed target."]),
+        "Invalidation is the opposing observed higher-timeframe swing level.",
+        ...(accumulationZone ? ["Accumulation zone is a fresh higher-timeframe bullish order block with verified displacement and structural-break evidence."] : []),
+      ];
+  const limitations = [
+    "Investment projection is informational, not an order or a calibrated probability forecast.",
+    "Structural reward/risk is a price-distance ratio before fees, slippage, funding, borrow, dividends, and corporate actions.",
+    ...(objective === undefined ? ["No directionally valid valuation or higher-timeframe objective is available."] : []),
+    ...(invalidation === undefined ? ["No directionally valid higher-timeframe invalidation is available."] : []),
+    ...(!qualified ? ["A complete objective/invalidation pair is required; partial price plans are suppressed."] : []),
+    ...(!accumulationZone && direction === "bullish" ? ["No validated higher-timeframe bullish order-block accumulation zone is available."] : []),
+  ];
+  return {
+    status: qualified ? "CONDITIONAL" : "UNAVAILABLE",
+    direction,
+    entryReference: price,
+    accumulationZone,
+    objective: !qualified ? undefined : {
+      price: objective!,
+      source: valuationObjective?.kind ?? "higher_timeframe_external_swing",
+      meaning: valuationObjective?.description ?? "Observed structural objective; not fair value",
+    },
+    invalidation: !qualified ? undefined : {
+      price: invalidation!,
+      source: "higher_timeframe_external_swing",
+      meaning: "Observed opposing structural invalidation",
+    },
+    rewardRiskRatio: qualified ? rewardRiskRatio : undefined,
+    evidence,
+    limitations,
+  };
+}
 
 export function toRadarCandidateSource(
   source: LiveCandidateSource,
@@ -283,6 +476,7 @@ export function toRadarCandidateSource(
       /XAU|GOLD/i.test(source.instrument)
     ? deriveMacroYieldEvidence(source.treasuryData).goldLongEffect * 2
     : undefined;
+  const investmentProjection = buildInvestmentProjection(market, technical, analysis);
 
   const snapshot: MarketSnapshot | null = market ? {
     instrument: market.instrument,
@@ -342,6 +536,7 @@ export function toRadarCandidateSource(
     },
     snapshot,
     ...(conditionalScenarios.length > 0 ? { conditionalScenarios } : {}),
+    ...(investmentProjection ? { investmentProjection } : {}),
     ...(derivatives ? { derivatives } : {}),
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
     ...(setupEvidence ? setupEvidence : {}),

@@ -79,7 +79,7 @@ const RADAR_HORIZON_TIMEFRAMES: Record<TradingMode | InvestorHorizon, string[]> 
   "3+_YEARS": ["W1", "D1"],
 };
 
-function isTradingHorizon(horizon: TradingMode | InvestorHorizon): boolean {
+function isTradingHorizon(horizon: TradingMode | InvestorHorizon): horizon is TradingMode {
   return horizon === "SCALPING" || horizon === "INTRADAY" || horizon === "SWING";
 }
 
@@ -551,6 +551,9 @@ export function scanRadar(
           : {}),
         ...(isTradingHorizon(horizon) && source.conditionalScenarios?.length
           ? { conditionalScenarios: source.conditionalScenarios }
+          : {}),
+        ...(!isTradingHorizon(horizon) && source.investmentProjection
+          ? { investmentProjection: { ...source.investmentProjection, horizon } }
           : {}),
         lifecycle,
         qualityTier,

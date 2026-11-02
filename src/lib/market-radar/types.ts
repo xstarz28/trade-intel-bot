@@ -185,6 +185,39 @@ export interface MarketSnapshot {
 }
 
 // ═══════════════════════════════════════════════════════════════
+// INVESTMENT PROJECTION
+// ═══════════════════════════════════════════════════════════════
+
+export interface InvestorOpportunityProjection {
+  horizon: InvestorHorizon;
+  status: "CONDITIONAL" | "UNAVAILABLE" | "BLOCKED_DATA_QUALITY";
+  direction: "bullish" | "bearish" | "neutral";
+  /** Current observed price; a comparison reference, not a buy order. */
+  entryReference?: number;
+  accumulationZone?: {
+    lower: number;
+    upper: number;
+    timeframe: string;
+    createdAt: number;
+    source: "validated_bullish_order_block";
+  };
+  objective?: {
+    price: number;
+    source: string;
+    meaning: string;
+  };
+  invalidation?: {
+    price: number;
+    source: string;
+    meaning: string;
+  };
+  /** Structural reward distance divided by invalidation distance; not a probability. */
+  rewardRiskRatio?: number;
+  evidence: string[];
+  limitations: string[];
+}
+
+// ═══════════════════════════════════════════════════════════════
 // OPPORTUNITY
 // ═══════════════════════════════════════════════════════════════
 
@@ -201,6 +234,8 @@ export interface RadarOpportunity {
   currentPrice?: number;
   /** Conditional trading setups; never executable signals. Omitted for investing horizons. */
   conditionalScenarios?: ConditionalEntryScenario[];
+  /** Price-level investment thesis; omitted for trading horizons. */
+  investmentProjection?: InvestorOpportunityProjection;
   /** Lifecycle state. */
   lifecycle: OpportunityLifecycle;
   /** Quality tier. */
