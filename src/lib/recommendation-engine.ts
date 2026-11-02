@@ -15,6 +15,8 @@
  */
 
 import type { AssetClass } from "./data/universal/types";
+import type { AnalysisResult } from "@/types/analysis";
+import { buildForwardForecast, type InvestorForwardForecast, type InvestorForecastHorizon } from "./forward-forecast";
 import type { ConditionalEntryScenario } from "./conditional-entry-scenarios";
 import { getAllInstruments, getProviderSymbol, type ResolutionStatus } from "./data/universal/instruments";
 
@@ -138,6 +140,8 @@ export interface CandidateInput {
   hasAnalysis?: boolean;
   /** Whether long-horizon thesis is available. */
   hasLongHorizonThesis?: boolean;
+  /** Exact same-instrument, same-price-snapshot analysis for horizon-specific investor forecasting. */
+  analysisResult?: AnalysisResult;
   /** Whether derivatives data is available. */
   hasDerivatives?: boolean;
   /** Whether fundamental data is available. */
@@ -225,6 +229,8 @@ export interface RankedInstrument {
   currentPrice?: number;
   /** Conditional entry/SL/TP/R:R levels for trading horizons only. */
   conditionalScenarios?: ConditionalEntryScenario[];
+  /** Investor forecast derived only from an exact same-instrument, same-price analysis snapshot. */
+  investorForecast?: InvestorForwardForecast;
 }
 
 export interface HorizonWeights {
@@ -1112,6 +1118,17 @@ export function generateRecommendation(
       ? horizon === "SCALPING" ? "M5/M15 analysis" : horizon === "INTRADAY" ? "H1/H4 analysis" : "D1/W1 analysis"
       : horizon.includes("YEARS") ? "D1/W1 long-horizon thesis" : "D1/H4 analysis";
 
+    const matchingInvestorAnalysis = !isTradingMode &&
+      c.analysisResult?.instrument === c.instrument &&
+      c.analysisResult.priceSnapshot?.price === c.currentPrice
+      ? c.analysisResult
+      : undefined;
+    const investorForecast = matchingInvestorAnalysis
+      ? buildForwardForecast(matchingInvestorAnalysis, {
+          investorHorizon: horizon as InvestorForecastHorizon,
+        }).investor
+      : undefined;
+
     rankedInstruments.push({
       instrument: c.instrument,
       assetClass: c.assetClass,
@@ -1140,6 +1157,7 @@ export function generateRecommendation(
       providerCoverage: c.providerCoverage,
       ...(Number.isFinite(c.currentPrice) && c.currentPrice > 0 ? { currentPrice: c.currentPrice } : {}),
       ...(isTradingMode && c.conditionalScenarios?.length ? { conditionalScenarios: c.conditionalScenarios } : {}),
+      ...(investorForecast ? { investorForecast } : {}),
     });
   }
 
