@@ -38,6 +38,8 @@ jobs:
         run: node --test scripts/verify-google-auth-config.test.mjs
       - name: Syntax-check production runtime smoke
         run: node --check scripts/production-runtime-smoke.mjs
+      - name: Test production smoke forecast status parsing
+        run: node --test scripts/forecast-contract-validation.test.mjs
       - name: Test suite
         run: npm test
       - name: Strict lint for market-execution integrity modules
