@@ -138,14 +138,15 @@ function getInvestorStructure(technical?: TechnicalData): TimeframeStructureCont
     technical?.htfContext,
     ...(technical?.mtf?.timeframes ?? [])
       .filter((item) => item.available && (item.role === "macro" || item.role === "structure"))
-      .sort((a, b) =>
-        (RADAR_SOURCE_TIMEFRAME_RANK[b.timeframe] ?? 0) -
-        (RADAR_SOURCE_TIMEFRAME_RANK[a.timeframe] ?? 0),
-      )
       .map((item) => item.smc?.internalExternal.external),
     technical?.smc?.internalExternal.external,
-  ];
-  return candidates.find((item) => item?.structure === "HH/HL" || item?.structure === "LH/LL");
+  ].filter((item): item is TimeframeStructureContext =>
+    !!item && (item.structure === "HH/HL" || item.structure === "LH/LL"),
+  );
+  return candidates.sort((a, b) =>
+    (RADAR_SOURCE_TIMEFRAME_RANK[b.timeframe] ?? 0) -
+    (RADAR_SOURCE_TIMEFRAME_RANK[a.timeframe] ?? 0),
+  )[0];
 }
 
 function getInvestorAccumulationZone(
@@ -220,15 +221,22 @@ function buildInvestmentProjection(
   const price = spot!;
   const observedAt = asOf!;
   const structure = getInvestorStructure(technical);
-  const direction = technical?.mtf?.htfBias === "long"
+  const structuralDirection = structure?.structure === "HH/HL"
+    ? "bullish"
+    : structure?.structure === "LH/LL"
+      ? "bearish"
+      : "neutral";
+  const mtfDirection = technical?.mtf?.htfBias === "long"
     ? "bullish"
     : technical?.mtf?.htfBias === "short"
       ? "bearish"
-      : structure?.structure === "HH/HL"
-        ? "bullish"
-        : structure?.structure === "LH/LL"
-          ? "bearish"
-          : "neutral";
+      : "neutral";
+  // A disagreement between the MTF bias and the selected external structure
+  // blocks a directional investment plan instead of choosing the convenient side.
+  const direction = structuralDirection !== "neutral" &&
+    (mtfDirection === "neutral" || mtfDirection === structuralDirection)
+    ? structuralDirection
+    : "neutral";
   const structuralObjective = direction === "bullish"
     ? structure?.lastSwingHigh
     : direction === "bearish"
