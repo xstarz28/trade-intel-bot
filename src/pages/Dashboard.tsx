@@ -202,12 +202,18 @@ export default function Dashboard() {
     try {
       const saved = localStorage.getItem("workspaceMode");
       if (saved === "trader" || saved === "investor") return saved;
-    } catch {}
+    } catch {
+      // Fall back to the default workspace when localStorage is unavailable.
+    }
     return "trader";
   });
   const handleWorkspaceChange = useCallback((mode: WorkspaceMode) => {
     setWorkspaceMode(mode);
-    try { localStorage.setItem("workspaceMode", mode); } catch {}
+    try {
+      localStorage.setItem("workspaceMode", mode);
+    } catch {
+      // Workspace state is already updated in memory; persistence is best-effort.
+    }
     // Reset tab to default for the target workspace
     if (mode === "trader") setActiveTab("analysis");
     if (mode === "investor") setInvestorTab("portfolio");
