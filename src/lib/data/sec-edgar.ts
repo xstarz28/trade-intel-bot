@@ -163,7 +163,11 @@ export function mapSecQuarterlyFundamentals(
     const accessionNumber = recent.accessionNumber[i];
     const filingDate = recent.filingDate[i];
     const form = recent.form[i];
-    if (!accessionNumber || !validDate(filingDate) || !["10-Q", "6-K"].includes(form ?? "")) continue;
+    if (!accessionNumber || !validDate(filingDate) || !["10-Q", "10-K", "6-K"].includes(form ?? "")) continue;
+    const reportDate = recent.reportDate?.[i];
+    // Annual filings must be anchored to the report period end supplied by SEC
+    // submissions; this excludes comparative annual facts in the same accession.
+    if (form === "10-K" && !validDate(reportDate)) continue;
 
     const accessionFacts = Object.values(facts.facts?.["us-gaap"] ?? {})
       .flatMap((entry) => Object.values(entry.units ?? {}).flat())
@@ -176,8 +180,12 @@ export function mapSecQuarterlyFundamentals(
     const periods = new Map<string, { start: string; end: string }>();
     for (const row of accessionFacts) {
       if (!validDate(row.start) || !validDate(row.end)) continue;
+      if (validDate(reportDate) && row.end !== reportDate) continue;
       const days = durationDays(row.start, row.end);
-      if (days < 70 || days > 110) continue;
+      const validDuration = form === "10-K"
+        ? days >= 330 && days <= 380
+        : days >= 70 && days <= 110;
+      if (!validDuration) continue;
       periods.set(row.start + "|" + row.end, { start: row.start, end: row.end });
     }
 
@@ -210,7 +218,7 @@ export function mapSecQuarterlyFundamentals(
         fiscalPeriodStart: period.start,
         fiscalPeriodEnd: period.end,
         ...(fiscalYear !== undefined ? { fiscalYear } : {}),
-        ...(fiscalPeriod ? { fiscalPeriod } : {}),
+        ...((fiscalPeriod || form === "10-K") ? { fiscalPeriod: fiscalPeriod ?? "FY" } : {}),
         ...(eps ? { eps: eps.value, epsTag: eps.tag } : {}),
         ...(revenue ? { revenue: revenue.value, revenueTag: revenue.tag } : {}),
         sourceUrl: `https://www.sec.gov/Archives/edgar/data/${Number(cik)}/${accessionNumber.replace(/-/g, "")}/`,
