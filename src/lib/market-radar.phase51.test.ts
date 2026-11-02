@@ -330,7 +330,7 @@ describe("Radar investment price projections", () => {
             timeframe: "W1",
             liquidityPools: [],
             internalExternal: {
-              external: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 180 },
+              external: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 120_000, lastSwingLow: 90_000, dataPoints: 180 },
               internal: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 180 },
               internalConflict: false,
             },
