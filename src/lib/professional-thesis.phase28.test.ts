@@ -296,6 +296,29 @@ describe("Phase 28 — Fundamental Thesis", () => {
     expect(ft.catalysts[0]?.direction).toBe("unknown");
   });
 
+  it("does not classify an empty low-confidence calendar as low event risk", () => {
+    const now = Date.now();
+    const input = buildInput("EUR/USD", "forex", bullCandles(0, 1.1), {
+      calendarData: {
+        provider: "trading-economics",
+        events: [],
+        macroRisk: {
+          level: "low",
+          explanation: "Provider returned an incomplete event set.",
+          highImpact24h: 0,
+          highImpact72h: 0,
+        },
+        timestamp: now,
+        freshness: "recent",
+        confidence: "low",
+        availability: { upcoming24h: false, upcoming72h: false, recentReleased: false },
+      },
+    });
+    const result = runAnalysis(input);
+    const ft = buildFundamentalThesis({ ...result, bias: "Bullish" });
+    expect(ft.eventRisk).toBe("UNKNOWN");
+  });
+
   it("does not invent a moderate catalyst when calendar data has no upcoming events", () => {
     const now = Date.now();
     const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000), {
