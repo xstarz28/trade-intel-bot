@@ -139,7 +139,19 @@ function constrainByProviderFreshness(
  * read-only today, so it remains neutral-scored but still available.
  */
 function hasFundamentalEvidence(result: AnalysisResult | undefined, source: LiveCandidateSource): boolean {
-  if (!result) return false;
+  const crypto = source.cryptoIntelligenceContext ?? result?.cryptoIntelligenceContext;
+  const hasVerifiedCryptoFundamentals = !!(
+    source.assetClass === "crypto" &&
+    crypto?.instrument === source.instrument &&
+    crypto.instrumentType === "crypto" &&
+    crypto.evidence.some((item) =>
+      item.category !== "DERIVATIVES" &&
+      item.providerAvailable &&
+      item.quality === "VERIFIED" &&
+      (item.freshness === "FRESH" || item.freshness === "DELAYED")
+    )
+  );
+  if (!result) return hasVerifiedCryptoFundamentals;
   const fund = result.fundamentalData;
   const hasStockMetrics = result.instrumentType === "stock" && fund?.available === true && (
     (fund.peRatio !== undefined && fund.peRatio > 0) ||
@@ -173,18 +185,6 @@ function hasFundamentalEvidence(result: AnalysisResult | undefined, source: Live
       const forecast = typeof event.forecast === "number" ? event.forecast : Number.parseFloat(String(event.forecast));
       return Number.isFinite(actual) && Number.isFinite(forecast);
     })
-  );
-  const crypto = source.cryptoIntelligenceContext ?? result.cryptoIntelligenceContext;
-  const hasVerifiedCryptoFundamentals = !!(
-    result.instrumentType === "crypto" &&
-    crypto?.instrument === result.instrument &&
-    crypto.instrumentType === "crypto" &&
-    crypto.evidence.some((item) =>
-      item.category !== "DERIVATIVES" &&
-      item.providerAvailable &&
-      item.quality === "VERIFIED" &&
-      (item.freshness === "FRESH" || item.freshness === "DELAYED")
-    )
   );
   return hasStockMetrics || hasMacroIndicators || hasReleasedHighImportanceSurprise || hasVerifiedCryptoFundamentals;
 }
