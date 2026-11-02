@@ -561,7 +561,6 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const dir = dirBias(result);
   const regime = result.marketRegimeContext;
   const fundamental = result.fundamentalThesis;
-  const scenario = result.marketScenario;
   const horizon = getHorizon(result);
   const dataReliability = getDataReliability(result);
   const primaryDataUsable = dataQualityOk(result);
