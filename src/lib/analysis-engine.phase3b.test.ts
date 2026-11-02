@@ -119,11 +119,11 @@ describe("state machine — every rejection yields NO_TRADE + no plan", () => {
     },
   );
 
-  it("suppresses numeric projections when primary history is degraded below the required candle depth", () => {
+  it("suppresses numeric projections when primary history is insufficient for structural analysis", () => {
     const result = runAnalysis(input({
-      technicalData: tech("HH/HL", { dataPoints: 50 }),
+      technicalData: tech("HH/HL", { dataPoints: 19 }),
     }));
-    expect(result.dataQualityContext?.primaryData.status).toBe("DEGRADED");
+    expect(result.dataQualityContext?.primaryData.status).toBe("INSUFFICIENT");
     expect(result.recommendation).toBe("NO_TRADE");
     expect(result.projectedTradePlan).toBeUndefined();
     expect(result.tradePlan).toBeUndefined();
