@@ -404,6 +404,39 @@ describe("Radar investment price projections", () => {
     expect(investing).not.toHaveProperty("conditionalScenarios");
   });
 
+  it("suppresses partial investment targets when a valid invalidation level is missing", () => {
+    const technical = {
+      structure: "HH/HL",
+      htfContext: {
+        timeframe: "W1",
+        structure: "HH/HL",
+        lastSwingHigh: 120,
+        dataPoints: 80,
+      },
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 100, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "realtime",
+      },
+    };
+    const projection = toRadarCandidateSource(liveSource).investmentProjection;
+    expect(projection?.status).toBe("UNAVAILABLE");
+    expect(projection?.objective).toBeUndefined();
+    expect(projection?.invalidation).toBeUndefined();
+    expect(projection?.rewardRiskRatio).toBeUndefined();
+    expect(projection?.limitations.join(" ")).toMatch(/partial price plans are suppressed/i);
+  });
+
   it("blocks a directional investment plan when MTF bias conflicts with external structure", () => {
     const technical = {
       structure: "HH/HL",
