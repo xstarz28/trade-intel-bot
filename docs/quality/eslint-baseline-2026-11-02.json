@@ -3,14 +3,14 @@
   "generatedAt": "2026-11-02",
   "source": {
     "workflow": "CI",
-    "runId": 41395127276,
-    "url": "https://github.com/xstarz28/trade-intel-bot/actions/runs/41395127276",
+    "runId": 41399012659,
+    "url": "https://github.com/xstarz28/trade-intel-bot/actions/runs/41399012659",
     "step": "Enforce ESLint baseline without new violations"
   },
   "totals": {
-    "errors": 1459,
+    "errors": 1400,
     "warnings": 28,
-    "problems": 1487
+    "problems": 1428
   },
   "rules": {
     "@typescript-eslint/no-explicit-any": {
@@ -22,7 +22,7 @@
       "warnings": 0
     },
     "@typescript-eslint/no-unused-vars": {
-      "errors": 828,
+      "errors": 769,
       "warnings": 0
     },
     "react-hooks/rules-of-hooks": {
@@ -49,28 +49,12 @@
       "errors": 0,
       "warnings": 8
     },
-    "eslint-comments/no-unused-disable": {
+    "unclassified": {
       "errors": 0,
       "warnings": 5
     },
-    "no-empty": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "no-useless-escape": {
-      "errors": 0,
-      "warnings": 0
-    },
-    "no-prototype-builtins": {
-      "errors": 0,
-      "warnings": 0
-    },
     "@typescript-eslint/no-require-imports": {
       "errors": 2,
-      "warnings": 0
-    },
-    "prefer-const": {
-      "errors": 0,
       "warnings": 0
     },
     "@typescript-eslint/no-unused-expressions": {
@@ -345,13 +329,6 @@
         "@typescript-eslint/no-explicit-any": 13
       }
     },
-    "src/convex/eia.ts": {
-      "errors": 2,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 2
-      }
-    },
     "src/convex/historicalIntelligence.ts": {
       "errors": 16,
       "warnings": 0,
@@ -408,13 +385,6 @@
         "@typescript-eslint/no-explicit-any": 7
       }
     },
-    "src/convex/treasury.ts": {
-      "errors": 2,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 2
-      }
-    },
     "src/hooks/use-mobile.ts": {
       "errors": 1,
       "warnings": 0,
@@ -437,13 +407,6 @@
       }
     },
     "src/lib/analyst-thesis.phase26.test.ts": {
-      "errors": 1,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 1
-      }
-    },
-    "src/lib/analyst-thesis.ts": {
       "errors": 1,
       "warnings": 0,
       "rules": {
@@ -510,13 +473,6 @@
         "@typescript-eslint/no-explicit-any": 2
       }
     },
-    "src/lib/data-quality.ts": {
-      "errors": 1,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 1
-      }
-    },
     "src/lib/data/alpha-vantage/normalize.test.ts": {
       "errors": 3,
       "warnings": 0,
@@ -571,13 +527,6 @@
         "@typescript-eslint/no-explicit-any": 4
       }
     },
-    "src/lib/data/crypto/intelligence.ts": {
-      "errors": 1,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 1
-      }
-    },
     "src/lib/data/crypto/okx-derivatives-adapter.ts": {
       "errors": 6,
       "warnings": 0,
@@ -625,34 +574,6 @@
         "@typescript-eslint/no-unused-vars": 1
       }
     },
-    "src/lib/data/universal/analytical-context.ts": {
-      "errors": 1,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 1
-      }
-    },
-    "src/lib/data/universal/cache.ts": {
-      "errors": 1,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 1
-      }
-    },
-    "src/lib/data/universal/coverage.ts": {
-      "errors": 3,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 3
-      }
-    },
-    "src/lib/data/universal/engine-types.ts": {
-      "errors": 7,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 7
-      }
-    },
     "src/lib/data/universal/engines.ts": {
       "errors": 25,
       "warnings": 0,
@@ -666,35 +587,6 @@
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 3
-      }
-    },
-    "src/lib/data/universal/instruments.ts": {
-      "errors": 2,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 2
-      }
-    },
-    "src/lib/data/universal/live/client.ts": {
-      "errors": 1,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 1
-      }
-    },
-    "src/lib/data/universal/providers.ts": {
-      "errors": 2,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 2
-      }
-    },
-    "src/lib/data/universal/routing-engine.ts": {
-      "errors": 3,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 1,
-        "@typescript-eslint/no-explicit-any": 2
       }
     },
     "src/lib/decision-integrity.ts": {
@@ -860,27 +752,12 @@
         "@typescript-eslint/no-explicit-any": 2
       }
     },
-    "src/lib/market-radar/acquisition.ts": {
-      "errors": 4,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 3,
-        "@typescript-eslint/no-explicit-any": 1
-      }
-    },
     "src/lib/market-radar/provider-registry.ts": {
       "errors": 14,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 12,
         "@typescript-eslint/no-explicit-any": 2
-      }
-    },
-    "src/lib/market-radar/rate-limit.ts": {
-      "errors": 1,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 1
       }
     },
     "src/lib/market-radar/verification.ts": {
@@ -1028,14 +905,6 @@
         "@typescript-eslint/no-unused-vars": 9
       }
     },
-    "src/lib/position-protection/continuous-protection-controller.ts": {
-      "errors": 17,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 16,
-        "@typescript-eslint/no-explicit-any": 1
-      }
-    },
     "src/lib/position-protection/decision-support.ts": {
       "errors": 3,
       "warnings": 0,
@@ -1055,13 +924,6 @@
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 2
-      }
-    },
-    "src/lib/position-protection/fundamental-transmission.ts": {
-      "errors": 11,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 11
       }
     },
     "src/lib/position-protection/giveback-monitor.ts": {
@@ -1684,13 +1546,6 @@
         "@typescript-eslint/no-explicit-any": 1
       }
     },
-    "src/lib/recommendation-engine.ts": {
-      "errors": 4,
-      "warnings": 0,
-      "rules": {
-        "@typescript-eslint/no-unused-vars": 4
-      }
-    },
     "src/lib/runtime-resilience.phase38.test.ts": {
       "errors": 2,
       "warnings": 0,
@@ -1767,6 +1622,34 @@
         "react-hooks/exhaustive-deps": 2,
         "react-hooks/refs": 4,
         "react-hooks/set-state-in-effect": 1
+      }
+    },
+    "src/lib/data/universal/routing-engine.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/market-radar/acquisition.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/continuous-protection-controller.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/recommendation-engine.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
       }
     }
   },
