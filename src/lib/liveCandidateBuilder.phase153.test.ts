@@ -935,6 +935,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(radarSource.analysisResult?.fundamentalScore).toBeUndefined();
     expect(radarSource.analysisResult?.fundamentalEvidenceAvailable).toBe(false);
     const candidate = buildRadarCandidate(radarSource, now);
+    expect(candidate.hasAnalysis).toBeUndefined();
     expect(candidate.fundamentalScore).toBeUndefined();
     expect(candidate.fundamentalEvidenceAvailable).toBeUndefined();
     expect(candidate.positioningScore).toBeUndefined();
