@@ -656,4 +656,36 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.potentialUpsideDownsideRatio).toBeCloseTo(2);
   });
 
+
+  it("defaults investor analysis to a multi-year horizon independent of chart timeframe", () => {
+    const shortChart = buildForwardForecast(baseResult({ timeframe: "H1" }));
+    const weeklyChart = buildForwardForecast(baseResult({ timeframe: "W1" }));
+    const expectedDuration = 3 * 365 * 24 * 60 * 60 * 1000;
+
+    expect(shortChart.investor.horizon.label).toContain("1–3 years");
+    expect(weeklyChart.investor.horizon.label).toContain("1–3 years");
+    expect(shortChart.investor.horizon.endsAt - shortChart.investor.horizon.startsAt).toBe(expectedDuration);
+    expect(weeklyChart.investor.horizon.endsAt - weeklyChart.investor.horizon.startsAt).toBe(expectedDuration);
+    expect(shortChart.investor.horizon.basis).toContain("Three-year upper boundary");
+  });
+
+  it("supports an explicit open-ended 3+ year investor horizon", () => {
+    const forecast = buildForwardForecast(baseResult(), { investorHorizon: "3+_YEARS" });
+
+    expect(forecast.investor.horizon.label).toContain("3+ years");
+    expect(forecast.investor.horizon.endBoundary).toBe("MINIMUM");
+    expect(forecast.investor.horizon.basis).toContain("no fixed upper date");
+    expect(forecast.investor.horizon.endsAt - forecast.investor.horizon.startsAt).toBe(3 * 365 * 24 * 60 * 60 * 1000);
+  });
+
+  it("honors shorter explicitly selected investor horizons without changing trader horizon", () => {
+    const result = baseResult();
+    const defaultForecast = buildForwardForecast(result);
+    const shortForecast = buildForwardForecast(result, { investorHorizon: "1-4_WEEKS" });
+
+    expect(shortForecast.investor.horizon.label).toContain("1–4 weeks");
+    expect(shortForecast.investor.horizon.endsAt - shortForecast.investor.horizon.startsAt).toBe(28 * 24 * 60 * 60 * 1000);
+    expect(shortForecast.trader.horizon).toEqual(defaultForecast.trader.horizon);
+  });
+
 });
