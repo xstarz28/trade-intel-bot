@@ -271,6 +271,34 @@ function RankedCard({ item, radarOpp }: { item: RankedInstrument; radarOpp?: Rad
         </div>
       </div>
 
+      {item.investorForecast && (
+        <div className="mt-2 rounded-md border border-primary/25 bg-background/30 p-2" data-testid="investor-forward-forecast">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[9px] font-sans font-semibold text-muted-foreground/80">
+              INVESTOR FORWARD OUTLOOK · {item.investorForecast.horizon.label}
+            </p>
+            <Badge variant="outline" className="text-[8px] font-sans">
+              {item.investorForecast.status.replace(/_/g, " ")}
+            </Badge>
+          </div>
+          <div className="mt-1 grid grid-cols-2 gap-1 text-[9px] font-sans">
+            <p>Direction <span className="font-semibold">{item.investorForecast.direction.toUpperCase()}</span></p>
+            <p>Valuation <span className="font-semibold">{item.investorForecast.valuationStatus.replace(/_/g, " ")}</span></p>
+            {item.investorForecast.entry && <p>Spot reference <span className="font-semibold tabular-nums">{formatPrice(item.investorForecast.entry.price)}</span></p>}
+            {item.investorForecast.accumulationReference && <p>Support reference <span className="font-semibold tabular-nums">{formatPrice(item.investorForecast.accumulationReference.price)}</span></p>}
+            {item.investorForecast.accumulationZone && <p>Validated accumulation zone <span className="font-semibold tabular-nums">{formatPrice(item.investorForecast.accumulationZone.lower)}–{formatPrice(item.investorForecast.accumulationZone.upper)}</span></p>}
+            {item.investorForecast.objective && <p>Objective <span className="font-semibold tabular-nums">{formatPrice(item.investorForecast.objective.price)}</span></p>}
+            {item.investorForecast.invalidation && <p>Invalidation <span className="font-semibold tabular-nums">{formatPrice(item.investorForecast.invalidation.price)}</span></p>}
+            {item.investorForecast.potentialUpsidePct !== undefined && <p>Objective return <span className="font-semibold">{item.investorForecast.potentialUpsidePct >= 0 ? "+" : ""}{item.investorForecast.potentialUpsidePct.toFixed(2)}%</span></p>}
+            {item.investorForecast.potentialDownsidePct !== undefined && <p>Invalidation distance <span className="font-semibold">{item.investorForecast.potentialDownsidePct.toFixed(2)}%</span></p>}
+            {item.investorForecast.potentialUpsideDownsideRatio !== undefined && <p>Objective / downside <span className="font-semibold">{item.investorForecast.potentialUpsideDownsideRatio.toFixed(2)} : 1</span></p>}
+          </div>
+          <p className="mt-1 text-[8px] text-muted-foreground/70">
+            {item.investorForecast.fundamentalOutlook.evidenceStatus.toLowerCase()} fundamental evidence · {item.investorForecast.calibration.toLowerCase()} calibration. Levels are conditional research references, not buy orders or guaranteed targets.
+          </p>
+        </div>
+      )}
+
       {conditionalScenarios.length > 0 && (
         <div className="mt-2 rounded-md border border-border/30 bg-background/30 p-2">
           <p className="text-[9px] font-sans font-semibold text-muted-foreground/80">
