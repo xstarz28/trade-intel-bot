@@ -272,12 +272,16 @@ function buildInvestmentProjection(
   const accumulationZone = direction === "bullish"
     ? getInvestorAccumulationZone(technical, market.timeframe, price, observedAt)
     : undefined;
-  const evidence = direction === "neutral"
+  const qualified = direction !== "neutral" &&
+    objective !== undefined &&
+    invalidation !== undefined &&
+    rewardRiskRatio !== undefined;
+  const evidence = !qualified
     ? []
     : [
         "Direction is derived from the available higher-timeframe external structure.",
-        ...(valuationObjective ? ["Objective uses the exact-instrument " + valuationObjective.kind.toLowerCase() + " reference from " + valuationObjective.source + "."] : validObjective !== undefined ? ["Objective is an observed higher-timeframe swing level, not a guaranteed target."] : []),
-        ...(invalidation !== undefined ? ["Invalidation is the opposing observed higher-timeframe swing level."] : []),
+        ...(valuationObjective ? ["Objective uses the exact-instrument " + valuationObjective.kind.toLowerCase() + " reference from " + valuationObjective.source + "."] : ["Objective is an observed higher-timeframe swing level, not a guaranteed target."]),
+        "Invalidation is the opposing observed higher-timeframe swing level.",
         ...(accumulationZone ? ["Accumulation zone is a fresh higher-timeframe bullish order block with verified displacement and structural-break evidence."] : []),
       ];
   const limitations = [
@@ -285,26 +289,25 @@ function buildInvestmentProjection(
     "Structural reward/risk is a price-distance ratio before fees, slippage, funding, borrow, dividends, and corporate actions.",
     ...(objective === undefined ? ["No directionally valid valuation or higher-timeframe objective is available."] : []),
     ...(invalidation === undefined ? ["No directionally valid higher-timeframe invalidation is available."] : []),
+    ...(!qualified ? ["A complete objective/invalidation pair is required; partial price plans are suppressed."] : []),
     ...(!accumulationZone && direction === "bullish" ? ["No validated higher-timeframe bullish order-block accumulation zone is available."] : []),
   ];
   return {
-    status: direction !== "neutral" && objective !== undefined && invalidation !== undefined && rewardRiskRatio !== undefined
-      ? "CONDITIONAL"
-      : "UNAVAILABLE",
+    status: qualified ? "CONDITIONAL" : "UNAVAILABLE",
     direction,
     entryReference: price,
     accumulationZone,
-    objective: objective === undefined ? undefined : {
-      price: objective,
+    objective: !qualified ? undefined : {
+      price: objective!,
       source: valuationObjective?.kind ?? "higher_timeframe_external_swing",
       meaning: valuationObjective?.description ?? "Observed structural objective; not fair value",
     },
-    invalidation: invalidation === undefined ? undefined : {
-      price: invalidation,
+    invalidation: !qualified ? undefined : {
+      price: invalidation!,
       source: "higher_timeframe_external_swing",
       meaning: "Observed opposing structural invalidation",
     },
-    rewardRiskRatio,
+    rewardRiskRatio: qualified ? rewardRiskRatio : undefined,
     evidence,
     limitations,
   };
