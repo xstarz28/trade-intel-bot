@@ -511,8 +511,11 @@ function investorForecast(
       : "No higher-timeframe external structure has enough completed history for the selected investment horizon; numeric investment levels are suppressed.",
   );
   if (objective === undefined) limitations.push("No valid higher-timeframe swing objective beyond current price is available.");
+  if (invalidation === undefined) limitations.push("No directionally valid higher-timeframe invalidation is available; a complete investment reward/risk plan cannot be issued.");
   return {
-    status: direction !== "neutral" && objective !== undefined ? "CONDITIONAL" : "UNAVAILABLE",
+    status: direction !== "neutral" && objective !== undefined && invalidation !== undefined
+      ? "CONDITIONAL"
+      : "UNAVAILABLE",
     direction,
     horizon,
     alternateScenarios: alternate,
