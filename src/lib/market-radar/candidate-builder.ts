@@ -14,7 +14,7 @@ import type { UniverseEntry } from "./types";
 import type { TechnicalData, TimeframeStructureContext } from "../data/market-types";
 import { buildInvestorFundamentalOutlook, type InvestorValuationReference } from "../investor-fundamental-outlook";
 import { assessFreshness } from "./freshness";
-import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
+import { extractSetupEvidence, hasFundamentalEvidence, hasScoredPositioningEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
 import { calculateTechnical } from "../data/technical";
 import { buildConditionalEntryScenariosFromMarketData, type ConditionalEntryScenario } from "../conditional-entry-scenarios";
 import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
@@ -79,6 +79,7 @@ export interface RadarCandidateSource {
     fundamentalScore?: number;
     positioningScore?: number;
     fundamentalEvidenceAvailable?: boolean;
+    positioningEvidenceAvailable?: boolean;
     technicalData?: {
       htfBias?: string;
       mtfAlignment?: string;
@@ -617,9 +618,8 @@ export function toRadarCandidateSource(
         recommendation: analysis.recommendation,
         fundamentalScore: analysis.breakdown?.fundamental,
         positioningScore: analysis.breakdown?.sentiment,
-        fundamentalEvidenceAvailable:
-          analysis.breakdown?.fundamental !== undefined &&
-          Number.isFinite(analysis.breakdown.fundamental),
+        fundamentalEvidenceAvailable: hasFundamentalEvidence(analysis, source),
+        positioningEvidenceAvailable: hasScoredPositioningEvidence(matchingAnalysis),
         technicalData: {
           htfBias,
           mtfAlignment: technical?.mtf?.alignment ?? analysis.mtfSummary?.alignment,
@@ -871,6 +871,9 @@ export function buildRadarCandidate(
     }
     if (source.analysisResult.fundamentalEvidenceAvailable !== undefined) {
       candidate.fundamentalEvidenceAvailable = source.analysisResult.fundamentalEvidenceAvailable;
+    }
+    if (source.analysisResult.positioningEvidenceAvailable !== undefined) {
+      candidate.positioningEvidenceAvailable = source.analysisResult.positioningEvidenceAvailable;
     }
   }
 
