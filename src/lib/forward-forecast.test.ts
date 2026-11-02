@@ -133,10 +133,30 @@ describe("Phase 46 — forward forecast contract", () => {
         tpBasis: "target",
         riskReward: 3,
       },
+      keyLevels: { support: "N/A", resistance: "N/A", invalidation: "N/A" },
     }));
-    expect(forecast.trader.status).toBe("CONDITIONAL");
+    expect(forecast.trader.status).toBe("UNAVAILABLE");
     expect(forecast.trader.entry).toBeUndefined();
+    expect(forecast.trader.objective).toBeUndefined();
+    expect(forecast.trader.invalidation).toBeUndefined();
     expect(forecast.trader.rewardRisk).toBeUndefined();
+  });
+
+  it("does not label a one-sided structural target as a conditional forecast", () => {
+    const forecast = buildForwardForecast(baseResult({
+      keyLevels: { support: "N/A", resistance: "105000", invalidation: "N/A" },
+    }));
+    expect(forecast.trader.status).toBe("UNAVAILABLE");
+    expect(forecast.trader.objective).toBeUndefined();
+    expect(forecast.trader.invalidation).toBeUndefined();
+    expect(forecast.trader.limitations.join(" ")).toMatch(/invalidation level is unavailable/i);
+  });
+
+  it("does not publish an alternate conditional scenario without opposing invalidation", () => {
+    const forecast = buildForwardForecast(baseResult({
+      keyLevels: { support: "N/A", resistance: "105000", invalidation: "N/A" },
+    }));
+    expect(forecast.trader.alternateScenarios).toEqual([]);
   });
 
   it("keeps candle price provenance paired with the candle timestamp when snapshot price is absent", () => {

@@ -361,7 +361,9 @@ function alternateScenarios(
   return directions.flatMap((direction) => {
     const objective = direction === "bullish" ? upsideLevel : downsideLevel;
     const invalidation = direction === "bullish" ? downsideLevel : upsideLevel;
-    if (objective === undefined) return [];
+    // A conditional scenario is a complete price plan, not just a one-sided target.
+    // Without an observed opposing invalidation, retain no numeric scenario.
+    if (objective === undefined || invalidation === undefined) return [];
     return [{
       direction,
       status: "CONDITIONAL" as const,
@@ -437,13 +439,17 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
   );
   if (direction !== "neutral" && objectivePrice !== undefined) evidence.push("Objective is an observed structural key level, not a guaranteed target.");
   if (direction !== "neutral" && invalidationPrice !== undefined) evidence.push("Invalidation is an observed structural key level.");
+  const completePlan = direction !== "neutral" && objectivePrice !== undefined && invalidationPrice !== undefined;
+  if (objectivePrice !== undefined && invalidationPrice === undefined) {
+    limitations.push("A directionally valid invalidation level is unavailable; a complete conditional trade forecast cannot be issued.");
+  }
   return {
-    status: direction !== "neutral" && objectivePrice !== undefined ? "CONDITIONAL" : "UNAVAILABLE",
+    status: completePlan ? "CONDITIONAL" : "UNAVAILABLE",
     direction,
     horizon,
     alternateScenarios: alternate,
-    objective: objectivePrice === undefined ? undefined : { price: objectivePrice, source: "keyLevels", meaning: "Nearest observed structural objective" },
-    invalidation: invalidationPrice === undefined ? undefined : { price: invalidationPrice, source: "keyLevels", meaning: "Observed structural invalidation" },
+    objective: completePlan ? { price: objectivePrice!, source: "keyLevels", meaning: "Nearest observed structural objective" } : undefined,
+    invalidation: completePlan ? { price: invalidationPrice!, source: "keyLevels", meaning: "Observed structural invalidation" } : undefined,
     calibration: "UNVALIDATED",
     dataAsOf: snapshot.timestamp,
     evidence,
