@@ -286,6 +286,157 @@ describe("Radar conditional setups", () => {
   });
 });
 
+describe("Radar investment price projections", () => {
+  it("attaches structural objective, invalidation, accumulation zone and ratio to investor horizons only", () => {
+    const candles = Array.from({ length: 40 }, (_, i) => ({
+      timestamp: NOW - (40 - i) * 24 * 60 * 60_000,
+      time: NOW - (40 - i) * 24 * 60 * 60_000,
+      open: 99_000,
+      high: 101_000,
+      low: 98_000,
+      close: 100_000,
+      volume: 100,
+    }));
+    const technical = {
+      dataPoints: 40,
+      structure: "HH/HL",
+      swingHighs: [120_000],
+      swingLows: [90_000],
+      supportLevels: [90_000],
+      resistanceLevels: [120_000],
+      volumeTrend: "stable",
+      htfContext: {
+        timeframe: "W1",
+        structure: "HH/HL",
+        bosDirection: "bullish",
+        chochDirection: "none",
+        lastSwingHigh: 120_000,
+        lastSwingLow: 90_000,
+        dataPoints: 100,
+      },
+      mtf: {
+        requestedTimeframe: "D1",
+        chainUsed: ["W1", "D1"],
+        unavailable: [],
+        alignment: "ALIGNED_BULLISH",
+        htfBias: "long",
+        htfTimeframe: "W1",
+        setupTimeframe: "D1",
+        timeframes: [{
+          timeframe: "W1",
+          role: "macro",
+          available: true,
+          smc: {
+            timeframe: "W1",
+            liquidityPools: [],
+            internalExternal: {
+              external: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 100 },
+              internal: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 100 },
+              internalConflict: false,
+            },
+            fvgs: [],
+            orderBlocks: [{
+              direction: "bullish",
+              lower: 92_000,
+              upper: 96_000,
+              timeframe: "W1",
+              createdAt: NOW - 10_000,
+              status: "fresh",
+              evidence: {
+                precedingOpposingCandle: true,
+                displacementAfter: true,
+                structuralBreakAfter: true,
+                displacementRangeAtr: 1.8,
+              },
+            }],
+            vwap: { available: false, priceLocation: "unavailable" },
+            volumeProfile: { available: false },
+          },
+        }],
+      },
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 100_000, timestamp: NOW, source: "test-provider" },
+        candles,
+        timeframe: "D1",
+        dataFreshness: "realtime",
+      },
+    };
+
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.investmentProjection).toMatchObject({
+      status: "CONDITIONAL",
+      direction: "bullish",
+      entryReference: 100_000,
+      objective: { price: 120_000, source: "higher_timeframe_external_swing" },
+      invalidation: { price: 90_000 },
+      rewardRiskRatio: 2,
+      accumulationZone: {
+        lower: 92_000,
+        upper: 96_000,
+        timeframe: "W1",
+        source: "validated_bullish_order_block",
+      },
+    });
+
+    const result = scanRadar(
+      [source],
+      { horizons: ["SWING", "1-3_YEARS"], maxResults: 5 },
+      undefined,
+      NOW,
+    );
+    const trading = result.results.get("SWING")?.[0];
+    const investing = result.results.get("1-3_YEARS")?.[0];
+    expect(trading).not.toHaveProperty("investmentProjection");
+    expect(investing?.investmentProjection).toMatchObject({
+      horizon: "1-3_YEARS",
+      status: "CONDITIONAL",
+      rewardRiskRatio: 2,
+    });
+    expect(investing).not.toHaveProperty("conditionalScenarios");
+  });
+
+  it("suppresses investment price levels when the exact market snapshot is stale", () => {
+    const technical = {
+      structure: "HH/HL",
+      htfContext: {
+        timeframe: "W1",
+        structure: "HH/HL",
+        lastSwingHigh: 120,
+        lastSwingLow: 90,
+        dataPoints: 80,
+      },
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 100, timestamp: NOW - 5 * 24 * 60 * 60_000, source: "test-provider" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "stale",
+      },
+    };
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.investmentProjection?.status).toBe("BLOCKED_DATA_QUALITY");
+    expect(source.investmentProjection?.objective).toBeUndefined();
+    expect(source.investmentProjection?.invalidation).toBeUndefined();
+  });
+});
+
 describe("A — Empty Analysis History", () => {
   it("radar produces results with zero analysis history", () => {
     const sources = [makeSource()];
