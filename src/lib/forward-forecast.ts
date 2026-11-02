@@ -365,7 +365,7 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
     if (structuralReward > 0 && structuralRisk > 0) structuralRatio = structuralReward / structuralRisk;
   }
   const potentialRatio = potentialUpsidePct !== undefined && potentialDownsidePct !== undefined && potentialDownsidePct > 0
-    ? potentialUpsidePct / potentialDownsidePct
+    ? Math.abs(potentialUpsidePct) / potentialDownsidePct
     : undefined;
   if (valuationObjective !== undefined) evidence.push("Directional objective uses a fresh, exact-instrument provider valuation reference; its source type remains explicit.");
   else if (structuralObjective !== undefined) evidence.push("Objective comes from the actual higher-timeframe external swing structure.");
