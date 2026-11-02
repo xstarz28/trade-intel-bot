@@ -111,11 +111,22 @@ jobs:
       - name: Verify published production host
         run: |
           set -euo pipefail
-          # Verify the branded production domain users actually open. The
-          # legacy trade-intel-bot.vercel.app alias can return a stale/404
-          # response even when the XSTARZG deployment is already promoted.
+          # Vercel alias propagation can lag a successful deployment promotion.
+          # Retry the exact branded host instead of failing on the first stale edge response.
           target="https://xstarzanalysis.vercel.app"
-          npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main
+          verify_log="${RUNNER_TEMP}/frontend-public-verify.log"
+          for attempt in $(seq 1 24); do
+            if npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main >"${verify_log}" 2>&1; then
+              cat "${verify_log}"
+              echo "Published production host serves the exact deployed revision."
+              exit 0
+            fi
+            echo "Waiting for exact production revision to propagate: attempt ${attempt}/24"
+            if [ "${attempt}" -lt 24 ]; then sleep 5; fi
+          done
+          cat "${verify_log}"
+          echo "::error::Published production host did not converge to the exact deployed revision within 120 seconds."
+          exit 1
 
       - name: Report public target
         run: |
