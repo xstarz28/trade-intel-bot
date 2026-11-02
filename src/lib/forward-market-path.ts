@@ -158,7 +158,7 @@ function hasMaterialContradictions(result: AnalysisResult): boolean {
 
 function dataQualityOk(result: AnalysisResult): boolean {
   if (!result.dataQualityContext) return true;
-  return result.dataQualityContext.primaryData.status === "GOOD";
+  return ["GOOD", "DEGRADED"].includes(result.dataQualityContext.primaryData.status);
 }
 
 function getDataReliability(result: AnalysisResult): "good" | "degraded" | "insufficient" | "unavailable" {
