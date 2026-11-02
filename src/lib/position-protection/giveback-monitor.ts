@@ -98,7 +98,7 @@ export function calculateGiveback(
 
   // Acceleration detection
   let givebackRate: number | undefined;
-  let accelerating = false;
+  const accelerating = false;
   if (previousPeakTimestamp !== undefined && previousPeakTimestamp > 0) {
     const elapsed = (Date.now() - previousPeakTimestamp) / 60_000; // minutes
     if (elapsed > 0 && elapsed < 60) {

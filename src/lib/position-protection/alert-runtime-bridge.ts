@@ -203,7 +203,7 @@ export function evaluateAlertRuntimeBridge(
   const triggeredAlerts: Array<{ rule: typeof activeRules[0]; alertId: string; positionId?: string; instrument?: string }> = [];
   let evaluatedCount = 0;
   let cooldownBlockedCount = 0;
-  let dedupCount = 0;
+  const dedupCount = 0;
   let triggeredCount = 0;
 
   for (const rule of activeRules) {
