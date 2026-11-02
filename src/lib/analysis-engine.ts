@@ -1655,7 +1655,17 @@ function decideTrade(
   // ── Gate 8: R:R ──
   let tradePlan: TradePlan | undefined;
   let projectedTradePlan: TradePlan | undefined;
-  if (
+  const primaryQuality = assessDataQuality(input).primaryData;
+  if (primaryQuality.status !== "GOOD") {
+    // A watch-only projection still looks like a current price plan on the
+    // chart. Suppress its numeric levels when the provider's primary snapshot
+    // is stale, unavailable, invalid, or otherwise below the GOOD threshold.
+    // This does not alter directional bias; it only prevents stale evidence
+    // from being presented as a current entry/SL/TP/R:R scenario.
+    reasons.push(
+      `Primary data quality ${primaryQuality.status}: ${primaryQuality.reason}. Numeric entry/SL/TP/R:R levels are suppressed.`,
+    );
+  } else if (
     bias !== "Neutral" &&
     entry !== undefined && entry > 0 &&
     stopLevel !== undefined && tpLevel !== undefined
