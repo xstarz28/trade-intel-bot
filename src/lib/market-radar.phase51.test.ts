@@ -544,6 +544,91 @@ describe("Radar investment price projections", () => {
   });
 });
 
+describe("Radar investor valuation provenance", () => {
+  function equityIntelligence(intrinsicValue: number) {
+    return {
+      instrument: "AAPL",
+      assetClass: "equity",
+      equity: {
+        instrument: "AAPL",
+        instrumentType: "equity",
+        assembledAt: NOW,
+        valuation: {
+          available: true,
+          provider: "Verified Valuation Provider",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          observedAt: NOW - 60_000,
+          intrinsicValue,
+        },
+        evidence: [],
+        overallAvailability: "FULL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        analystSummary: "Exact-symbol valuation fixture",
+      },
+      evidence: [],
+      overallAvailability: "FULL",
+      overallQuality: "VERIFIED",
+      missingInformation: [],
+      analystSummary: "Exact-symbol equity intelligence fixture",
+    } as unknown as NonNullable<LiveCandidateSource["universalIntelligence"]>;
+  }
+
+  function equityLiveSource(intrinsicValue: number): LiveCandidateSource {
+    const technical = {
+      structure: "HH/HL",
+      htfContext: {
+        timeframe: "W1",
+        structure: "HH/HL",
+        lastSwingHigh: 120,
+        lastSwingLow: 90,
+        dataPoints: 80,
+      },
+    } as unknown as TechnicalData;
+    return {
+      instrument: "AAPL",
+      assetClass: "equity",
+      technicalData: technical,
+      universalIntelligence: equityIntelligence(intrinsicValue),
+      marketData: {
+        instrument: "AAPL",
+        instrumentType: "stock",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 100, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "realtime",
+      },
+    };
+  }
+
+  it("uses exact-symbol fresh verified universal intrinsic value when no AnalysisResult is attached", () => {
+    const projection = toRadarCandidateSource(equityLiveSource(130)).investmentProjection;
+    expect(projection).toMatchObject({
+      status: "CONDITIONAL",
+      direction: "bullish",
+      objective: {
+        price: 130,
+        source: "PROVIDER_INTRINSIC_VALUE",
+      },
+      invalidation: { price: 90 },
+      rewardRiskRatio: 3,
+    });
+    expect(projection?.evidence.join(" ")).toContain("Verified Valuation Provider");
+  });
+
+  it("suppresses structural targets when exact-symbol provider valuation contradicts the thesis", () => {
+    const projection = toRadarCandidateSource(equityLiveSource(90)).investmentProjection;
+    expect(projection?.status).toBe("UNAVAILABLE");
+    expect(projection?.objective).toBeUndefined();
+    expect(projection?.invalidation).toBeUndefined();
+    expect(projection?.rewardRiskRatio).toBeUndefined();
+    expect(projection?.limitations.join(" ")).toMatch(/valuation conflicts with the structural direction/i);
+  });
+});
+
 describe("A — Empty Analysis History", () => {
   it("radar produces results with zero analysis history", () => {
     const sources = [makeSource()];
