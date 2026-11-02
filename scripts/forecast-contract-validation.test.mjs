@@ -1,29 +1,27 @@
-import { describe, expect, it } from "vitest";
+import test from "node:test";
+import assert from "node:assert/strict";
 import { extractForecastStatus } from "./forecast-contract-validation.mjs";
 
-describe("production smoke forecast status badge parsing", () => {
-  it("does not mistake conditional wording in limitations for a CONDITIONAL badge", () => {
+test("production smoke forecast status badge parsing", async (t) => {
+  await t.test("does not mistake conditional wording in limitations for a CONDITIONAL badge", () => {
     const text = [
       "trader forecast",
       "UNAVAILABLE · unvalidated",
       "direction: bullish · horizon: 20 bars",
       "! A conditional or projected setup is not an order.",
     ].join("\n");
-    expect(extractForecastStatus(text)).toBe("UNAVAILABLE");
+    assert.equal(extractForecastStatus(text), "UNAVAILABLE");
   });
 
-  it("recognizes an actual CONDITIONAL badge", () => {
-    expect(extractForecastStatus("trader forecast\nCONDITIONAL · unvalidated\nobjective: 105\ninvalidation/downside: 95"))
-      .toBe("CONDITIONAL");
+  await t.test("recognizes an actual CONDITIONAL badge", () => {
+    assert.equal(extractForecastStatus("trader forecast\nCONDITIONAL · unvalidated\nobjective: 105\ninvalidation/downside: 95"), "CONDITIONAL");
   });
 
-  it("recognizes blocked data quality badge", () => {
-    expect(extractForecastStatus("investor forecast\nBLOCKED DATA QUALITY · unvalidated"))
-      .toBe("BLOCKED DATA QUALITY");
+  await t.test("recognizes blocked data quality badge", () => {
+    assert.equal(extractForecastStatus("investor forecast\nBLOCKED DATA QUALITY · unvalidated"), "BLOCKED DATA QUALITY");
   });
 
-  it("rejects prose without an explicit status badge", () => {
-    expect(extractForecastStatus("No forecast is available; conditional setup is not an order."))
-      .toBeUndefined();
+  await t.test("rejects prose without an explicit status badge", () => {
+    assert.equal(extractForecastStatus("No forecast is available; conditional setup is not an order."), undefined);
   });
 });
