@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AnalysisResult } from "@/types/analysis";
-import { buildForwardForecast } from "@/lib/forward-forecast";
+import { buildForwardForecast, type InvestorForecastHorizon } from "@/lib/forward-forecast";
 import { fetchHistoricalBinanceSpotOhlcv } from "./historical-ohlcv";
 import {
   evaluateForwardForecastOutcomes,
@@ -14,6 +14,14 @@ const enabled = process.env.RUN_REAL_FORWARD_FORECAST_EVALUATION === "1";
 const DAY = 86_400_000;
 const COST_SCENARIOS = [15, 20, 25] as const;
 const SYMBOLS = ["BNBUSDT", "XRPUSDT", "ADAUSDT"] as const;
+const INVESTOR_HORIZONS: InvestorForecastHorizon[] = [
+  "1-4_WEEKS",
+  "1-3_MONTHS",
+  "3-6_MONTHS",
+  "6-12_MONTHS",
+  "1-3_YEARS",
+  "3+_YEARS",
+];
 
 function ema(values: number[], period: number): number {
   const multiplier = 2 / (period + 1);
@@ -94,6 +102,7 @@ function createHistoricalForecast(
   index: number,
   timeframe: "H1" | "D1",
   tradingStyle: "intraday" | "swing",
+  requestedInvestorHorizon: InvestorForecastHorizon = "1-3_YEARS",
 ): ReturnType<typeof buildForwardForecast> {
   const current = candles[index];
   const history = candles.slice(0, index);
@@ -166,7 +175,7 @@ function createHistoricalForecast(
     },
   } as unknown as AnalysisResult;
 
-  return buildForwardForecast(result);
+  return buildForwardForecast(result, { investorHorizon: requestedInvestorHorizon });
 }
 
 function buildObservations(
@@ -175,13 +184,16 @@ function buildObservations(
   timeframe: "H1" | "D1",
   horizon: "trader" | "investor",
   warmupBars: number,
+  requestedInvestorHorizon: InvestorForecastHorizon = "1-3_YEARS",
 ): ForwardForecastObservation[] {
   const intervalMs = timeframe === "D1" ? DAY : 3_600_000;
   const tradingStyle = timeframe === "D1" ? "swing" : "intraday";
   // Derive replay spacing from the actual forecast contract. A 90-day step
   // would create overlapping observations for the current 1–3 year investor
   // horizon and falsely inflate the sample count.
-  const probe = createHistoricalForecast(instrument, candles, warmupBars, timeframe, tradingStyle);
+  const probe = createHistoricalForecast(
+    instrument, candles, warmupBars, timeframe, tradingStyle, requestedInvestorHorizon,
+  );
   const probeHorizon = horizon === "investor" ? probe.investor.horizon : probe.trader.horizon;
   const horizonBars = Math.max(1, Math.ceil((probeHorizon.endsAt - probeHorizon.startsAt) / intervalMs));
   const step = horizonBars + 1;
@@ -193,7 +205,9 @@ function buildObservations(
     const priorHistory = candles.slice(index - baselineLookback, index);
     const baselineDirection = momentumDirection(priorHistory);
     const baselineTrainingEndTime = candles[index - 1].timestamp + intervalMs;
-    const forecast = createHistoricalForecast(instrument, candles, index, timeframe, tradingStyle);
+    const forecast = createHistoricalForecast(
+      instrument, candles, index, timeframe, tradingStyle, requestedInvestorHorizon,
+    );
     const selected = horizon === "investor" ? forecast.investor : forecast.trader;
     observations.push({
       id: `${instrument}-${timeframe}-${horizon}-${index}`,
@@ -212,6 +226,56 @@ function buildObservations(
   }
   return observations;
 }
+
+describe("investor horizon OOS spacing", () => {
+  it("uses independent samples for every declared investor horizon", () => {
+    const candles = Array.from({ length: 1_800 }, (_, index) => {
+      const timestamp = Date.UTC(2021, 0, 1) + index * DAY;
+      const close = 100 + index * 0.02 + Math.sin(index / 30);
+      const open = close - 0.1;
+      return {
+        timestamp,
+        open,
+        high: Math.max(open, close) + 0.5,
+        low: Math.min(open, close) - 0.5,
+        close,
+        volume: 1_000,
+      };
+    });
+    const expected = [
+      ["1-4_WEEKS", 28, 41],
+      ["1-3_MONTHS", 90, 13],
+      ["3-6_MONTHS", 183, 6],
+      ["6-12_MONTHS", 365, 3],
+      ["1-3_YEARS", 1_095, 1],
+      ["3+_YEARS", 1_095, 1],
+    ] as const;
+
+    for (const [horizon, expectedBars, expectedCount] of expected) {
+      const observations = buildObservations(
+        "BTCUSDT", candles, "D1", "investor", 600, horizon,
+      );
+      expect(observations).toHaveLength(expectedCount);
+      expect(observations.every((item) =>
+        item.horizonEndsAt - item.dataAsOf === expectedBars * DAY &&
+        item.baselineTrainingEndTime < item.dataAsOf
+      )).toBe(true);
+      expect(observations.every((item, index) =>
+        index === 0 || item.dataAsOf > observations[index - 1].horizonEndsAt
+      )).toBe(true);
+
+      const report = evaluateForwardForecastOutcomes(observations, candles, {
+        costBpsPerSide: 15,
+        minimumSampleCount: 30,
+        enforceNonOverlapping: true,
+      });
+      expect(report.evaluatedCount).toBe(expectedCount);
+      expect(report.excludedReasons.overlapping_horizon ?? 0).toBe(0);
+      if (expectedCount < 30) expect(report.status).toBe("INSUFFICIENT_SAMPLE");
+      else expect(report.status).not.toBe("INSUFFICIENT_SAMPLE");
+    }
+  });
+});
 
 describe("real historical forward forecast outcome evaluation", () => {
   it.skipIf(!enabled)("replays trader and investor structural forecasts on untouched Binance Spot assets and writes provenance reports", async () => {
@@ -285,37 +349,53 @@ describe("real historical forward forecast outcome evaluation", () => {
         expect(scenario.report.excludedReasons.overlapping_horizon ?? 0).toBe(0);
       }
 
-      const investorObservations = timeframe === "D1"
-        ? buildObservations(dataset.instrumentId, dataset.candles, timeframe, "investor", warmupBars)
-        : [];
-      const investorCostSensitivity = timeframe === "D1"
-        ? COST_SCENARIOS.map((costBpsPerSide) => ({
-            costBpsPerSide,
-            report: evaluateForwardForecastOutcomes(
-              investorObservations,
-              dataset.candles,
-              { costBpsPerSide, minimumSampleCount: 30, enforceNonOverlapping: true },
-            ),
-          }))
+      const investorHorizonEvaluations = timeframe === "D1"
+        ? INVESTOR_HORIZONS.map((horizon) => {
+            const observations = buildObservations(
+              dataset.instrumentId, dataset.candles, timeframe, "investor", warmupBars, horizon,
+            );
+            const costSensitivity = COST_SCENARIOS.map((costBpsPerSide) => ({
+              costBpsPerSide,
+              report: evaluateForwardForecastOutcomes(
+                observations,
+                dataset.candles,
+                { costBpsPerSide, minimumSampleCount: 30, enforceNonOverlapping: true },
+              ),
+            }));
+
+            // Each sample must be independent at its selected horizon. Short
+            // windows can accumulate enough observations; long windows remain
+            // explicitly insufficient until more non-overlapping history exists.
+            expect(observations.every((observation, index) =>
+              index === 0 || observation.dataAsOf > observations[index - 1].horizonEndsAt
+            )).toBe(true);
+            expect(costSensitivity.every((scenario) =>
+              (scenario.report.excludedReasons.overlapping_horizon ?? 0) === 0
+            )).toBe(true);
+            if (observations.length < 30) {
+              expect(costSensitivity.every((scenario) =>
+                scenario.report.status === "INSUFFICIENT_SAMPLE"
+              )).toBe(true);
+            } else {
+              expect(costSensitivity.every((scenario) =>
+                scenario.report.evaluatedCount >= 30 &&
+                scenario.report.status !== "INSUFFICIENT_SAMPLE"
+              )).toBe(true);
+            }
+            return {
+              horizon,
+              boundarySemantics: horizon === "3+_YEARS" ? "MINIMUM" as const : "UPPER" as const,
+              horizonBars: observations[0]
+                ? Math.ceil((observations[0].horizonEndsAt - observations[0].dataAsOf) / DAY)
+                : undefined,
+              observations: observations.length,
+              costSensitivity,
+            };
+          })
         : [];
       if (timeframe === "D1") {
-        // Historical depth cannot currently supply 30 independent 3-year
-        // observations. Report insufficient sample instead of counting
-        // overlapping starts as independent evidence.
-        expect(investorObservations.every((observation, index) =>
-          index === 0 || observation.dataAsOf > investorObservations[index - 1].horizonEndsAt
-        )).toBe(true);
-        if (investorObservations.length < 30) {
-          expect(investorCostSensitivity.every((scenario) =>
-            scenario.report.status === "INSUFFICIENT_SAMPLE" &&
-            (scenario.report.excludedReasons.overlapping_horizon ?? 0) === 0
-          )).toBe(true);
-        } else {
-          expect(investorCostSensitivity.every((scenario) =>
-            scenario.report.evaluatedCount >= 30 &&
-            (scenario.report.excludedReasons.overlapping_horizon ?? 0) === 0
-          )).toBe(true);
-        }
+        expect(investorHorizonEvaluations).toHaveLength(INVESTOR_HORIZONS.length);
+        expect(investorHorizonEvaluations[0].observations).toBeGreaterThanOrEqual(30);
       }
 
       reports.push({
@@ -329,16 +409,12 @@ describe("real historical forward forecast outcome evaluation", () => {
         oosStart: dataset.candles[warmupBars]?.timestamp,
         oosEnd: dataset.candles[dataset.candles.length - 1]?.timestamp,
         hypothesis: timeframe === "D1"
-          ? "Swing trader: EMA20/EMA50 direction; trailing 20-day support/resistance; 20-bar horizon. Investor: HH/HL or LH/LL from two prior 30-bar windows; 90-week swing bounds from aggregated weekly candles; 1–3 year planning horizon (3-year upper boundary)."
+          ? "Swing trader: EMA20/EMA50 direction; trailing 20-day support/resistance; 20-bar horizon. Investor: HH/HL or LH/LL from two prior 30-bar windows; 90-week swing bounds from aggregated weekly candles; all six planning horizons are replayed independently. The 3+ years case is evaluated only at its 3-year minimum boundary."
           : "Intraday trader: EMA20/EMA50 direction; trailing 20-hour support/resistance; 24-bar horizon.",
         baseline: "Rolling prior-only close-to-close momentum sign (100 bars for trader, 180 bars for investor).",
         traderObservations: traderObservations.length,
         traderCostSensitivity,
-        investorHorizonBars: investorObservations[0]
-          ? Math.ceil((investorObservations[0].horizonEndsAt - investorObservations[0].dataAsOf) / DAY)
-          : undefined,
-        investorObservations: investorObservations.length,
-        investorCostSensitivity,
+        investorHorizonEvaluations,
       });
     }
 
@@ -359,7 +435,9 @@ describe("real historical forward forecast outcome evaluation", () => {
       reports,
       limitations: [
         "This is a pre-registered technical research proxy, not the complete multi-factor production analysis engine.",
-        "Investor forecasts are structural only; no fair value, DCF, fundamental target, or calibrated probability is produced.",
+        "Investor forecasts in this research replay are structural only; no fair value, DCF, fundamental target, or calibrated probability is produced.",
+        "The 3+ years planning horizon is evaluated only at its 3-year minimum boundary; available five-year history cannot validate an unbounded horizon or produce 30 independent multi-year observations.",
+        "Shorter investor horizons are evaluated independently without overlapping windows; horizons with fewer than 30 observations remain insufficient_sample and are not treated as validated.",
         "The prior 100/180-bar momentum baseline is calculated strictly before each signal candle.",
         "Overlapping horizons are excluded; only completed Binance Spot candles are used.",
         "Spot short scenarios are synthetic references, not executable spot shorts; borrow, funding, liquidation, and basis are not modeled.",
@@ -385,7 +463,13 @@ describe("real historical forward forecast outcome evaluation", () => {
           instrument: string;
           timeframe: string;
           traderCostSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; expectancyBlockBootstrap95R: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
-          investorCostSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; expectancyBlockBootstrap95R: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
+          investorHorizonEvaluations: Array<{
+            horizon: InvestorForecastHorizon;
+            boundarySemantics: "UPPER" | "MINIMUM";
+            horizonBars?: number;
+            observations: number;
+            costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; expectancyBlockBootstrap95R: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
+          }>;
         };
         const lines = [
           `## ${entry.instrument} · ${entry.timeframe}`,
@@ -393,7 +477,14 @@ describe("real historical forward forecast outcome evaluation", () => {
           "| Horizon | Cost bps/side | N | Accuracy | Baseline | Lift | Lift normal 95% CI | Lift block 95% CI | Expectancy R | Exp. normal 95% CI | Exp. block 95% CI | PF | Status |",
           "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
         ];
-        for (const scenario of [...entry.traderCostSensitivity.map((s) => ({ horizon: "Trader", ...s })), ...entry.investorCostSensitivity.map((s) => ({ horizon: "Investor", ...s }))]) {
+        const traderRows = entry.traderCostSensitivity.map((s) => ({ horizon: "Trader", ...s }));
+        const investorRows = entry.investorHorizonEvaluations.flatMap((evaluation) =>
+          evaluation.costSensitivity.map((s) => ({
+            horizon: `Investor ${evaluation.horizon}${evaluation.boundarySemantics === "MINIMUM" ? " (3-year minimum boundary)" : ""} (N=${evaluation.observations})`,
+            ...s,
+          }))
+        );
+        for (const scenario of [...traderRows, ...investorRows]) {
           const r = scenario.report;
           lines.push(`| ${scenario.horizon} | ${scenario.costBpsPerSide} | ${r.evaluatedCount} | ${r.directionalAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.baselineAccuracyPct?.toFixed(1) ?? "n/a"}% | ${r.accuracyLiftPct?.toFixed(1) ?? "n/a"}pp | ${r.accuracyLift95Pct ? `${r.accuracyLift95Pct.lowerPct.toFixed(1)} to ${r.accuracyLift95Pct.upperPct.toFixed(1)}pp` : "n/a"} | ${r.accuracyLiftBlockBootstrap95Pct ? `${r.accuracyLiftBlockBootstrap95Pct.lowerPct.toFixed(1)} to ${r.accuracyLiftBlockBootstrap95Pct.upperPct.toFixed(1)}pp` : "n/a"} | ${r.expectancyR?.toFixed(2) ?? "n/a"} | ${r.expectancyR95 ? `${r.expectancyR95.lower.toFixed(2)} to ${r.expectancyR95.upper.toFixed(2)}R` : "n/a"} | ${r.expectancyBlockBootstrap95R ? `${r.expectancyBlockBootstrap95R.lower.toFixed(2)} to ${r.expectancyBlockBootstrap95R.upper.toFixed(2)}R` : "n/a"} | ${r.profitFactor?.toFixed(2) ?? "n/a"} | ${r.status} |`);
         }
