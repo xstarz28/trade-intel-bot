@@ -12,7 +12,7 @@ import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation
 import type { MarketSnapshot, FreshnessLevel, InvestorOpportunityProjection } from "./types";
 import type { UniverseEntry } from "./types";
 import type { TechnicalData, TimeframeStructureContext } from "../data/market-types";
-import { buildInvestorFundamentalOutlook } from "../investor-fundamental-outlook";
+import { buildInvestorFundamentalOutlook, type InvestorValuationReference } from "../investor-fundamental-outlook";
 import { assessFreshness } from "./freshness";
 import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
 import { calculateTechnical } from "../data/technical";
@@ -198,10 +198,54 @@ function getInvestorAccumulationZone(
   )[0];
 }
 
+function buildUniversalEquityValuationReference(
+  intelligence: LiveCandidateSource["universalIntelligence"],
+  instrument: string,
+  spot: number,
+  asOf: number,
+): InvestorValuationReference | undefined {
+  if (
+    !intelligence ||
+    intelligence.assetClass !== "equity" ||
+    normalizeRadarInstrument(intelligence.instrument) !== normalizeRadarInstrument(instrument) ||
+    !intelligence.equity ||
+    normalizeRadarInstrument(intelligence.equity.instrument) !== normalizeRadarInstrument(instrument)
+  ) return undefined;
+  const valuation = intelligence.equity.valuation;
+  const observedAt = valuation?.observedAt;
+  const intrinsicValue = valuation?.intrinsicValue;
+  if (
+    !valuation?.available ||
+    valuation.quality !== "VERIFIED" ||
+    (valuation.freshness !== "FRESH" && valuation.freshness !== "DELAYED") ||
+    typeof valuation.provider !== "string" ||
+    !valuation.provider.trim() ||
+    !Number.isFinite(observedAt) ||
+    (observedAt ?? 0) <= 0 ||
+    (observedAt ?? 0) > asOf ||
+    asOf - (observedAt ?? 0) > 30 * 24 * 60 * 60_000 ||
+    !Number.isFinite(intrinsicValue) ||
+    (intrinsicValue ?? 0) <= 0
+  ) return undefined;
+  return {
+    kind: "PROVIDER_INTRINSIC_VALUE",
+    price: intrinsicValue!,
+    source: valuation.provider,
+    asOf: observedAt!,
+    upsidePct: ((intrinsicValue! / spot) - 1) * 100,
+    description: "Provider-supplied intrinsic-value estimate; not a guaranteed fair value or expected return.",
+  };
+}
+
+function normalizeRadarInstrument(value: string): string {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 function buildInvestmentProjection(
   market: LiveCandidateSource["marketData"],
   technical: TechnicalData | undefined,
   analysis: LiveCandidateSource["analysisResult"],
+  intelligence: LiveCandidateSource["universalIntelligence"],
 ): Omit<InvestorOpportunityProjection, "horizon"> | undefined {
   if (!market) return undefined;
   const spot = market.price?.price;
@@ -262,12 +306,18 @@ function buildInvestmentProjection(
   const fundamentalOutlook = analysis
     ? buildInvestorFundamentalOutlook(analysis, price)
     : undefined;
-  const valuationReference = fundamentalOutlook?.valuationReference;
+  const valuationReference = fundamentalOutlook?.valuationReference ??
+    buildUniversalEquityValuationReference(intelligence, market.instrument, price, observedAt);
   const valuationObjective = valuationReference && (
     direction === "bullish" ? valuationReference.price > price :
     direction === "bearish" ? valuationReference.price < price : false
   ) ? valuationReference : undefined;
-  const objective = valuationObjective?.price ?? validObjective;
+  const valuationConflict = valuationReference !== undefined &&
+    direction !== "neutral" &&
+    valuationObjective === undefined;
+  // A provider valuation that contradicts the structural direction blocks the
+  // target; never quietly fall back to a more convenient chart level.
+  const objective = valuationConflict ? undefined : valuationObjective?.price ?? validObjective;
   const invalidation = validInvalidation;
   const risk = invalidation === undefined ? undefined : Math.abs(price - invalidation);
   const reward = objective === undefined ? undefined : Math.abs(objective - price);
@@ -289,9 +339,23 @@ function buildInvestmentProjection(
         "Invalidation is the opposing observed higher-timeframe swing level.",
         ...(accumulationZone ? ["Accumulation zone is a fresh higher-timeframe bullish order block with verified displacement and structural-break evidence."] : []),
       ];
+  const universalConflicts = (intelligence?.evidence ?? [])
+    .filter((item) =>
+      item.providerAvailable &&
+      item.instrument === market.instrument &&
+      item.assetClass === "equity" &&
+      item.direction === "CONFLICTING" &&
+      item.quality === "VERIFIED" &&
+      (item.freshness === "FRESH" || item.freshness === "DELAYED"),
+    )
+    .slice(0, 2)
+    .map((item) => "Conflicting equity evidence from " + item.source + ": " + item.explanation);
   const limitations = [
     "Investment projection is informational, not an order or a calibrated probability forecast.",
     "Structural reward/risk is a price-distance ratio before fees, slippage, funding, borrow, dividends, and corporate actions.",
+    ...(valuationConflict ? ["The exact-instrument provider valuation conflicts with the structural direction; numeric objectives are suppressed."] : []),
+    ...(fundamentalOutlook?.evidence.filter((item) => item.direction === "CONFLICTING").slice(0, 2).map((item) => "Conflicting fundamental evidence from " + item.source + ": " + item.explanation) ?? []),
+    ...universalConflicts,
     ...(objective === undefined ? ["No directionally valid valuation or higher-timeframe objective is available."] : []),
     ...(invalidation === undefined ? ["No directionally valid higher-timeframe invalidation is available."] : []),
     ...(!qualified ? ["A complete objective/invalidation pair is required; partial price plans are suppressed."] : []),
@@ -476,7 +540,7 @@ export function toRadarCandidateSource(
       /XAU|GOLD/i.test(source.instrument)
     ? deriveMacroYieldEvidence(source.treasuryData).goldLongEffect * 2
     : undefined;
-  const investmentProjection = buildInvestmentProjection(market, technical, analysis);
+  const investmentProjection = buildInvestmentProjection(market, technical, analysis, intelligence);
 
   const snapshot: MarketSnapshot | null = market ? {
     instrument: market.instrument,
