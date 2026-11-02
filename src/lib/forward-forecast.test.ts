@@ -563,7 +563,7 @@ describe("Phase 46 — forward forecast contract", () => {
   });
 
 
-  it("uses the higher-timeframe horizon band instead of a fixed 90-day investor window", () => {
+  it("keeps the long-term investor horizon independent of higher-timeframe chart selection", () => {
     const timestamp = 1_800_000_000_000;
     const forecast = buildForwardForecast(baseResult({
       timeframe: "H4",
@@ -575,7 +575,7 @@ describe("Phase 46 — forward forecast contract", () => {
       priceSnapshot: { price: 100_000, timestamp: timestamp - 1_000, source: "test-provider" },
     }));
     expect(forecast.investor.horizon.label).toContain("1–3 years");
-    expect(forecast.investor.horizon.endsAt - forecast.investor.horizon.startsAt).toBe(2 * 365 * 86_400_000);
+    expect(forecast.investor.horizon.endsAt - forecast.investor.horizon.startsAt).toBe(3 * 365 * 86_400_000);
   });
 
   it("publishes an accumulation zone only from a fresh validated higher-timeframe bullish order block", () => {
