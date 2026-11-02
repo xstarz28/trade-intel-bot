@@ -14,7 +14,7 @@ import type { UniverseEntry } from "./types";
 import type { TechnicalData, TimeframeStructureContext } from "../data/market-types";
 import { buildInvestorFundamentalOutlook, type InvestorValuationReference } from "../investor-fundamental-outlook";
 import { assessFreshness } from "./freshness";
-import { extractSetupEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
+import { extractSetupEvidence, hasFundamentalEvidence, hasScoredPositioningEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
 import { calculateTechnical } from "../data/technical";
 import { buildConditionalEntryScenariosFromMarketData, type ConditionalEntryScenario } from "../conditional-entry-scenarios";
 import { deriveMacroYieldEvidence } from "@/lib/data/treasury";
@@ -33,6 +33,9 @@ export interface RadarCandidateSource {
   setupDirection?: CandidateInput["setupDirection"];
   setupStrength?: number;
   confluenceCount?: number;
+  /** Evidence availability flags are separate from analysis-history presence. */
+  fundamentalEvidenceAvailable?: boolean;
+  positioningEvidenceAvailable?: boolean;
   /** Conditional entry/invalidations/targets derived from this exact candle snapshot. */
   conditionalScenarios?: ConditionalEntryScenario[];
   /** Structural and valuation-backed price plan for investment horizons only. */
@@ -79,6 +82,7 @@ export interface RadarCandidateSource {
     fundamentalScore?: number;
     positioningScore?: number;
     fundamentalEvidenceAvailable?: boolean;
+    positioningEvidenceAvailable?: boolean;
     technicalData?: {
       htfBias?: string;
       mtfAlignment?: string;
@@ -389,16 +393,24 @@ export function toRadarCandidateSource(
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
-  const instrumentAnalysis = source.analysisResult?.instrument === source.instrument
+  const candidateAnalysis = source.analysisResult?.instrument === source.instrument
     ? source.analysisResult
     : undefined;
   const marketTimeframe = normalizeRadarSourceTimeframe(market?.timeframe);
-  const analysisTimeframe = normalizeRadarSourceTimeframe(instrumentAnalysis?.timeframe);
-  const analysisPrice = instrumentAnalysis?.priceSnapshot;
+  const analysisTimeframe = normalizeRadarSourceTimeframe(candidateAnalysis?.timeframe);
+  const analysisPrice = candidateAnalysis?.priceSnapshot;
   const marketPrice = market?.price;
   const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
     analysisPrice.price === marketPrice.price &&
     analysisPrice.timestamp === marketPrice.timestamp;
+  const sameInstrumentType = !market?.instrumentType ||
+    !candidateAnalysis?.instrumentType ||
+    candidateAnalysis.instrumentType === market.instrumentType;
+  // Fundamentals may be reused across setup timeframes, but never across
+  // different price observations or asset-class identities.
+  const instrumentAnalysis = candidateAnalysis && sameObservedPriceSnapshot && sameInstrumentType
+    ? candidateAnalysis
+    : undefined;
   // Technical data is reusable only for the exact market observation and
   // timeframe that produced it. Same-instrument fundamentals remain valid
   // context, but a different-timeframe technical read must not leak into setup evidence.
@@ -612,22 +624,23 @@ export function toRadarCandidateSource(
     ...(treasury ? { treasury } : {}),
     ...(analysis ? {
       analysisResult: {
-        confidence: String(analysis.confidence),
-        bias: analysis.bias,
-        recommendation: analysis.recommendation,
+        ...(matchingAnalysis ? {
+          confidence: matchingAnalysis.confidence !== undefined ? String(matchingAnalysis.confidence) : undefined,
+          bias: matchingAnalysis.bias,
+          recommendation: matchingAnalysis.recommendation,
+          positioningScore: matchingAnalysis.breakdown?.sentiment,
+          technicalData: {
+            htfBias,
+            mtfAlignment: technical?.mtf?.alignment ?? matchingAnalysis.mtfSummary?.alignment,
+            marketRegime,
+            atr: technical?.atr14,
+          },
+        } : {}),
         fundamentalScore: analysis.breakdown?.fundamental,
-        positioningScore: analysis.breakdown?.sentiment,
-        fundamentalEvidenceAvailable:
-          analysis.breakdown?.fundamental !== undefined &&
-          Number.isFinite(analysis.breakdown.fundamental),
-        technicalData: {
-          htfBias,
-          mtfAlignment: technical?.mtf?.alignment ?? analysis.mtfSummary?.alignment,
-          marketRegime,
-          atr: technical?.atr14,
-        },
       },
     } : {}),
+    fundamentalEvidenceAvailable: hasFundamentalEvidence(analysis, source),
+    positioningEvidenceAvailable: hasScoredPositioningEvidence(matchingAnalysis),
   };
 }
 
@@ -856,8 +869,20 @@ export function buildRadarCandidate(
   }
 
   // Analysis metadata (additive)
+  if (source.fundamentalEvidenceAvailable !== undefined) {
+    candidate.fundamentalEvidenceAvailable = source.fundamentalEvidenceAvailable;
+  }
+  if (source.positioningEvidenceAvailable !== undefined) {
+    candidate.positioningEvidenceAvailable = source.positioningEvidenceAvailable;
+  }
   if (source.analysisResult) {
-    candidate.hasAnalysis = true;
+    const hasAnalysisPayload =
+      source.analysisResult.confidence !== undefined ||
+      source.analysisResult.bias !== undefined ||
+      source.analysisResult.recommendation !== undefined ||
+      source.analysisResult.fundamentalScore !== undefined ||
+      source.analysisResult.positioningScore !== undefined;
+    if (hasAnalysisPayload) candidate.hasAnalysis = true;
     const confStr = source.analysisResult.confidence;
     if (confStr) {
       const num = parseInt(confStr, 10);
@@ -869,8 +894,11 @@ export function buildRadarCandidate(
     if (source.analysisResult.positioningScore !== undefined) {
       candidate.positioningScore = source.analysisResult.positioningScore;
     }
-    if (source.analysisResult.fundamentalEvidenceAvailable !== undefined) {
+    if (hasAnalysisPayload && source.analysisResult.fundamentalEvidenceAvailable !== undefined) {
       candidate.fundamentalEvidenceAvailable = source.analysisResult.fundamentalEvidenceAvailable;
+    }
+    if (source.analysisResult.positioningEvidenceAvailable !== undefined) {
+      candidate.positioningEvidenceAvailable = source.analysisResult.positioningEvidenceAvailable;
     }
   }
 

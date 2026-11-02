@@ -132,6 +132,93 @@ function constrainByProviderFreshness(
   return FRESHNESS_RANK[observed] >= FRESHNESS_RANK[declared] ? observed : declared;
 }
 
+/**
+ * Availability is based on verified asset-specific evidence and the provider
+ * inputs consumed by analysis-engine, not on whether the signed FactorScore
+ * happened to be non-zero. Crypto fundamental evidence is intentionally
+ * read-only today, so it remains neutral-scored but still available.
+ */
+function isFiniteEvidenceNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+export function hasFundamentalEvidence(result: AnalysisResult | undefined, source: LiveCandidateSource): boolean {
+  const crypto = source.cryptoIntelligenceContext ?? result?.cryptoIntelligenceContext;
+  const hasVerifiedCryptoFundamentals = !!(
+    source.assetClass === "crypto" &&
+    (!result || result.instrumentType === "crypto") &&
+    crypto?.instrument === source.instrument &&
+    crypto.instrumentType === "crypto" &&
+    crypto.evidence.some((item) =>
+      item.category !== "DERIVATIVES" &&
+      item.providerAvailable &&
+      item.quality === "VERIFIED" &&
+      (item.freshness === "FRESH" || item.freshness === "DELAYED")
+    )
+  );
+  if (!result) return hasVerifiedCryptoFundamentals;
+  const fund = result.fundamentalData;
+  const hasStockMetrics = result.instrumentType === "stock" && fund?.available === true && (
+    (isFiniteEvidenceNumber(fund.peRatio) && fund.peRatio > 0) ||
+    isFiniteEvidenceNumber(fund.profitMargin) ||
+    (isFiniteEvidenceNumber(fund.earningsPerShare) && fund.earningsPerShare > 0) ||
+    (isFiniteEvidenceNumber(fund.pegRatio) && fund.pegRatio > 0) ||
+    isFiniteEvidenceNumber(fund.operatingMargin) ||
+    isFiniteEvidenceNumber(fund.returnOnEquity) ||
+    isFiniteEvidenceNumber(fund.returnOnAssets) ||
+    isFiniteEvidenceNumber(fund.revenueGrowth) ||
+    isFiniteEvidenceNumber(fund.earningsGrowth)
+  );
+  const macro = result.macroData;
+  const hasMacroIndicators = !!(
+    macro && macro.confidence !== "unavailable" &&
+    Array.isArray(macro.indicators) && macro.indicators.length > 0 &&
+    (macro.indicators.some((indicator) => indicator.sentiment !== undefined) || macro.dxyTrend !== undefined)
+  );
+  const calendar = result.calendarData;
+  const hasReleasedHighImportanceSurprise = !!(
+    calendar && calendar.confidence !== "unavailable" &&
+    Array.isArray(calendar.events) &&
+    calendar.events.some((event) => {
+      if (
+        event.status !== "released" ||
+        event.actual === undefined ||
+        event.forecast === undefined ||
+        event.importance !== 3
+      ) return false;
+      const actual = typeof event.actual === "number" ? event.actual : Number.parseFloat(String(event.actual));
+      const forecast = typeof event.forecast === "number" ? event.forecast : Number.parseFloat(String(event.forecast));
+      return Number.isFinite(actual) && Number.isFinite(forecast);
+    })
+  );
+  return hasStockMetrics || hasMacroIndicators || hasReleasedHighImportanceSurprise || hasVerifiedCryptoFundamentals;
+}
+
+/**
+ * Match scoreSentiment's actual source selection. COT and volume structure
+ * are not counted as positioning because scoreSentiment does not score COT;
+ * volume is a technical confirmation, not an independent provider vote.
+ */
+export function hasScoredPositioningEvidence(result: AnalysisResult | undefined): boolean {
+  if (!result) return false;
+  const derivatives = result.derivativesData;
+  if (result.instrumentType === "crypto" && derivatives && derivatives.confidence !== "unavailable") {
+    return isFiniteEvidenceNumber(derivatives.fundingRate?.currentRate) ||
+      isFiniteEvidenceNumber(derivatives.openInterest?.change1h) ||
+      isFiniteEvidenceNumber(derivatives.longShort?.accountRatio) ||
+      derivatives.liquidations?.dominantSide === "longs" ||
+      derivatives.liquidations?.dominantSide === "shorts";
+  }
+  const sentiment = result.sentimentData;
+  return !!(
+    sentiment &&
+    sentiment.confidence !== "unavailable" &&
+    Number.isFinite(sentiment.articleCount) &&
+    sentiment.articleCount > 0 &&
+    Number.isFinite(sentiment.averageScore)
+  );
+}
+
 function assessDataCompleteness(source: LiveCandidateSource, technicalData?: TechnicalData): DataCompletenessLevel {
   const price = source.marketData?.price?.price;
   const candles = source.marketData?.candles ?? [];
@@ -537,7 +624,11 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
   const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
     analysisPrice.price === marketPrice.price &&
     analysisPrice.timestamp === marketPrice.timestamp;
+  const sameInstrumentType = !matchingMarketData?.instrumentType ||
+    !source.analysisResult?.instrumentType ||
+    source.analysisResult.instrumentType === matchingMarketData.instrumentType;
   const matchingAnalysis = source.analysisResult?.instrument === source.instrument &&
+    sameInstrumentType &&
     !!marketTimeframe &&
     analysisTimeframe === marketTimeframe &&
     sameObservedPriceSnapshot
@@ -726,30 +817,8 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     // Availability here means signed directional evidence was actually
     // produced by the analysis engine. Raw fundamentals/calendar presence and
     // default-zero breakdown fields are not themselves directional signals.
-    fundamentalEvidenceAvailable:
-      ar?.breakdown?.fundamental !== undefined &&
-      Number.isFinite(ar.breakdown.fundamental) &&
-      ar.breakdown.fundamental !== 0,
-    positioningEvidenceAvailable:
-      ar?.breakdown?.sentiment !== undefined &&
-      Number.isFinite(ar.breakdown.sentiment) &&
-      ar.breakdown.sentiment !== 0 &&
-      (
-        (ar?.sentimentData !== undefined && ar.sentimentData.confidence !== "unavailable") ||
-        (ar?.derivativesData !== undefined && (
-          ar.derivativesData.availability.fundingRate ||
-          ar.derivativesData.availability.openInterest ||
-          ar.derivativesData.availability.longShort ||
-          ar.derivativesData.availability.liquidations
-        )) ||
-        (source.derivativesData !== undefined && (
-          source.derivativesData.availability.fundingRate ||
-          source.derivativesData.availability.openInterest ||
-          source.derivativesData.availability.longShort ||
-          source.derivativesData.availability.liquidations
-        )) ||
-        source.cotData?.available === true
-      ),
+    fundamentalEvidenceAvailable: hasFundamentalEvidence(ar, source),
+    positioningEvidenceAvailable: hasScoredPositioningEvidence(ar),
     macroScore: (() => {
       if (source.treasuryData?.available && source.assetClass === "commodity") {
         const evidence = deriveMacroYieldEvidence(source.treasuryData);
