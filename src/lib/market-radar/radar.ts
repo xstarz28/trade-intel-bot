@@ -164,6 +164,17 @@ function selectSourcesForHorizon(
       // Among eligible sources, timeframe fit outranks generic recency: a fresh
       // M5 snapshot must not displace a still-eligible D1 source for swing.
       if (eligibleA !== eligibleB) return eligibleA ? -1 : 1;
+      // For investing horizons, a complete evidence-backed price plan outranks
+      // a nominally preferred timeframe with no valid HTF objective/invalidation.
+      // This lets a D1 source with verified W1 structure beat a W1 source that
+      // has no higher-timeframe reference, without changing trading selection.
+      if (!isTradingHorizon(horizon)) {
+        const planRank = (source: RadarCandidateSource) =>
+          source.investmentProjection?.status === "CONDITIONAL" ? 0 :
+          source.investmentProjection?.status === "BLOCKED_DATA_QUALITY" ? 2 : 1;
+        const planDifference = planRank(a) - planRank(b);
+        if (planDifference !== 0) return planDifference;
+      }
       const timeframeDifference = timeframeRank(a) - timeframeRank(b);
       if (timeframeDifference !== 0) return timeframeDifference;
       const freshnessDifference = freshnessRank(a, now) - freshnessRank(b, now);

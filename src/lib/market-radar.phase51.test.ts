@@ -387,14 +387,35 @@ describe("Radar investment price projections", () => {
       },
     });
 
+    const weeklySource = toRadarCandidateSource({
+      ...liveSource,
+      technicalData: {
+        structure: "HH/HL",
+        supportLevels: [],
+        resistanceLevels: [],
+        swingHighs: [],
+        swingLows: [],
+        htfContext: {
+          timeframe: "W1",
+          structure: "HH/HL",
+          lastSwingHigh: 120_000,
+          lastSwingLow: 90_000,
+          dataPoints: 100,
+        },
+      } as unknown as TechnicalData,
+      marketData: { ...liveSource.marketData!, timeframe: "W1" },
+    });
+    expect(weeklySource.investmentProjection?.status).toBe("UNAVAILABLE");
+
     const result = scanRadar(
-      [source],
+      [weeklySource, source],
       { horizons: ["SWING", "1-3_YEARS"], maxResults: 5 },
       undefined,
       NOW,
     );
     const trading = result.results.get("SWING")?.[0];
     const investing = result.results.get("1-3_YEARS")?.[0];
+    expect(investing?.marketTimeframe).toBe("D1");
     expect(trading).not.toHaveProperty("investmentProjection");
     expect(investing?.investmentProjection).toMatchObject({
       horizon: "1-3_YEARS",
