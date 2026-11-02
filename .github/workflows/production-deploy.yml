@@ -31,6 +31,7 @@ jobs:
       CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
       VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
       XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
     steps:
       - name: Require confirmation for manual deploys
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -73,7 +74,6 @@ jobs:
         env:
           COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
           TOKENOMIST_API_KEY: ${{ secrets.TOKENOMIST_API_KEY }}
-      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
           set -euo pipefail
           if [ -n "${COINGLASS_API_KEY:-}" ]; then
