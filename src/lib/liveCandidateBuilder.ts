@@ -138,6 +138,10 @@ function constrainByProviderFreshness(
  * happened to be non-zero. Crypto fundamental evidence is intentionally
  * read-only today, so it remains neutral-scored but still available.
  */
+function isFiniteEvidenceNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
 export function hasFundamentalEvidence(result: AnalysisResult | undefined, source: LiveCandidateSource): boolean {
   const crypto = source.cryptoIntelligenceContext ?? result?.cryptoIntelligenceContext;
   const hasVerifiedCryptoFundamentals = !!(
@@ -155,15 +159,15 @@ export function hasFundamentalEvidence(result: AnalysisResult | undefined, sourc
   if (!result) return hasVerifiedCryptoFundamentals;
   const fund = result.fundamentalData;
   const hasStockMetrics = result.instrumentType === "stock" && fund?.available === true && (
-    (fund.peRatio !== undefined && fund.peRatio > 0) ||
-    (fund.profitMargin !== undefined && fund.profitMargin > 0.2) ||
-    (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) ||
-    (fund.pegRatio !== undefined && fund.pegRatio > 0) ||
-    fund.operatingMargin !== undefined ||
-    fund.returnOnEquity !== undefined ||
-    fund.returnOnAssets !== undefined ||
-    fund.revenueGrowth !== undefined ||
-    fund.earningsGrowth !== undefined
+    (isFiniteEvidenceNumber(fund.peRatio) && fund.peRatio > 0) ||
+    isFiniteEvidenceNumber(fund.profitMargin) ||
+    (isFiniteEvidenceNumber(fund.earningsPerShare) && fund.earningsPerShare > 0) ||
+    (isFiniteEvidenceNumber(fund.pegRatio) && fund.pegRatio > 0) ||
+    isFiniteEvidenceNumber(fund.operatingMargin) ||
+    isFiniteEvidenceNumber(fund.returnOnEquity) ||
+    isFiniteEvidenceNumber(fund.returnOnAssets) ||
+    isFiniteEvidenceNumber(fund.revenueGrowth) ||
+    isFiniteEvidenceNumber(fund.earningsGrowth)
   );
   const macro = result.macroData;
   const hasMacroIndicators = !!(
@@ -199,10 +203,11 @@ export function hasScoredPositioningEvidence(result: AnalysisResult | undefined)
   if (!result) return false;
   const derivatives = result.derivativesData;
   if (result.instrumentType === "crypto" && derivatives && derivatives.confidence !== "unavailable") {
-    return derivatives.fundingRate?.currentRate !== undefined ||
-      derivatives.openInterest?.change1h !== undefined ||
-      derivatives.longShort?.accountRatio !== undefined ||
-      derivatives.liquidations?.dominantSide !== undefined;
+    return isFiniteEvidenceNumber(derivatives.fundingRate?.currentRate) ||
+      isFiniteEvidenceNumber(derivatives.openInterest?.change1h) ||
+      isFiniteEvidenceNumber(derivatives.longShort?.accountRatio) ||
+      derivatives.liquidations?.dominantSide === "longs" ||
+      derivatives.liquidations?.dominantSide === "shorts";
   }
   const sentiment = result.sentimentData;
   return !!(
