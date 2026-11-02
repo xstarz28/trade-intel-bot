@@ -833,6 +833,29 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.objective?.price).toBe(125_000);
   });
 
+  it("does not label an investment thesis conditional without a valid invalidation", () => {
+    const forecast = buildForwardForecast(baseResult({
+      technicalData: {
+        htfContext: {
+          timeframe: "W1",
+          structure: "HH/HL",
+          bosDirection: "bullish",
+          chochDirection: "none",
+          lastSwingHigh: 112_000,
+          lastSwingLow: 101_000,
+          dataPoints: 160,
+        },
+      } as AnalysisResult["technicalData"],
+    }));
+
+    expect(forecast.investor.direction).toBe("bullish");
+    expect(forecast.investor.objective?.price).toBe(112_000);
+    expect(forecast.investor.invalidation).toBeUndefined();
+    expect(forecast.investor.status).toBe("UNAVAILABLE");
+    expect(forecast.investor.potentialUpsideDownsideRatio).toBeUndefined();
+    expect(forecast.investor.limitations.join(" ")).toContain("complete investment reward/risk plan");
+  });
+
   it("does not relabel primary-timeframe SMC as higher-timeframe investment structure", () => {
     const forecast = buildForwardForecast(baseResult({
       htfAlignment: undefined,
