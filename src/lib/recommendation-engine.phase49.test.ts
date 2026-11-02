@@ -31,6 +31,7 @@
  */
 
 import { describe, it, expect } from "vitest";
+import type { AnalysisResult } from "@/types/analysis";
 
 import {
   generateRecommendation,
@@ -410,6 +411,72 @@ describe("F — Investor Horizon Ranking", () => {
   it("6-12 months horizon produces results", () => {
     const result = generateRecommendation([makeEquityCandidate()], "6-12_MONTHS");
     expect(result.rankedInstruments.length).toBeGreaterThan(0);
+  });
+
+  it("attaches a horizon-specific investor forecast from an exact matching analysis snapshot", () => {
+    const timestamp = Date.now();
+    const analysis = {
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H1",
+      bias: "Bullish",
+      recommendation: "NO_TRADE",
+      confidence: 60,
+      tradingStyle: "intraday",
+      dataCompleteness: "full",
+      timestamp,
+      priceSnapshot: { price: 65000, timestamp: timestamp - 1000, source: "test" },
+      htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      technicalData: {
+        htfContext: {
+          timeframe: "D1",
+          structure: "HH/HL",
+          lastSwingHigh: 72000,
+          lastSwingLow: 61000,
+          dataPoints: 80,
+        },
+      },
+    } as unknown as AnalysisResult;
+
+    const result = generateRecommendation([
+      makeCandidate({ analysisResult: analysis, marketObservedAt: timestamp - 1000 }),
+    ], "3+_YEARS");
+
+    expect(result.rankedInstruments[0]?.investorForecast?.horizon.label).toContain("3+ years");
+    expect(result.rankedInstruments[0]?.investorForecast?.direction).toBe("bullish");
+    expect(result.rankedInstruments[0]?.investorForecast?.objective?.price).toBe(72000);
+  });
+
+  it("does not attach investor forecast from a mismatched price snapshot", () => {
+    const timestamp = Date.now();
+    const analysis = {
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H1",
+      bias: "Bullish",
+      recommendation: "NO_TRADE",
+      confidence: 60,
+      tradingStyle: "intraday",
+      dataCompleteness: "full",
+      timestamp,
+      priceSnapshot: { price: 65001, timestamp: timestamp - 1000, source: "test" },
+      htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      technicalData: {
+        htfContext: {
+          timeframe: "D1",
+          structure: "HH/HL",
+          lastSwingHigh: 72000,
+          lastSwingLow: 61000,
+          dataPoints: 80,
+        },
+      },
+    } as unknown as AnalysisResult;
+
+    const result = generateRecommendation([
+      makeCandidate({ analysisResult: analysis, marketObservedAt: timestamp - 1000 }),
+    ], "1-3_YEARS");
+
+    expect(result.rankedInstruments[0]?.investorForecast).toBeUndefined();
   });
 });
 
@@ -1134,4 +1201,37 @@ describe("Evidence availability integrity", () => {
     expect(result.eligible).toBe(false);
     expect(result.reason).toContain("timeframe unavailable");
   });
+
+  it("rejects investor analysis with a different observation timestamp", () => {
+    const timestamp = Date.now();
+    const analysis = {
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H1",
+      bias: "Bullish",
+      recommendation: "NO_TRADE",
+      confidence: 60,
+      tradingStyle: "intraday",
+      dataCompleteness: "full",
+      timestamp,
+      priceSnapshot: { price: 65000, timestamp: timestamp - 1000, source: "test" },
+      htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      technicalData: {
+        htfContext: {
+          timeframe: "D1",
+          structure: "HH/HL",
+          lastSwingHigh: 72000,
+          lastSwingLow: 61000,
+          dataPoints: 80,
+        },
+      },
+    } as unknown as AnalysisResult;
+
+    const result = generateRecommendation([
+      makeCandidate({ analysisResult: analysis, marketObservedAt: timestamp - 2000 }),
+    ], "1-3_YEARS");
+
+    expect(result.rankedInstruments[0]?.investorForecast).toBeUndefined();
+  });
+
 });

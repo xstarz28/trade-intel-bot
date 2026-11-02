@@ -563,7 +563,7 @@ describe("Phase 46 — forward forecast contract", () => {
   });
 
 
-  it("uses the higher-timeframe horizon band instead of a fixed 90-day investor window", () => {
+  it("keeps the long-term investor horizon independent of higher-timeframe chart selection", () => {
     const timestamp = 1_800_000_000_000;
     const forecast = buildForwardForecast(baseResult({
       timeframe: "H4",
@@ -575,7 +575,7 @@ describe("Phase 46 — forward forecast contract", () => {
       priceSnapshot: { price: 100_000, timestamp: timestamp - 1_000, source: "test-provider" },
     }));
     expect(forecast.investor.horizon.label).toContain("1–3 years");
-    expect(forecast.investor.horizon.endsAt - forecast.investor.horizon.startsAt).toBe(2 * 365 * 86_400_000);
+    expect(forecast.investor.horizon.endsAt - forecast.investor.horizon.startsAt).toBe(3 * 365 * 86_400_000);
   });
 
   it("publishes an accumulation zone only from a fresh validated higher-timeframe bullish order block", () => {
@@ -654,6 +654,125 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.potentialUpsidePct).toBeCloseTo(-20);
     expect(forecast.investor.potentialDownsidePct).toBeCloseTo(10);
     expect(forecast.investor.potentialUpsideDownsideRatio).toBeCloseTo(2);
+  });
+
+
+  it("defaults investor analysis to a multi-year horizon independent of chart timeframe", () => {
+    const shortChart = buildForwardForecast(baseResult({ timeframe: "H1" }));
+    const weeklyChart = buildForwardForecast(baseResult({ timeframe: "W1" }));
+    const expectedDuration = 3 * 365 * 24 * 60 * 60 * 1000;
+
+    expect(shortChart.investor.horizon.label).toContain("1–3 years");
+    expect(weeklyChart.investor.horizon.label).toContain("1–3 years");
+    expect(shortChart.investor.horizon.endsAt - shortChart.investor.horizon.startsAt).toBe(expectedDuration);
+    expect(weeklyChart.investor.horizon.endsAt - weeklyChart.investor.horizon.startsAt).toBe(expectedDuration);
+    expect(shortChart.investor.horizon.basis).toContain("Three-year upper boundary");
+  });
+
+  it("supports an explicit open-ended 3+ year investor horizon", () => {
+    const forecast = buildForwardForecast(baseResult(), { investorHorizon: "3+_YEARS" });
+
+    expect(forecast.investor.horizon.label).toContain("3+ years");
+    expect(forecast.investor.horizon.endBoundary).toBe("MINIMUM");
+    expect(forecast.investor.horizon.basis).toContain("no fixed upper date");
+    expect(forecast.investor.horizon.endsAt - forecast.investor.horizon.startsAt).toBe(3 * 365 * 24 * 60 * 60 * 1000);
+  });
+
+  it("honors shorter explicitly selected investor horizons without changing trader horizon", () => {
+    const result = baseResult();
+    const defaultForecast = buildForwardForecast(result);
+    const shortForecast = buildForwardForecast(result, { investorHorizon: "1-4_WEEKS" });
+
+    expect(shortForecast.investor.horizon.label).toContain("1–4 weeks");
+    expect(shortForecast.investor.horizon.endsAt - shortForecast.investor.horizon.startsAt).toBe(28 * 24 * 60 * 60 * 1000);
+    expect(shortForecast.trader.horizon).toEqual(defaultForecast.trader.horizon);
+  });
+
+
+  it("uses authoritative adaptive MTF structure instead of stale legacy HTF context", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      timeframe: "H4",
+      timestamp,
+      priceSnapshot: { price: 100_000, timestamp: timestamp - 1_000, source: "test" },
+      htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
+      technicalData: {
+        htfContext: {
+          timeframe: "D1",
+          structure: "LH/LL",
+          bosDirection: "bearish",
+          chochDirection: "none",
+          lastSwingHigh: 105_000,
+          lastSwingLow: 95_000,
+          dataPoints: 80,
+        },
+        mtf: {
+          requestedTimeframe: "H4",
+          chainUsed: ["W1", "H4"],
+          unavailable: [],
+          alignment: "ALIGNED_BULLISH",
+          htfBias: "long",
+          htfTimeframe: "W1",
+          setupTimeframe: "H4",
+          timeframes: [{
+            timeframe: "W1",
+            role: "macro",
+            available: true,
+            smc: {
+              timeframe: "W1",
+              liquidityPools: [],
+              internalExternal: {
+                external: {
+                  timeframe: "W1",
+                  structure: "HH/HL",
+                  bosDirection: "bullish",
+                  chochDirection: "none",
+                  lastSwingHigh: 125_000,
+                  lastSwingLow: 88_000,
+                  dataPoints: 100,
+                },
+                internal: {
+                  timeframe: "W1",
+                  structure: "HH/HL",
+                  bosDirection: "bullish",
+                  chochDirection: "none",
+                  dataPoints: 100,
+                },
+              },
+            } as any,
+          }],
+        },
+      } as unknown as AnalysisResult["technicalData"],
+    }));
+
+    expect(forecast.investor.direction).toBe("bullish");
+    expect(forecast.investor.objective?.price).toBe(125_000);
+  });
+
+  it("does not relabel primary-timeframe SMC as higher-timeframe investment structure", () => {
+    const forecast = buildForwardForecast(baseResult({
+      htfAlignment: undefined,
+      technicalData: {
+        structure: "HH/HL",
+        smc: {
+          internalExternal: {
+            external: {
+              timeframe: "H1",
+              structure: "HH/HL",
+              bosDirection: "bullish",
+              chochDirection: "none",
+              lastSwingHigh: 112_000,
+              lastSwingLow: 94_000,
+              dataPoints: 80,
+            },
+          },
+        },
+      } as AnalysisResult["technicalData"],
+    }));
+
+    expect(forecast.investor.direction).toBe("neutral");
+    expect(forecast.investor.status).toBe("UNAVAILABLE");
+    expect(forecast.investor.objective).toBeUndefined();
   });
 
 });

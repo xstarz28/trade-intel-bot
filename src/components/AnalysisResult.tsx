@@ -1538,7 +1538,7 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
                         direction: <span className="text-foreground">{forecast.direction}</span> · horizon: <span className="text-foreground">{forecast.horizon.label}</span>
                       </p>
                       <p className="text-muted-foreground">
-                        window: {new Date(forecast.horizon.startsAt).toLocaleString()} – {new Date(forecast.horizon.endsAt).toLocaleString()}
+                        window: {new Date(forecast.horizon.startsAt).toLocaleString()} – {new Date(forecast.horizon.endsAt).toLocaleString()}{forecast.horizon.endBoundary === "MINIMUM" ? " (minimum boundary; open-ended)" : ""}
                       </p>
                       {"entry" in forecast && forecast.entry && <p>entry/reference: <span className="text-foreground tabular-nums">{formatPrice(forecast.entry.price, result.instrumentType, result.instrument)}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.entry.meaning, locale)})</span></p>}
                       {"accumulationReference" in forecast && forecast.accumulationReference && <p>accumulation/support reference: <span className="text-foreground tabular-nums">{formatPrice(forecast.accumulationReference.price, result.instrumentType, result.instrument)}</span> <span className="text-muted-foreground">({localizeAnalysisText(forecast.accumulationReference.meaning, locale)})</span></p>}
