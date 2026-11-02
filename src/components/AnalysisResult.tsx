@@ -235,13 +235,13 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           candles={result.candles}
           keyLevels={result.keyLevels}
           tradePlan={
-            (!result.dataQualityContext || result.dataQualityContext.primaryData.status === "GOOD") &&
+            (!result.dataQualityContext || ["GOOD", "DEGRADED"].includes(result.dataQualityContext.primaryData.status)) &&
             result.recommendation !== "NO_TRADE"
               ? result.tradePlan
               : undefined
           }
           projectedTradePlan={
-            !result.dataQualityContext || result.dataQualityContext.primaryData.status === "GOOD"
+            !result.dataQualityContext || ["GOOD", "DEGRADED"].includes(result.dataQualityContext.primaryData.status)
               ? result.projectedTradePlan
               : undefined
           }
