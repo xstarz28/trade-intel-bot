@@ -149,7 +149,7 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
   const spec = req.spec!;
   const distance = Math.abs(req.entry - req.stopLoss);
   if (!Number.isFinite(distance) || distance <= 0) {
-    return { available: false, unavailableReason: "entry and structural stop define no finite risk distance" };
+    return { available: false, unavailableReason: "entry and structural stop define no risk distance" };
   }
 
   // ── Currency resolution (Phase 4) ────────────────────────────────
@@ -204,6 +204,14 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
   // multiplier incorrectly erased valid quantities for finer-grained specs.
   quantity = Number(quantity.toPrecision(15));
   if (!Number.isFinite(quantity) || quantity <= 0) {
+    if (spec.minQuantity !== undefined) {
+      return {
+        available: false,
+        unavailableReason: `required risk budget yields ${rawQuantity.toFixed(6)} units — below the instrument minimum of ${spec.minQuantity}`,
+        riskAmount,
+        riskPerUnit,
+      };
+    }
     return {
       available: false,
       unavailableReason: `risk budget yields less than one tradable quantity step (${step})`,
