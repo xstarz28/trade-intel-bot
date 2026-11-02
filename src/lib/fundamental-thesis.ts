@@ -11,6 +11,7 @@
  */
 
 import type { AnalysisResult } from "@/types/analysis";
+import type { EconomicEvent } from "@/lib/data/calendar-types";
 import { buildInvestorFundamentalOutlook } from "@/lib/investor-fundamental-outlook";
 
 // ── Types ────────────────────────────────────────────────────────
@@ -159,17 +160,28 @@ function evaluatePositioning(evidence: InvestorEvidence[]): FundamentalEvidence[
     : [unavailableEvidence("COT/derivatives positioning", "No fresh, instrument-relevant positioning evidence is available.")];
 }
 
+function upcomingCalendarEvents(result: AnalysisResult): EconomicEvent[] {
+  const events = result.calendarData?.events;
+  if (!Array.isArray(events) || !Number.isFinite(result.timestamp)) return [];
+  const windowEnd = result.timestamp + 72 * 60 * 60 * 1000;
+  return events.filter((event): event is EconomicEvent =>
+    !!event &&
+    typeof event === "object" &&
+    event.status === "upcoming" &&
+    Number.isFinite(event.datetime) &&
+    event.datetime > result.timestamp &&
+    event.datetime <= windowEnd &&
+    typeof event.event === "string" &&
+    typeof event.currency === "string" &&
+    (event.importance === 1 || event.importance === 2 || event.importance === 3),
+  );
+}
+
 function detectCatalysts(result: AnalysisResult): CatalystInfo[] {
   const calendar = result.calendarData;
   if (!calendar || calendar.freshness === "stale" || calendar.freshness === "unavailable") return [];
   const now = result.timestamp;
-  const windowEnd = now + 72 * 60 * 60 * 1000;
-  return calendar.events
-    .filter((event) =>
-      event.status === "upcoming" &&
-      event.datetime > now &&
-      event.datetime <= windowEnd,
-    )
+  return upcomingCalendarEvents(result)
     .sort((a, b) => a.datetime - b.datetime)
     .slice(0, 3)
     .map((event) => {
@@ -186,19 +198,24 @@ function detectCatalysts(result: AnalysisResult): CatalystInfo[] {
 
 function assessEventRisk(result: AnalysisResult): EventRiskLevel {
   const calendar = result.calendarData;
-  if (!calendar || calendar.freshness === "stale" || calendar.freshness === "unavailable" || calendar.confidence === "unavailable") {
-    return "UNKNOWN";
-  }
+  if (
+    !calendar ||
+    calendar.freshness === "stale" ||
+    calendar.freshness === "unavailable" ||
+    calendar.confidence === "unavailable" ||
+    !Array.isArray(calendar.events)
+  ) return "UNKNOWN";
   const now = result.timestamp;
   const in24h = now + 24 * 60 * 60 * 1000;
   const in72h = now + 72 * 60 * 60 * 1000;
-  const upcoming = calendar.events.filter((event) => event.status === "upcoming" && event.datetime > now);
+  const upcoming = upcomingCalendarEvents(result);
   const high24h = upcoming.filter((event) => event.importance === 3 && event.datetime <= in24h).length;
   const high72h = upcoming.filter((event) => event.importance === 3 && event.datetime <= in72h).length;
   const moderate24h = upcoming.filter((event) => event.importance === 2 && event.datetime <= in24h).length;
   if (high24h > 0) return "HIGH";
   if (high72h > 0) return "ELEVATED";
   if (moderate24h > 0) return "MODERATE";
+  if (calendar.confidence === "low") return "UNKNOWN";
   return "LOW";
 }
 
