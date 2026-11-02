@@ -22,7 +22,7 @@ jobs:
     # Playwright 1.55 has no browser/dependency image for ubuntu-latest after it moved to 26.04.
     # Pin the supported LTS runner so the real production smoke actually executes.
     runs-on: ubuntu-24.04
-    environment: development
+    environment: production
     timeout-minutes: 18
     env:
       # Keep runtime smoke on the same public hostname that the release job verifies.
