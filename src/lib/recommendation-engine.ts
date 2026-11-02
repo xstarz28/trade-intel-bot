@@ -58,6 +58,8 @@ export interface CandidateInput {
   hasLiveData: boolean;
   /** Actual timeframe of the OHLCV series used for this candidate. */
   marketTimeframe?: string;
+  /** Timestamp of the exact market observation used for currentPrice. */
+  marketObservedAt?: number;
   /** Crypto contract type for separate spot/derivative rankings. */
   marketType?: "spot" | "perpetual" | "futures";
   /** Decision from a same-instrument engine analysis. */
@@ -1118,9 +1120,16 @@ export function generateRecommendation(
       ? horizon === "SCALPING" ? "M5/M15 analysis" : horizon === "INTRADAY" ? "H1/H4 analysis" : "D1/W1 analysis"
       : horizon.includes("YEARS") ? "D1/W1 long-horizon thesis" : "D1/H4 analysis";
 
+    const expectedAnalysisType = c.assetClass === "equity"
+      ? "stock"
+      : c.assetClass === "macro"
+        ? "indices"
+        : c.assetClass;
     const matchingInvestorAnalysis = !isTradingMode &&
       c.analysisResult?.instrument === c.instrument &&
-      c.analysisResult.priceSnapshot?.price === c.currentPrice
+      c.analysisResult.instrumentType === expectedAnalysisType &&
+      c.analysisResult.priceSnapshot?.price === c.currentPrice &&
+      c.analysisResult.priceSnapshot?.timestamp === c.marketObservedAt
       ? c.analysisResult
       : undefined;
     const investorForecast = matchingInvestorAnalysis
