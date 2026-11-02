@@ -108,6 +108,79 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.investorForecastContext).toBeUndefined();
   });
 
+  it("counts verified crypto evidence embedded in a matching background analysis", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 210 }, (_, i) => {
+      const timestamp = now - (210 - i) * 60 * 60_000;
+      return { time: timestamp, timestamp, open: 100, high: 101, low: 99, close: 100, volume: 100 };
+    });
+    const higherTimeframeCandles = Array.from({ length: 80 }, (_, i) => {
+      const timestamp = now - (80 - i) * 24 * 60 * 60_000;
+      return { time: timestamp, timestamp, open: 100, high: 102, low: 98, close: 101, volume: 1000 };
+    });
+    const analysis = {
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H1",
+      bias: "Neutral",
+      confidence: 0,
+      recommendation: "NO_TRADE",
+      noTradeReasons: [],
+      tradingStyle: "intraday",
+      technicalSummary: "",
+      fundamentalSummary: "",
+      breakdown: { trend: 0, indicator: 0, fundamental: 0, sentiment: 0 },
+      keyLevels: { support: "N/A", resistance: "N/A", invalidation: "N/A" },
+      riskNote: "",
+      dataCompleteness: "partial",
+      dataFlags: [],
+      timestamp: now,
+      priceSnapshot: { price: 100, timestamp: now, source: "fixture" },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: now,
+        evidence: [{
+          source: "Tokenomist",
+          category: "TOKENOMICS",
+          direction: "SUPPORTING",
+          strength: "MEDIUM",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "TOKENOMICS_UNLOCKS",
+          explanation: "Verified tokenomics evidence.",
+          providerAvailable: true,
+        }],
+        overallAvailability: "MINIMAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Verified tokenomics evidence.",
+      },
+    } as unknown as AnalysisResult;
+
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "fixture" },
+        candles,
+        timeframe: "H1",
+        higherTimeframe: "D1",
+        higherTimeframeCandles,
+        dataFreshness: "realtime",
+      },
+      analysisResult: analysis,
+    }, now);
+
+    expect(candidate.dataCompleteness).toBe("PARTIAL");
+    expect(candidate.investorForecastContext).toBe(analysis);
+  });
+
   it("does not count stale crypto evidence as an independent completeness domain", () => {
     const now = Date.now();
     const candles = Array.from({ length: 80 }, (_, i) => {
