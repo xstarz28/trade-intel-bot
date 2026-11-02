@@ -163,32 +163,70 @@ const TIMEFRAME_RANK: Record<string, number> = {
   M1: 1, M5: 2, M15: 3, H1: 4, H4: 5, D1: 6, W1: 7,
 };
 
+const INVESTOR_HORIZON_DAYS: Record<InvestorForecastHorizon, number> = {
+  "1-4_WEEKS": 28,
+  "1-3_MONTHS": 90,
+  "3-6_MONTHS": 183,
+  "6-12_MONTHS": 365,
+  "1-3_YEARS": 1_095,
+  // 3+ years is an open-ended plan; 3 years is only its minimum boundary.
+  "3+_YEARS": 1_095,
+};
+
+const TIMEFRAME_DAYS: Record<string, number> = {
+  M1: 1 / 1_440,
+  M5: 5 / 1_440,
+  M15: 15 / 1_440,
+  H1: 1 / 24,
+  H4: 4 / 24,
+  D1: 1,
+  W1: 7,
+};
+
+function minimumInvestorStructureBars(
+  horizon: InvestorForecastHorizon,
+  timeframe: string,
+): number {
+  const barDays = TIMEFRAME_DAYS[timeframe];
+  if (!Number.isFinite(barDays) || barDays <= 0) return Number.POSITIVE_INFINITY;
+  // Twenty completed higher-timeframe bars remain the structural minimum;
+  // longer investment plans additionally require history spanning the plan.
+  return Math.max(20, Math.ceil(INVESTOR_HORIZON_DAYS[horizon] / barDays));
+}
+
 /**
- * Resolve the actual higher-timeframe external structure. Adaptive MTF is
- * authoritative when present; legacy HTF context is accepted only when it
- * is strictly above the analyzed timeframe. Primary-timeframe SMC is never
- * relabeled as long-term investment structure.
+ * Resolve the highest available higher-timeframe external structure that has
+ * enough completed history for the selected investment horizon. Adaptive MTF
+ * remains authoritative; a shorter configured HTF is skipped when a higher
+ * macro timeframe has adequate history. Primary-timeframe SMC is never reused.
  */
-function investorStructureContext(result: AnalysisResult): TimeframeStructureContext | undefined {
+function investorStructureContext(
+  result: AnalysisResult,
+  horizon: InvestorForecastHorizon,
+): TimeframeStructureContext | undefined {
   const technical = result.technicalData;
   const primaryRank = TIMEFRAME_RANK[result.timeframe] ?? 0;
 
   if (technical?.mtf) {
-    const htfTimeframe = technical.mtf.htfTimeframe;
-    if (!htfTimeframe || (TIMEFRAME_RANK[htfTimeframe] ?? 0) <= primaryRank) return undefined;
-    const slot = technical.mtf.timeframes.find((item) =>
-      item.timeframe === htfTimeframe &&
-      item.available &&
-      (item.role === "macro" || item.role === "structure"),
-    );
-    const external = slot?.smc?.internalExternal?.external;
-    if (
-      !external ||
-      external.timeframe !== htfTimeframe ||
-      !Number.isFinite(external.dataPoints) ||
-      external.dataPoints < 20
-    ) return undefined;
-    return external;
+    const candidates = technical.mtf.timeframes
+      .filter((item) =>
+        item.available &&
+        (item.role === "macro" || item.role === "structure") &&
+        (TIMEFRAME_RANK[item.timeframe] ?? 0) > primaryRank,
+      )
+      .flatMap((item) => {
+        const external = item.smc?.internalExternal?.external;
+        const requiredBars = minimumInvestorStructureBars(horizon, item.timeframe);
+        if (
+          !external ||
+          external.timeframe !== item.timeframe ||
+          !Number.isFinite(external.dataPoints) ||
+          external.dataPoints < requiredBars
+        ) return [];
+        return [{ external, rank: TIMEFRAME_RANK[item.timeframe] ?? 0 }];
+      })
+      .sort((a, b) => b.rank - a.rank);
+    return candidates[0]?.external;
   }
 
   const legacy = technical?.htfContext;
@@ -196,7 +234,7 @@ function investorStructureContext(result: AnalysisResult): TimeframeStructureCon
     !legacy ||
     (TIMEFRAME_RANK[legacy.timeframe] ?? 0) <= primaryRank ||
     !Number.isFinite(legacy.dataPoints) ||
-    legacy.dataPoints < 20
+    legacy.dataPoints < minimumInvestorStructureBars(horizon, legacy.timeframe)
   ) return undefined;
   return legacy;
 }
@@ -256,13 +294,23 @@ function investorHorizon(asOf: number, requested: InvestorForecastHorizon = "1-3
   };
 }
 
-function investorAccumulationZone(result: AnalysisResult, spot: number): InvestorAccumulationZone | undefined {
+function investorAccumulationZone(
+  result: AnalysisResult,
+  spot: number,
+  horizon: InvestorForecastHorizon,
+  structureTimeframe: string | undefined,
+): InvestorAccumulationZone | undefined {
   const primaryRank = TIMEFRAME_RANK[result.timeframe] ?? 0;
+  if (!structureTimeframe) return undefined;
+  const requiredBars = minimumInvestorStructureBars(horizon, structureTimeframe);
   const candidates = (result.technicalData?.mtf?.timeframes ?? [])
     .filter((item) =>
       item.available &&
+      item.timeframe === structureTimeframe &&
       (item.role === "macro" || item.role === "structure") &&
       (TIMEFRAME_RANK[item.timeframe] ?? 0) > primaryRank &&
+      Number.isFinite(item.smc?.internalExternal?.external?.dataPoints) &&
+      (item.smc?.internalExternal?.external?.dataPoints ?? 0) >= requiredBars &&
       item.smc,
     )
     .flatMap((item) => (item.smc?.orderBlocks ?? []).flatMap((block) => {
@@ -411,7 +459,7 @@ function investorForecast(
   const horizon = investorHorizon(snapshot?.timestamp ?? result.timestamp, requestedHorizon);
   const blocked = dataStatus(result);
   const fundamentalOutlook = buildInvestorFundamentalOutlook(result, blocked ? undefined : snapshot?.price);
-  const structure = investorStructureContext(result);
+  const structure = investorStructureContext(result, requestedHorizon);
   const direction: ForecastDirection = structure?.structure === "HH/HL"
     ? "bullish"
     : structure?.structure === "LH/LL"
@@ -457,10 +505,17 @@ function investorForecast(
   if (valuationObjective !== undefined) evidence.push("Directional objective uses a fresh, exact-instrument provider valuation reference; its source type remains explicit.");
   else if (structuralObjective !== undefined) evidence.push("Objective comes from the actual higher-timeframe external swing structure.");
   if (invalidation !== undefined) evidence.push("Downside/invalidation comes from the actual opposing higher-timeframe swing structure.");
-  if (direction === "neutral") limitations.push("Higher-timeframe structure is neutral or unavailable; no directional investment thesis is issued.");
+  if (direction === "neutral") limitations.push(
+    structure
+      ? "Higher-timeframe external structure is neutral; no directional investment thesis is issued."
+      : "No higher-timeframe external structure has enough completed history for the selected investment horizon; numeric investment levels are suppressed.",
+  );
   if (objective === undefined) limitations.push("No valid higher-timeframe swing objective beyond current price is available.");
+  if (invalidation === undefined) limitations.push("No directionally valid higher-timeframe invalidation is available; a complete investment reward/risk plan cannot be issued.");
   return {
-    status: direction !== "neutral" && objective !== undefined ? "CONDITIONAL" : "UNAVAILABLE",
+    status: direction !== "neutral" && objective !== undefined && invalidation !== undefined
+      ? "CONDITIONAL"
+      : "UNAVAILABLE",
     direction,
     horizon,
     alternateScenarios: alternate,
@@ -468,7 +523,9 @@ function investorForecast(
     accumulationReference: direction === "bullish" && downside !== undefined
       ? { price: downside, source: "higher-timeframe external swing low", meaning: "Observed support reference; not a guaranteed accumulation fill" }
       : undefined,
-    accumulationZone: direction === "bullish" ? investorAccumulationZone(result, snapshot.price) : undefined,
+    accumulationZone: direction === "bullish"
+      ? investorAccumulationZone(result, snapshot.price, requestedHorizon, structure?.timeframe)
+      : undefined,
     objective: objective === undefined ? undefined : {
       price: objective,
       source: valuationObjective !== undefined ? fundamentalOutlook.valuationReference!.kind : "higher-timeframe external swing",

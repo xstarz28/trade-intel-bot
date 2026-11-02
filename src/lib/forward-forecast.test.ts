@@ -77,9 +77,9 @@ describe("Phase 46 — forward forecast contract", () => {
 
   it("uses higher-timeframe swing levels for investor scenarios only", () => {
     const forecast = buildForwardForecast(baseResult({
-      htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
       technicalData: {
-        htfContext: { timeframe: "D1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 112_000, lastSwingLow: 94_000, dataPoints: 80 },
+        htfContext: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 112_000, lastSwingLow: 94_000, dataPoints: 160 },
       } as AnalysisResult["technicalData"],
     }));
     expect(forecast.investor.status).toBe("CONDITIONAL");
@@ -170,9 +170,9 @@ describe("Phase 46 — forward forecast contract", () => {
       instrumentType: "stock",
       timestamp,
       priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
-      htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
       technicalData: {
-        htfContext: { timeframe: "D1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 115, lastSwingLow: 90, dataPoints: 80 },
+        htfContext: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 115, lastSwingLow: 90, dataPoints: 160 },
       } as AnalysisResult["technicalData"],
       universalIntelligenceContext: {
         instrument: "AAPL",
@@ -569,7 +569,7 @@ describe("Phase 46 — forward forecast contract", () => {
       timeframe: "H4",
       htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
       technicalData: {
-        htfContext: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 120_000, lastSwingLow: 90_000, dataPoints: 100 },
+        htfContext: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 120_000, lastSwingLow: 90_000, dataPoints: 160 },
       } as AnalysisResult["technicalData"],
       timestamp,
       priceSnapshot: { price: 100_000, timestamp: timestamp - 1_000, source: "test-provider" },
@@ -586,7 +586,7 @@ describe("Phase 46 — forward forecast contract", () => {
       priceSnapshot: { price: 100_000, timestamp: timestamp - 1_000, source: "test-provider" },
       htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
       technicalData: {
-        htfContext: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 120_000, lastSwingLow: 90_000, dataPoints: 100 },
+        htfContext: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 120_000, lastSwingLow: 90_000, dataPoints: 160 },
         mtf: {
           requestedTimeframe: "H4",
           chainUsed: ["W1", "H4"],
@@ -603,8 +603,8 @@ describe("Phase 46 — forward forecast contract", () => {
               timeframe: "W1",
               liquidityPools: [],
               internalExternal: {
-                external: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 100 },
-                internal: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 100 },
+                external: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 160 },
+                internal: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 160 },
                 internalConflict: false,
               },
               fvgs: [],
@@ -643,9 +643,9 @@ describe("Phase 46 — forward forecast contract", () => {
       bias: "Bearish",
       timestamp,
       priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
-      htfAlignment: { htfTimeframe: "D1", htfStructure: "LH/LL", state: "aligned" },
+      htfAlignment: { htfTimeframe: "W1", htfStructure: "LH/LL", state: "aligned" },
       technicalData: {
-        htfContext: { timeframe: "D1", structure: "LH/LL", bosDirection: "bearish", chochDirection: "none", lastSwingHigh: 110, lastSwingLow: 80, dataPoints: 100 },
+        htfContext: { timeframe: "W1", structure: "LH/LL", bosDirection: "bearish", chochDirection: "none", lastSwingHigh: 110, lastSwingLow: 80, dataPoints: 160 },
       } as AnalysisResult["technicalData"],
     }));
     expect(forecast.investor.direction).toBe("bearish");
@@ -729,14 +729,14 @@ describe("Phase 46 — forward forecast contract", () => {
                   chochDirection: "none",
                   lastSwingHigh: 125_000,
                   lastSwingLow: 88_000,
-                  dataPoints: 100,
+                  dataPoints: 160,
                 },
                 internal: {
                   timeframe: "W1",
                   structure: "HH/HL",
                   bosDirection: "bullish",
                   chochDirection: "none",
-                  dataPoints: 100,
+                  dataPoints: 160,
                 },
               },
             } as any,
@@ -747,6 +747,113 @@ describe("Phase 46 — forward forecast contract", () => {
 
     expect(forecast.investor.direction).toBe("bullish");
     expect(forecast.investor.objective?.price).toBe(125_000);
+  });
+
+  it("requires history proportional to the selected investment horizon", () => {
+    const resultFor = (dataPoints: number) => baseResult({
+      technicalData: {
+        htfContext: {
+          timeframe: "W1",
+          structure: "HH/HL",
+          bosDirection: "bullish",
+          chochDirection: "none",
+          lastSwingHigh: 112_000,
+          lastSwingLow: 94_000,
+          dataPoints,
+        },
+      } as AnalysisResult["technicalData"],
+    });
+
+    const shortHorizon = buildForwardForecast(resultFor(20), { investorHorizon: "1-4_WEEKS" });
+    expect(shortHorizon.investor.status).toBe("CONDITIONAL");
+
+    const longHorizonInsufficient = buildForwardForecast(resultFor(156), { investorHorizon: "1-3_YEARS" });
+    expect(longHorizonInsufficient.investor.status).toBe("UNAVAILABLE");
+    expect(longHorizonInsufficient.investor.objective).toBeUndefined();
+    expect(longHorizonInsufficient.investor.limitations.join(" ")).toContain("enough completed history");
+
+    const longHorizonSufficient = buildForwardForecast(resultFor(157), { investorHorizon: "1-3_YEARS" });
+    expect(longHorizonSufficient.investor.status).toBe("CONDITIONAL");
+
+    const openEndedInsufficient = buildForwardForecast(resultFor(156), { investorHorizon: "3+_YEARS" });
+    expect(openEndedInsufficient.investor.status).toBe("UNAVAILABLE");
+    const openEndedMinimumBoundary = buildForwardForecast(resultFor(157), { investorHorizon: "3+_YEARS" });
+    expect(openEndedMinimumBoundary.investor.status).toBe("CONDITIONAL");
+  });
+
+  it("selects the highest available macro timeframe that satisfies the investment horizon", () => {
+    const forecast = buildForwardForecast(baseResult({
+      timeframe: "H4",
+      technicalData: {
+        mtf: {
+          htfTimeframe: "D1",
+          timeframes: [
+            {
+              timeframe: "D1",
+              role: "structure",
+              available: true,
+              smc: {
+                internalExternal: {
+                  external: {
+                    timeframe: "D1",
+                    structure: "HH/HL",
+                    bosDirection: "bullish",
+                    chochDirection: "none",
+                    lastSwingHigh: 112_000,
+                    lastSwingLow: 94_000,
+                    dataPoints: 300,
+                  },
+                },
+              },
+            },
+            {
+              timeframe: "W1",
+              role: "macro",
+              available: true,
+              smc: {
+                internalExternal: {
+                  external: {
+                    timeframe: "W1",
+                    structure: "HH/HL",
+                    bosDirection: "bullish",
+                    chochDirection: "none",
+                    lastSwingHigh: 125_000,
+                    lastSwingLow: 88_000,
+                    dataPoints: 160,
+                  },
+                },
+              },
+            },
+          ],
+        },
+      } as unknown as AnalysisResult["technicalData"],
+    }));
+
+    expect(forecast.investor.status).toBe("CONDITIONAL");
+    expect(forecast.investor.objective?.price).toBe(125_000);
+  });
+
+  it("does not label an investment thesis conditional without a valid invalidation", () => {
+    const forecast = buildForwardForecast(baseResult({
+      technicalData: {
+        htfContext: {
+          timeframe: "W1",
+          structure: "HH/HL",
+          bosDirection: "bullish",
+          chochDirection: "none",
+          lastSwingHigh: 112_000,
+          lastSwingLow: 101_000,
+          dataPoints: 160,
+        },
+      } as AnalysisResult["technicalData"],
+    }));
+
+    expect(forecast.investor.direction).toBe("bullish");
+    expect(forecast.investor.objective?.price).toBe(112_000);
+    expect(forecast.investor.invalidation).toBeUndefined();
+    expect(forecast.investor.status).toBe("UNAVAILABLE");
+    expect(forecast.investor.potentialUpsideDownsideRatio).toBeUndefined();
+    expect(forecast.investor.limitations.join(" ")).toContain("complete investment reward/risk plan");
   });
 
   it("does not relabel primary-timeframe SMC as higher-timeframe investment structure", () => {

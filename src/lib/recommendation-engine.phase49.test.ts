@@ -426,14 +426,14 @@ describe("F — Investor Horizon Ranking", () => {
       dataCompleteness: "full",
       timestamp,
       priceSnapshot: { price: 65000, timestamp: timestamp - 1000, source: "test" },
-      htfAlignment: { htfTimeframe: "D1", htfStructure: "HH/HL", state: "aligned" },
+      htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
       technicalData: {
         htfContext: {
-          timeframe: "D1",
+          timeframe: "W1",
           structure: "HH/HL",
           lastSwingHigh: 72000,
           lastSwingLow: 61000,
-          dataPoints: 80,
+          dataPoints: 160,
         },
       },
     } as unknown as AnalysisResult;
