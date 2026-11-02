@@ -244,7 +244,7 @@ export function buildFundamentalThesis(result: AnalysisResult): FundamentalThesi
   const techDir = dirBias(result);
   const investorOutlook = buildInvestorFundamentalOutlook(
     result,
-    result.priceSnapshot?.price ?? result.marketData?.price?.price ?? 0,
+    result.priceSnapshot?.price ?? 0,
   );
   const investorEvidence = investorOutlook.evidence;
   const fundamentalEvidence = evaluateFundamentals(investorEvidence);
