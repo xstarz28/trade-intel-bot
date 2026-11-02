@@ -562,6 +562,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     marketRegime: extractMarketRegime(tech),
     mtfAlignment: tech?.mtf?.alignment ?? extractMtfAlignment(tech, ar),
     marketTimeframe: normalizeCandidateTimeframe(source.marketData?.timeframe ?? ar?.timeframe),
+    marketObservedAt: observationTimestamp,
     marketType: source.assetClass === "crypto"
       ? deriveCryptoMarketType(source.instrument, source.providerNative?.providerInstrumentId)
       : undefined,
