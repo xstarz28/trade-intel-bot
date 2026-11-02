@@ -144,8 +144,14 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
   // independent confirmations. Wrapper objects do not count as data.
   const domains = new Set<string>();
   const ar = source.analysisResult?.instrument === source.instrument ? source.analysisResult : undefined;
-  const universal = source.universalIntelligence?.instrument === source.instrument
-    ? source.universalIntelligence
+  const universalCandidate = source.universalIntelligence ?? ar?.universalIntelligenceContext;
+  const universal = universalCandidate?.instrument === source.instrument &&
+    universalCandidate.assetClass === source.assetClass
+    ? universalCandidate
+    : undefined;
+  const cryptoCandidate = source.cryptoIntelligenceContext ?? ar?.cryptoIntelligenceContext;
+  const crypto = cryptoCandidate?.instrument === source.instrument && cryptoCandidate.instrumentType === "crypto"
+    ? cryptoCandidate
     : undefined;
   if (ar?.fundamentalData?.available === true || universal?.equity?.fundamentals?.available === true) domains.add("fundamentals");
   if (ar?.sentimentData && ar.sentimentData.confidence !== "unavailable" && (ar.sentimentData.articleCount ?? 0) > 0) domains.add("sentiment");
@@ -154,7 +160,7 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
       source.derivativesData?.freshness !== "unavailable") domains.add("derivatives");
   if (source.calendarData?.events?.some((event) => event.status === "upcoming" || event.status === "released")) domains.add("calendar");
   if (source.treasuryData?.available || source.cotData?.available || source.eiaData?.available) domains.add("macro-positioning");
-  if (source.cryptoIntelligenceContext?.instrument === source.instrument && source.cryptoIntelligenceContext.evidence.some((item) =>
+  if (crypto?.evidence.some((item) =>
     item.providerAvailable && item.quality === "VERIFIED" && (item.freshness === "FRESH" || item.freshness === "DELAYED")
   )) domains.add("crypto-intelligence");
   if (universal?.forex?.rates?.available || universal?.forex?.yields?.available) domains.add("rates");
