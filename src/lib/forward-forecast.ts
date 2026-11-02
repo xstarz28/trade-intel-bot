@@ -14,11 +14,22 @@ import { buildInvestorFundamentalOutlook, type InvestorFundamentalOutlook, type 
 export type ForecastDirection = "bullish" | "bearish" | "neutral";
 export type ForecastStatus = "CONDITIONAL" | "UNAVAILABLE" | "BLOCKED_DATA_QUALITY";
 
+/** Explicit investor planning horizon; independent of the chart timeframe. */
+export type InvestorForecastHorizon =
+  | "1-4_WEEKS"
+  | "1-3_MONTHS"
+  | "3-6_MONTHS"
+  | "6-12_MONTHS"
+  | "1-3_YEARS"
+  | "3+_YEARS";
+
 export interface ForecastHorizon {
   label: string;
   startsAt: number;
   endsAt: number;
   basis: string;
+  /** MINIMUM marks an open-ended horizon such as 3+ years. */
+  endBoundary?: "UPPER" | "MINIMUM";
 }
 
 export interface ForecastLevel {
@@ -151,25 +162,57 @@ const TIMEFRAME_RANK: Record<string, number> = {
   M1: 1, M5: 2, M15: 3, H1: 4, H4: 5, D1: 6, W1: 7,
 };
 
-function investorHorizon(result: AnalysisResult, asOf: number): ForecastHorizon {
-  const htfTimeframe = result.technicalData?.htfContext?.timeframe ??
-    result.technicalData?.mtf?.timeframes
-      ?.filter((item) => item.available && (item.role === "macro" || item.role === "structure"))
-      .sort((a, b) => (TIMEFRAME_RANK[b.timeframe] ?? 0) - (TIMEFRAME_RANK[a.timeframe] ?? 0))[0]?.timeframe ??
-    result.timeframe;
-  const rank = TIMEFRAME_RANK[htfTimeframe] ?? TIMEFRAME_RANK[result.timeframe] ?? 4;
-  const horizon = rank >= TIMEFRAME_RANK.W1
-    ? { label: "1–3 years · weekly structural thesis", duration: 2 * 365 * DAY_MS, basis: "Two-year planning point inside the 1–3 year weekly-structure research band; not a calibrated price forecast." }
-    : rank >= TIMEFRAME_RANK.D1
-      ? { label: "6–12 months · daily structural thesis", duration: 365 * DAY_MS, basis: "One-year planning point inside the 6–12 month higher-timeframe research band; not a calibrated price forecast." }
-      : rank >= TIMEFRAME_RANK.H4
-        ? { label: "3–6 months · higher-timeframe thesis", duration: 180 * DAY_MS, basis: "Six-month planning point inside the 3–6 month higher-timeframe research band; not a calibrated price forecast." }
-        : { label: "1–3 months · structural thesis", duration: 90 * DAY_MS, basis: "Three-month planning point inside the 1–3 month structural research band; not a calibrated price forecast." };
+function investorHorizon(asOf: number, requested: InvestorForecastHorizon = "1-3_YEARS"): ForecastHorizon {
+  const windows: Record<InvestorForecastHorizon, {
+    label: string;
+    duration: number;
+    endBoundary: "UPPER" | "MINIMUM";
+    basis: string;
+  }> = {
+    "1-4_WEEKS": {
+      label: "1–4 weeks · short-term investment thesis",
+      duration: 28 * DAY_MS,
+      endBoundary: "UPPER",
+      basis: "Four-week upper boundary of the selected 1–4 week planning window; not a calibrated time-to-target estimate.",
+    },
+    "1-3_MONTHS": {
+      label: "1–3 months · tactical investment thesis",
+      duration: 90 * DAY_MS,
+      endBoundary: "UPPER",
+      basis: "Approximate three-month upper boundary of the selected 1–3 month planning window; not a calibrated time-to-target estimate.",
+    },
+    "3-6_MONTHS": {
+      label: "3–6 months · medium-term investment thesis",
+      duration: 183 * DAY_MS,
+      endBoundary: "UPPER",
+      basis: "Approximate six-month upper boundary of the selected 3–6 month planning window; not a calibrated time-to-target estimate.",
+    },
+    "6-12_MONTHS": {
+      label: "6–12 months · annual investment thesis",
+      duration: 365 * DAY_MS,
+      endBoundary: "UPPER",
+      basis: "One-year upper boundary of the selected 6–12 month planning window; not a calibrated time-to-target estimate.",
+    },
+    "1-3_YEARS": {
+      label: "1–3 years · long-term investment thesis",
+      duration: 3 * 365 * DAY_MS,
+      endBoundary: "UPPER",
+      basis: "Three-year upper boundary of the selected 1–3 year planning window; not a calibrated price forecast.",
+    },
+    "3+_YEARS": {
+      label: "3+ years · strategic investment thesis",
+      duration: 3 * 365 * DAY_MS,
+      endBoundary: "MINIMUM",
+      basis: "Three-year minimum boundary of an open-ended 3+ year planning horizon; the thesis has no fixed upper date and is not a calibrated price forecast.",
+    },
+  };
+  const window = windows[requested];
   return {
-    label: horizon.label,
+    label: window.label,
     startsAt: asOf,
-    endsAt: asOf + horizon.duration,
-    basis: horizon.basis,
+    endsAt: asOf + window.duration,
+    endBoundary: window.endBoundary,
+    basis: window.basis,
   };
 }
 
@@ -320,8 +363,12 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
   };
 }
 
-function investorForecast(result: AnalysisResult, snapshot: { price: number; timestamp: number } | undefined): InvestorForwardForecast {
-  const horizon = investorHorizon(result, snapshot?.timestamp ?? result.timestamp);
+function investorForecast(
+  result: AnalysisResult,
+  snapshot: { price: number; timestamp: number } | undefined,
+  requestedHorizon: InvestorForecastHorizon = "1-3_YEARS",
+): InvestorForwardForecast {
+  const horizon = investorHorizon(snapshot?.timestamp ?? result.timestamp, requestedHorizon);
   const blocked = dataStatus(result);
   const fundamentalOutlook = buildInvestorFundamentalOutlook(result, blocked ? undefined : snapshot?.price);
   const structure = result.technicalData?.htfContext ?? result.technicalData?.smc?.internalExternal?.external;
@@ -401,11 +448,14 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
   };
 }
 
-export function buildForwardForecast(result: AnalysisResult): ForwardForecastContext {
+export function buildForwardForecast(
+  result: AnalysisResult,
+  options: { investorHorizon?: InvestorForecastHorizon } = {},
+): ForwardForecastContext {
   const snapshot = marketSnapshot(result);
   return {
     generatedAt: result.timestamp,
     trader: traderForecast(result, snapshot),
-    investor: investorForecast(result, snapshot),
+    investor: investorForecast(result, snapshot, options.investorHorizon),
   };
 }
