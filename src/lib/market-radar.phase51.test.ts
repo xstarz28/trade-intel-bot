@@ -404,6 +404,49 @@ describe("Radar investment price projections", () => {
     expect(investing).not.toHaveProperty("conditionalScenarios");
   });
 
+  it("blocks a directional investment plan when MTF bias conflicts with external structure", () => {
+    const technical = {
+      structure: "HH/HL",
+      htfContext: {
+        timeframe: "W1",
+        structure: "HH/HL",
+        lastSwingHigh: 120,
+        lastSwingLow: 90,
+        dataPoints: 80,
+      },
+      mtf: {
+        requestedTimeframe: "D1",
+        chainUsed: ["W1", "D1"],
+        unavailable: [],
+        alignment: "MIXED",
+        htfBias: "short",
+        htfTimeframe: "W1",
+        setupTimeframe: "D1",
+        timeframes: [],
+      },
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 100, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "realtime",
+      },
+    };
+    const projection = toRadarCandidateSource(liveSource).investmentProjection;
+    expect(projection?.status).toBe("UNAVAILABLE");
+    expect(projection?.direction).toBe("neutral");
+    expect(projection?.objective).toBeUndefined();
+    expect(projection?.invalidation).toBeUndefined();
+  });
+
   it("suppresses investment price levels when the exact market snapshot is stale", () => {
     const technical = {
       structure: "HH/HL",
