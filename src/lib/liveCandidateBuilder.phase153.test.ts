@@ -637,7 +637,9 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       analysisResult: {
         instrument: "EUR/USD",
         instrumentType: "forex",
+        timeframe: "H1",
         timestamp: now,
+        priceSnapshot: { price: 1.1, timestamp: now, source: "fixture" },
         confidence: 75,
         bias: "Bullish",
         recommendation: "BUY",
