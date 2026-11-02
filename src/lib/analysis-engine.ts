@@ -3132,6 +3132,7 @@ export function runAnalysis(
           riskPercent: input.riskPercent ?? NaN,
           entry: parseFloat(decision.tradePlan.entry),
           stopLoss: parseFloat(decision.tradePlan.stopLoss),
+          direction: decision.tradePlan.direction,
           spec: resolvedSpec.status === "unavailable" ? undefined : resolvedSpec.spec,
           accountCurrency: input.accountCurrency,
           fxDirect: input.fxRates?.direct,

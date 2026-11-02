@@ -372,6 +372,59 @@ describe("computePositionSizing — quantity rounding integrity", () => {
   });
 });
 
+describe("computePositionSizing — direction-aware stop geometry", () => {
+  it("rejects a long stop at or above entry", () => {
+    const result = computePositionSizing({
+      equity: 100000,
+      riskPercent: 0.01,
+      entry: 100,
+      stopLoss: 101,
+      direction: "long",
+      spec: fullSpec,
+      now: NOW,
+    });
+    expect(result.available).toBe(false);
+    expect(result.unavailableReason).toContain("long position stop loss must be below entry");
+  });
+
+  it("rejects a short stop at or below entry", () => {
+    const result = computePositionSizing({
+      equity: 100000,
+      riskPercent: 0.01,
+      entry: 100,
+      stopLoss: 99,
+      direction: "short",
+      spec: fullSpec,
+      now: NOW,
+    });
+    expect(result.available).toBe(false);
+    expect(result.unavailableReason).toContain("short position stop loss must be above entry");
+  });
+
+  it("keeps valid long and short stop geometry sizeable", () => {
+    const long = computePositionSizing({
+      equity: 100000,
+      riskPercent: 0.01,
+      entry: 100,
+      stopLoss: 99,
+      direction: "long",
+      spec: fullSpec,
+      now: NOW,
+    });
+    const short = computePositionSizing({
+      equity: 100000,
+      riskPercent: 0.01,
+      entry: 100,
+      stopLoss: 101,
+      direction: "short",
+      spec: fullSpec,
+      now: NOW,
+    });
+    expect(long.available).toBe(true);
+    expect(short.available).toBe(true);
+  });
+});
+
 describe("computePositionSizing — malformed numeric input guards", () => {
   it("rejects non-finite or non-positive entry and stop prices", () => {
     expect(computePositionSizing({
