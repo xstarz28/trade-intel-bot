@@ -11,7 +11,7 @@
  */
 
 import type { AnalysisResult } from "@/types/analysis";
-import type { EvidenceItem } from "@/lib/analyst-thesis";
+import { buildInvestorFundamentalOutlook } from "@/lib/investor-fundamental-outlook";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -20,6 +20,7 @@ export type FundamentalAlignment =
   | "ALIGNED"
   | "MIXED"
   | "CONFLICTING"
+  | "NEUTRAL"
   | "FUNDAMENTAL_UNAVAILABLE"
   | "TECHNICAL_UNAVAILABLE";
 
@@ -72,150 +73,132 @@ function dirBias(result: AnalysisResult): "bullish" | "bearish" | "neutral" {
   return "neutral";
 }
 
-function evaluateFundamentals(result: AnalysisResult, techDir: "bullish" | "bearish" | "neutral"): FundamentalEvidence[] {
-  const evidence: FundamentalEvidence[] = [];
+type InvestorEvidence = ReturnType<typeof buildInvestorFundamentalOutlook>["evidence"][number];
 
-  // Treasury context
-  if (result.treasuryContext?.available) {
-    const freshness = result.treasuryContext.freshness;
-    const quality = freshness === "FRESH" ? "verified" : freshness === "STALE" ? "stale" : undefined;
-    evidence.push({
-      source: "US Treasury yields",
-      direction: "neutral", // Treasury alone is not directional per engine invariant
-      explanation: "Treasury yield context available — informational only",
-      quality,
-    });
-  } else {
-    evidence.push({ source: "US Treasury yields", direction: "unavailable", explanation: "Treasury data not available" });
-  }
-
-  // COT context
-  if (result.cotContext?.available) {
-    const freshness = result.cotContext.freshness;
-    const quality = freshness === "FRESH" ? "verified" : freshness === "STALE" ? "stale" : undefined;
-    evidence.push({
-      source: "CFTC COT positioning",
-      direction: "neutral", // COT alone does not determine direction
-      explanation: "Commitment of Traders positioning available — contextual",
-      quality,
-    });
-  } else {
-    evidence.push({ source: "CFTC COT positioning", direction: "unavailable", explanation: "COT data not available for this instrument" });
-  }
-
-  // EIA context
-  if (result.eiaContext?.available) {
-    const freshness = result.eiaContext.freshness;
-    const quality = freshness === "FRESH" ? "verified" : freshness === "STALE" ? "stale" : undefined;
-    evidence.push({
-      source: "EIA inventory",
-      direction: "neutral",
-      explanation: "Energy inventory data available — contextual for commodities",
-      quality,
-    });
-  }
-
-  // Fundamental data
-  if (result.fundamentalData) {
-    evidence.push({
-      source: "Fundamental intelligence",
-      direction: "neutral",
-      explanation: "Fundamental data available",
-      quality: "verified",
-    });
-  }
-
-  return evidence;
+function mapInvestorEvidence(item: InvestorEvidence): FundamentalEvidence {
+  const direction: FundamentalDirection = item.direction === "SUPPORTING"
+    ? "supportive"
+    : item.direction === "CONFLICTING"
+      ? "conflicting"
+      : item.direction === "NEUTRAL"
+        ? "neutral"
+        : "unavailable";
+  const quality: FundamentalEvidence["quality"] =
+    item.quality === "VERIFIED" && item.freshness === "FRESH"
+      ? "verified"
+      : item.quality === "VERIFIED" || item.quality === "DEGRADED"
+        ? "degraded"
+        : item.freshness === "STALE"
+          ? "stale"
+          : "unavailable";
+  return {
+    source: item.source,
+    direction,
+    explanation: item.explanation,
+    quality,
+  };
 }
 
-function evaluateMacro(result: AnalysisResult, _techDir: "bullish" | "bearish" | "neutral"): FundamentalEvidence[] {
-  const evidence: FundamentalEvidence[] = [];
+function evidenceBucket(category: string): "fundamental" | "macro" | "positioning" {
+  const key = category.toUpperCase();
+  if (/(POSITION|COT|DERIVATIVE|FUNDING|OPEN_INTEREST|LONG_SHORT)/.test(key)) return "positioning";
+  if (/(MACRO|TREASURY|RATES|CARRY|MONETARY|CROSS_ASSET|RISK_REGIME|SENTIMENT)/.test(key)) return "macro";
+  return "fundamental";
+}
 
-  if (result.macroData) {
-    evidence.push({
+function unavailableEvidence(source: string, explanation: string): FundamentalEvidence {
+  return { source, direction: "unavailable", explanation, quality: "unavailable" };
+}
+
+function evaluateFundamentals(evidence: InvestorEvidence[]): FundamentalEvidence[] {
+  const mapped = evidence
+    .filter((item) => evidenceBucket(item.category) === "fundamental")
+    .map(mapInvestorEvidence);
+  return mapped.length > 0
+    ? mapped
+    : [unavailableEvidence("Asset-class fundamentals", "No fresh, verified asset-specific fundamental evidence is available.")];
+}
+
+function evaluateMacro(
+  result: AnalysisResult,
+  evidence: InvestorEvidence[],
+): FundamentalEvidence[] {
+  const mapped = evidence
+    .filter((item) => evidenceBucket(item.category) === "macro")
+    .map(mapInvestorEvidence);
+  if (mapped.length > 0) return mapped;
+
+  const fallback: FundamentalEvidence[] = [];
+  if (result.macroData && (result.macroData as { confidence?: string }).confidence !== "unavailable") {
+    fallback.push({
       source: "Macro intelligence",
       direction: "neutral",
-      explanation: "Macro context available — informational",
-      quality: "verified",
+      explanation: "Macro context is available but does not independently establish a directional thesis.",
+      quality: "degraded",
     });
   }
-
   if (result.sentimentData) {
-    evidence.push({
+    fallback.push({
       source: "Sentiment intelligence",
       direction: "neutral",
-      explanation: "Sentiment data available — informational",
-      quality: "verified",
+      explanation: "Sentiment is contextual evidence, not a standalone fundamental direction.",
+      quality: "degraded",
     });
   }
-
-  if (result.derivativesData) {
-    evidence.push({
-      source: "Derivatives context",
-      direction: "neutral",
-      explanation: "Derivatives data available — contextual",
-      quality: "verified",
-    });
-  }
-
-  if (result.calendarData) {
-    evidence.push({
-      source: "Economic calendar",
-      direction: "neutral",
-      explanation: "Calendar events available — informational",
-      quality: "verified",
-    });
-  }
-
-  if (evidence.length === 0) {
-    evidence.push({ source: "Macro/cross-asset", direction: "unavailable", explanation: "No macro data available" });
-  }
-
-  return evidence;
+  return fallback.length > 0
+    ? fallback
+    : [unavailableEvidence("Macro/cross-asset", "No fresh macro or cross-asset evidence is available.")];
 }
 
-function evaluatePositioning(result: AnalysisResult): FundamentalEvidence[] {
-  const evidence: FundamentalEvidence[] = [];
-
-  if (result.executionContext?.available) {
-    evidence.push({
-      source: "OKX order book",
-      direction: "neutral",
-      explanation: "Order-book data available — execution context",
-      quality: result.executionContext.freshness === "FRESH" ? "verified" : "stale",
-    });
-  } else {
-    evidence.push({ source: "Order book", direction: "unavailable", explanation: "Order-book data unavailable" });
-  }
-
-  return evidence;
+function evaluatePositioning(evidence: InvestorEvidence[]): FundamentalEvidence[] {
+  const mapped = evidence
+    .filter((item) => evidenceBucket(item.category) === "positioning")
+    .map(mapInvestorEvidence);
+  return mapped.length > 0
+    ? mapped
+    : [unavailableEvidence("COT/derivatives positioning", "No fresh, instrument-relevant positioning evidence is available.")];
 }
 
 function detectCatalysts(result: AnalysisResult): CatalystInfo[] {
-  const catalysts: CatalystInfo[] = [];
-
-  if (result.calendarData) {
-    // Calendar data exists — represent as contextual catalyst
-    catalysts.push({
-      description: "Economic calendar events available",
-      relevance: "moderate",
-      direction: "unknown",
-      volatilityImpact: "moderate",
+  const calendar = result.calendarData;
+  if (!calendar || calendar.freshness === "stale" || calendar.freshness === "unavailable") return [];
+  const now = result.timestamp;
+  const windowEnd = now + 72 * 60 * 60 * 1000;
+  return calendar.events
+    .filter((event) =>
+      event.status === "upcoming" &&
+      event.datetime > now &&
+      event.datetime <= windowEnd,
+    )
+    .sort((a, b) => a.datetime - b.datetime)
+    .slice(0, 3)
+    .map((event) => {
+      const hoursUntil = Math.max(0, Math.round((event.datetime - now) / (60 * 60 * 1000)));
+      const impact = event.importance === 3 ? "high" : event.importance === 2 ? "moderate" : "low";
+      return {
+        description: event.event + " (" + event.currency + ") in " + hoursUntil + "h — " + event.category,
+        relevance: impact,
+        direction: "unknown" as const,
+        volatilityImpact: impact,
+      };
     });
-  }
-
-  return catalysts;
 }
 
-function assessEventRisk(catalysts: CatalystInfo[], result: AnalysisResult): EventRiskLevel {
-  if (catalysts.length === 0) return "UNKNOWN";
-
-  const hasHighImpact = catalysts.some((c) => c.volatilityImpact === "high");
-  if (hasHighImpact) return "HIGH";
-
-  const hasModerateImpact = catalysts.some((c) => c.volatilityImpact === "moderate");
-  if (hasModerateImpact) return "MODERATE";
-
+function assessEventRisk(result: AnalysisResult): EventRiskLevel {
+  const calendar = result.calendarData;
+  if (!calendar || calendar.freshness === "stale" || calendar.freshness === "unavailable" || calendar.confidence === "unavailable") {
+    return "UNKNOWN";
+  }
+  const now = result.timestamp;
+  const in24h = now + 24 * 60 * 60 * 1000;
+  const in72h = now + 72 * 60 * 60 * 1000;
+  const upcoming = calendar.events.filter((event) => event.status === "upcoming" && event.datetime > now);
+  const high24h = upcoming.filter((event) => event.importance === 3 && event.datetime <= in24h).length;
+  const high72h = upcoming.filter((event) => event.importance === 3 && event.datetime <= in72h).length;
+  const moderate24h = upcoming.filter((event) => event.importance === 2 && event.datetime <= in24h).length;
+  if (high24h > 0) return "HIGH";
+  if (high72h > 0) return "ELEVATED";
+  if (moderate24h > 0) return "MODERATE";
   return "LOW";
 }
 
@@ -229,75 +212,68 @@ function computeAlignment(
   }
 
   const allEvidence = [...fundamentalEvidence, ...macroEvidence];
-  const unavailable = allEvidence.filter((e) => e.direction === "unavailable");
-  const available = allEvidence.filter((e) => e.direction !== "unavailable");
-
-  if (unavailable.length === allEvidence.length) {
-    return { alignment: "FUNDAMENTAL_UNAVAILABLE", reason: "All fundamental/macro providers unavailable" };
-  }
-
+  const available = allEvidence.filter((e) =>
+    e.direction !== "unavailable" && e.quality !== "stale" && e.quality !== "unavailable",
+  );
   if (available.length === 0) {
-    return { alignment: "FUNDAMENTAL_UNAVAILABLE", reason: "No fundamental/macro data available" };
+    return { alignment: "FUNDAMENTAL_UNAVAILABLE", reason: "No fresh, usable fundamental or macro evidence is available" };
   }
 
-  // All available evidence is neutral (by design — fundamentals don't create directional evidence)
-  // Alignment is therefore determined by whether technical direction has support
   const neutral = available.filter((e) => e.direction === "neutral");
   const supportive = available.filter((e) => e.direction === "supportive");
   const conflicting = available.filter((e) => e.direction === "conflicting");
 
   if (conflicting.length > 0 && supportive.length === 0) {
-    return { alignment: "CONFLICTING", reason: "Fundamental evidence conflicts with technical thesis" };
+    return { alignment: "CONFLICTING", reason: "Verified fundamental evidence conflicts with the technical thesis" };
   }
   if (conflicting.length > 0 && supportive.length > 0) {
-    return { alignment: "MIXED", reason: "Mixed fundamental signals — some supportive, some conflicting" };
+    return { alignment: "MIXED", reason: "Mixed fundamental evidence — supportive and conflicting sources are both present" };
   }
   if (supportive.length > 0 && neutral.length === 0) {
-    return { alignment: "STRONGLY_ALIGNED", reason: "Fundamental evidence supports technical thesis" };
+    return { alignment: "STRONGLY_ALIGNED", reason: "Fresh fundamental evidence supports the technical thesis" };
   }
   if (supportive.length > 0) {
-    return { alignment: "ALIGNED", reason: "Fundamentals available with partial technical alignment" };
+    return { alignment: "ALIGNED", reason: "Fundamental evidence supports the thesis alongside neutral context" };
   }
-
-  return { alignment: "FUNDAMENTAL_UNAVAILABLE", reason: "Fundamentals available but neutral — no directional confirmation" };
+  return { alignment: "NEUTRAL", reason: "Fundamental context is available but directionally neutral; it neither confirms nor opposes the technical thesis" };
 }
 
 // ── Main builder ─────────────────────────────────────────────────
 
 export function buildFundamentalThesis(result: AnalysisResult): FundamentalThesis {
   const techDir = dirBias(result);
-
-  const fundamentalEvidence = evaluateFundamentals(result, techDir);
-  const macroEvidence = evaluateMacro(result, techDir);
-  const positioningEvidence = evaluatePositioning(result);
+  const investorOutlook = buildInvestorFundamentalOutlook(
+    result,
+    result.priceSnapshot?.price ?? result.marketData?.price?.price ?? 0,
+  );
+  const investorEvidence = investorOutlook.evidence;
+  const fundamentalEvidence = evaluateFundamentals(investorEvidence);
+  const macroEvidence = evaluateMacro(result, investorEvidence);
+  const positioningEvidence = evaluatePositioning(investorEvidence);
   const catalysts = detectCatalysts(result);
-  const eventRisk = assessEventRisk(catalysts, result);
-
+  const eventRisk = assessEventRisk(result);
   const { alignment, reason } = computeAlignment(fundamentalEvidence, macroEvidence, techDir);
 
-  const missingInfo: string[] = [];
-  if (!result.treasuryContext) missingInfo.push("Treasury yield data");
-  if (!result.cotContext) missingInfo.push("COT positioning data");
-  if (!result.fundamentalData) missingInfo.push("Fundamental intelligence");
-  if (!result.macroData) missingInfo.push("Macro intelligence");
-  if (!result.sentimentData) missingInfo.push("Sentiment data");
-  if (!result.derivativesData) missingInfo.push("Derivatives data");
-  if (!result.calendarData) missingInfo.push("Economic calendar");
+  const missingInfo = [...new Set([
+    ...investorOutlook.limitations,
+    ...(!result.calendarData || result.calendarData.freshness === "unavailable" || result.calendarData.freshness === "stale"
+      ? ["Fresh economic-calendar coverage is unavailable."]
+      : []),
+  ])].slice(0, 10);
 
-  let summary = "";
-  if (alignment === "FUNDAMENTAL_UNAVAILABLE") {
-    summary = "Fundamental/macro context unavailable — thesis is technical-led";
-  } else if (alignment === "STRONGLY_ALIGNED") {
-    summary = "Fundamentals support the technical thesis";
-  } else if (alignment === "ALIGNED") {
-    summary = "Fundamentals partially support the technical thesis";
-  } else if (alignment === "MIXED") {
-    summary = "Mixed fundamental signals — thesis requires technical confirmation";
-  } else if (alignment === "CONFLICTING") {
-    summary = "Fundamentals conflict with technical thesis — caution warranted";
-  } else {
-    summary = "Fundamental alignment undetermined";
-  }
+  const summary = alignment === "FUNDAMENTAL_UNAVAILABLE"
+    ? "Fresh asset-class fundamental evidence is unavailable — technical context remains separate."
+    : alignment === "STRONGLY_ALIGNED"
+      ? "Verified fundamentals support the technical thesis."
+      : alignment === "ALIGNED"
+        ? "Fundamentals support the technical thesis alongside neutral context."
+        : alignment === "MIXED"
+          ? "Fundamental evidence is mixed — supportive and conflicting sources require caution."
+          : alignment === "CONFLICTING"
+            ? "Verified fundamentals conflict with the technical thesis — caution warranted."
+            : alignment === "NEUTRAL"
+              ? "Fundamental context is available but directionally neutral; no fundamental confirmation is claimed."
+              : "No directional technical thesis is available for alignment.";
 
   return {
     technicalDirection: techDir,
