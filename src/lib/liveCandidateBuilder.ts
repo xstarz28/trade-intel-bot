@@ -138,7 +138,7 @@ function constrainByProviderFreshness(
  * happened to be non-zero. Crypto fundamental evidence is intentionally
  * read-only today, so it remains neutral-scored but still available.
  */
-function hasFundamentalEvidence(result: AnalysisResult | undefined, source: LiveCandidateSource): boolean {
+export function hasFundamentalEvidence(result: AnalysisResult | undefined, source: LiveCandidateSource): boolean {
   const crypto = source.cryptoIntelligenceContext ?? result?.cryptoIntelligenceContext;
   const hasVerifiedCryptoFundamentals = !!(
     source.assetClass === "crypto" &&
@@ -195,7 +195,7 @@ function hasFundamentalEvidence(result: AnalysisResult | undefined, source: Live
  * are not counted as positioning because scoreSentiment does not score COT;
  * volume is a technical confirmation, not an independent provider vote.
  */
-function hasScoredPositioningEvidence(result: AnalysisResult | undefined): boolean {
+export function hasScoredPositioningEvidence(result: AnalysisResult | undefined): boolean {
   if (!result) return false;
   const derivatives = result.derivativesData;
   if (result.instrumentType === "crypto" && derivatives && derivatives.confidence !== "unavailable") {
