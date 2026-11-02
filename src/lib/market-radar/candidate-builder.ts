@@ -869,7 +869,8 @@ export function buildRadarCandidate(
       source.analysisResult.confidence !== undefined ||
       source.analysisResult.bias !== undefined ||
       source.analysisResult.recommendation !== undefined ||
-      source.analysisResult.breakdown !== undefined;
+      source.analysisResult.fundamentalScore !== undefined ||
+      source.analysisResult.positioningScore !== undefined;
     if (hasAnalysisPayload) candidate.hasAnalysis = true;
     const confStr = source.analysisResult.confidence;
     if (confStr) {
