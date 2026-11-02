@@ -640,6 +640,23 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         recommendation: "BUY",
         breakdown: { trend: 1, indicator: 1, fundamental: 1, sentiment: -1 },
         fundamentalData: { available: true },
+        macroData: {
+          provider: "fixture",
+          timestamp: now,
+          indicators: [{ name: "policy differential", relevance: "high", sentiment: "positive" }],
+          summary: "fixture macro evidence",
+          confidence: "medium",
+        },
+        sentimentData: {
+          provider: "fixture",
+          timestamp: now,
+          averageScore: -0.4,
+          articleCount: 5,
+          label: "bearish",
+          breakdown: { positive: 1, negative: 4, neutral: 0 },
+          confidence: "medium",
+          articles: [],
+        },
       } as any,
       universalIntelligence: {
         instrument: "EUR/USD", assetClass: "forex", assembledAt: now,
@@ -668,6 +685,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(forexCandidate.fundamentalScore).toBe(1);
     expect(forexCandidate.positioningScore).toBe(-1);
     expect(forexCandidate.fundamentalEvidenceAvailable).toBe(true);
+    expect(forexCandidate.positioningEvidenceAvailable).toBe(true);
 
     const commoditySource = toRadarCandidateSource({
       instrument: "WTI",
@@ -811,6 +829,70 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.hasCOT).toBe(true);
     expect(candidate.dxyTrend).toBe("falling");
     expect(candidate.riskRegime).toBe("risk_on");
+  });
+
+  it("treats neutral but measured fundamental and sentiment scores as available evidence", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 80 }, (_, i) => {
+      const timestamp = now - (80 - i) * 60 * 60_000;
+      return { time: timestamp, timestamp, open: 200, high: 202, low: 198, close: 200, volume: 100 };
+    });
+    const candidate = buildCandidateFromSource({
+      instrument: "AAPL",
+      assetClass: "equity",
+      marketData: {
+        instrument: "AAPL", instrumentType: "stock", provider: "fixture",
+        fetchTimestamp: now, price: { price: 200, timestamp: now, source: "fixture" },
+        candles, timeframe: "H1", dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "AAPL", instrumentType: "stock", timeframe: "H1", timestamp: now,
+        priceSnapshot: { price: 200, timestamp: now, source: "fixture" },
+        bias: "Neutral", confidence: 50, recommendation: "NO_TRADE", tradingStyle: "intraday",
+        breakdown: { trend: 0, indicator: 0, fundamental: 0, sentiment: 0 },
+        fundamentalData: { provider: "fixture", timestamp: now, instrumentType: "stock", available: true, peRatio: 20 },
+        sentimentData: {
+          provider: "fixture", timestamp: now, averageScore: 0, articleCount: 5, label: "neutral",
+          breakdown: { positive: 1, negative: 1, neutral: 3 }, confidence: "medium", articles: [],
+        },
+      } as any,
+    }, now);
+
+    expect(candidate.fundamentalScore).toBe(0);
+    expect(candidate.fundamentalEvidenceAvailable).toBe(true);
+    expect(candidate.positioningScore).toBe(0);
+    expect(candidate.positioningEvidenceAvailable).toBe(true);
+  });
+
+  it("does not mislabel COT or volume-only sentiment as scored positioning evidence", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 80 }, (_, i) => {
+      const timestamp = now - (80 - i) * 60 * 60_000;
+      return { time: timestamp, timestamp, open: 1.1, high: 1.11, low: 1.09, close: 1.1, volume: 100 + i };
+    });
+    const candidate = buildCandidateFromSource({
+      instrument: "EUR/USD",
+      assetClass: "forex",
+      marketData: {
+        instrument: "EUR/USD", instrumentType: "forex", provider: "fixture",
+        fetchTimestamp: now, price: { price: 1.1, timestamp: now, source: "fixture" },
+        candles, timeframe: "H1", dataFreshness: "realtime",
+      },
+      cotData: {
+        available: true, requestedInstrument: "EUR/USD", source: "fixture",
+        fetchedAt: now, freshness: "FRESH", netNonCommercial: 1200,
+      } as any,
+      analysisResult: {
+        instrument: "EUR/USD", instrumentType: "forex", timeframe: "H1", timestamp: now,
+        priceSnapshot: { price: 1.1, timestamp: now, source: "fixture" },
+        bias: "Bullish", confidence: 50, recommendation: "NO_TRADE", tradingStyle: "intraday",
+        breakdown: { trend: 1, indicator: 0, fundamental: 0, sentiment: 1 },
+      } as any,
+    }, now);
+
+    expect(candidate.hasCOT).toBe(true);
+    expect(candidate.positioningScore).toBe(1);
+    expect(candidate.positioningEvidenceAvailable).toBe(false);
   });
 
   it("maps available universal equity fundamentals into ranking inputs", () => {
