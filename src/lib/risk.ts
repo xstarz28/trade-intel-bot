@@ -51,6 +51,8 @@ export interface PositionSizingRequest {
   entry: number;
   /** Structural stop level (market-derived). */
   stopLoss: number;
+  /** When supplied by the decision engine, validates the stop is on the loss side of entry. */
+  direction?: "long" | "short";
   spec?: InstrumentSpec;
   /** Explicit account currency. When omitted, sizing stays denominated in
    *  the instrument's quote currency (Phase 3B behavior preserved). */
@@ -138,6 +140,12 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
     !Number.isFinite(req.stopLoss) || req.stopLoss <= 0
   ) {
     return { available: false, unavailableReason: "entry and structural stop must be finite positive prices" };
+  }
+  if (req.direction === "long" && req.stopLoss >= req.entry) {
+    return { available: false, unavailableReason: "long position stop loss must be below entry" };
+  }
+  if (req.direction === "short" && req.stopLoss <= req.entry) {
+    return { available: false, unavailableReason: "short position stop loss must be above entry" };
   }
   const gaps = specGaps(req.spec);
   if (gaps.length > 0) {
