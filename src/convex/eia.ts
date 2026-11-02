@@ -20,7 +20,6 @@
 "use node";
 
 import { action } from "./_generated/server";
-import { v } from "convex/values";
 import { buildEiaContext, parseEiaResponse, parseFredInventoryCsv } from "../lib/data/eia";
 
 const BASE = "https://api.eia.gov/v2/petroleum/sto/data/";
@@ -113,7 +112,7 @@ async function fetchPublicFredFallback(now: number, eiaFailure?: string) {
 
 export const fetchEiaInventory = action({
   args: {},
-  handler: async (_ctx) => {
+  handler: async () => {
     const now = Date.now();
     const apiKey = process.env.EIA_API_KEY;
     if (!apiKey) {
