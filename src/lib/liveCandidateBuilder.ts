@@ -142,6 +142,7 @@ function hasFundamentalEvidence(result: AnalysisResult | undefined, source: Live
   const crypto = source.cryptoIntelligenceContext ?? result?.cryptoIntelligenceContext;
   const hasVerifiedCryptoFundamentals = !!(
     source.assetClass === "crypto" &&
+    (!result || result.instrumentType === "crypto") &&
     crypto?.instrument === source.instrument &&
     crypto.instrumentType === "crypto" &&
     crypto.evidence.some((item) =>
