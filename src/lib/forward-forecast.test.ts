@@ -133,6 +133,7 @@ describe("Phase 46 — forward forecast contract", () => {
         tpBasis: "target",
         riskReward: 3,
       },
+      keyLevels: { support: "N/A", resistance: "N/A", invalidation: "N/A" },
     }));
     expect(forecast.trader.status).toBe("UNAVAILABLE");
     expect(forecast.trader.entry).toBeUndefined();
