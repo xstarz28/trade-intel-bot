@@ -627,7 +627,7 @@ describe("Phase 46 — forward forecast contract", () => {
             },
           }],
         },
-      } as AnalysisResult["technicalData"],
+      } as unknown as AnalysisResult["technicalData"],
     }));
     expect(forecast.investor.accumulationZone).toMatchObject({
       lower: 92_000,
