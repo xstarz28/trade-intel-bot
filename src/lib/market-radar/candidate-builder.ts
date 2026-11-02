@@ -33,6 +33,9 @@ export interface RadarCandidateSource {
   setupDirection?: CandidateInput["setupDirection"];
   setupStrength?: number;
   confluenceCount?: number;
+  /** Evidence availability flags are separate from analysis-history presence. */
+  fundamentalEvidenceAvailable?: boolean;
+  positioningEvidenceAvailable?: boolean;
   /** Conditional entry/invalidations/targets derived from this exact candle snapshot. */
   conditionalScenarios?: ConditionalEntryScenario[];
   /** Structural and valuation-backed price plan for investment horizons only. */
@@ -619,9 +622,8 @@ export function toRadarCandidateSource(
     ...(cot ? { cot } : {}),
     ...(eia ? { eia } : {}),
     ...(treasury ? { treasury } : {}),
-    ...(candidateAnalysis ? {
+    ...(analysis ? {
       analysisResult: {
-        ...(analysis ? { fundamentalScore: analysis.breakdown?.fundamental } : {}),
         ...(matchingAnalysis ? {
           confidence: matchingAnalysis.confidence !== undefined ? String(matchingAnalysis.confidence) : undefined,
           bias: matchingAnalysis.bias,
@@ -634,10 +636,11 @@ export function toRadarCandidateSource(
             atr: technical?.atr14,
           },
         } : {}),
-        fundamentalEvidenceAvailable: hasFundamentalEvidence(analysis, source),
-        positioningEvidenceAvailable: hasScoredPositioningEvidence(matchingAnalysis),
+        fundamentalScore: analysis.breakdown?.fundamental,
       },
     } : {}),
+    fundamentalEvidenceAvailable: hasFundamentalEvidence(analysis, source),
+    positioningEvidenceAvailable: hasScoredPositioningEvidence(matchingAnalysis),
   };
 }
 
@@ -866,6 +869,12 @@ export function buildRadarCandidate(
   }
 
   // Analysis metadata (additive)
+  if (source.fundamentalEvidenceAvailable !== undefined) {
+    candidate.fundamentalEvidenceAvailable = source.fundamentalEvidenceAvailable;
+  }
+  if (source.positioningEvidenceAvailable !== undefined) {
+    candidate.positioningEvidenceAvailable = source.positioningEvidenceAvailable;
+  }
   if (source.analysisResult) {
     const hasAnalysisPayload =
       source.analysisResult.confidence !== undefined ||
