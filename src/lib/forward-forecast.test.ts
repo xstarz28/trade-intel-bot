@@ -742,7 +742,7 @@ describe("Phase 46 — forward forecast contract", () => {
             } as any,
           }],
         },
-      } as AnalysisResult["technicalData"],
+      } as unknown as AnalysisResult["technicalData"],
     }));
 
     expect(forecast.investor.direction).toBe("bullish");
