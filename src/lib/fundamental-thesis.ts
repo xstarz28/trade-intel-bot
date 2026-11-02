@@ -179,7 +179,7 @@ function upcomingCalendarEvents(result: AnalysisResult): EconomicEvent[] {
 
 function detectCatalysts(result: AnalysisResult): CatalystInfo[] {
   const calendar = result.calendarData;
-  if (!calendar || calendar.freshness === "stale" || calendar.freshness === "unavailable") return [];
+  if (!calendar || (calendar.freshness !== "realtime" && calendar.freshness !== "recent")) return [];
   const now = result.timestamp;
   return upcomingCalendarEvents(result)
     .sort((a, b) => a.datetime - b.datetime)
@@ -200,9 +200,8 @@ function assessEventRisk(result: AnalysisResult): EventRiskLevel {
   const calendar = result.calendarData;
   if (
     !calendar ||
-    calendar.freshness === "stale" ||
-    calendar.freshness === "unavailable" ||
-    calendar.confidence === "unavailable" ||
+    (calendar.freshness !== "realtime" && calendar.freshness !== "recent") ||
+    (calendar.confidence !== "high" && calendar.confidence !== "medium" && calendar.confidence !== "low") ||
     !Array.isArray(calendar.events)
   ) return "UNKNOWN";
   const now = result.timestamp;
