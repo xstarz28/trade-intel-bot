@@ -258,9 +258,9 @@ function buildInvestorForecastContext(args: {
     dataSource: marketData.provider,
     derivativesData: source.derivativesData,
     calendarData: source.calendarData,
-    treasuryContext: source.treasuryData,
-    cotContext: source.cotData,
-    eiaContext: source.eiaData,
+    treasuryContext: source.treasuryData?.available ? source.treasuryData : undefined,
+    cotContext: source.cotData?.available ? source.cotData : undefined,
+    eiaContext: source.eiaData?.available ? source.eiaData : undefined,
     cryptoIntelligenceContext: source.cryptoIntelligenceContext,
     universalIntelligenceContext: source.universalIntelligence,
   } as AnalysisResult;
