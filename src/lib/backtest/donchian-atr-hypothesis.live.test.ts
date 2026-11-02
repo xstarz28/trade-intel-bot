@@ -276,7 +276,7 @@ describe("real Donchian + SMA true-range forward forecast OOS evaluation", () =>
         signalCoveragePct: candidateWindowCount ? signalCount / candidateWindowCount * 100 : 0,
         evaluationStatus: signalCount === 0 ? "NO_SIGNALS" : independentSignalCount < 30 ? "INSUFFICIENT_SAMPLE" : "SAMPLE_GATE_REACHED",
         nominalRiskReward: 1.5,
-        evaluationPopulation: "Signal-only: only non-neutral directional forecasts enter accuracy, baseline, and expectancy calculations. Neutral/no-trade candidate windows are counted only in candidateWindowCount and signal coverage."
+        evaluationPopulation: "Signal-only: only non-neutral directional forecasts enter accuracy, baseline, and expectancy calculations. Neutral/no-trade candidate windows are counted only in candidateWindowCount and signal coverage.",
         costSensitivity,
       });
     }
