@@ -6,7 +6,6 @@
  * scanner remains available for immediate refresh and low-latency views.
  */
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { v } from "convex/values";
 import { anyApi } from "convex/server";
 import { internalAction, query } from "./_generated/server";
 import { DEFAULT_UNIVERSE } from "../lib/market-radar/universe";

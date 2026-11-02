@@ -46,6 +46,8 @@ jobs:
         run: npx eslint src/lib/execution-quality.ts src/lib/execution-quality.test.ts src/convex/okx.ts
       - name: Strict lint for forward-forecast research harness
         run: npx eslint src/lib/backtest/donchian-atr-hypothesis.live.test.ts
+      - name: Strict lint for forward-path and provider integrity modules
+        run: npx eslint src/lib/forward-market-path.ts src/lib/forward-forecast.ts src/convex/marketRadarScheduler.ts src/convex/secEdgar.ts
       - name: Strict lint for authentication modules changed in this PR
         run: npx eslint src/lib/auth-provider-mode.ts src/lib/auth-provider-mode.test.ts src/lib/auth-redirect.ts src/lib/auth-redirect.test.ts src/pages/Auth.tsx
       - name: Lint (advisory)

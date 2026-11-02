@@ -20,8 +20,6 @@
 
 import type { AnalysisResult } from "@/types/analysis";
 import type { MarketRegimeContext } from "@/lib/market-regime";
-import type { FundamentalThesis } from "@/lib/fundamental-thesis";
-import type { MarketScenarioContext } from "@/lib/market-scenario";
 
 // ── Types ────────────────────────────────────────────────────────
 
@@ -177,19 +175,7 @@ function getHorizon(result: AnalysisResult): TimeHorizon {
   return "INTRADAY";
 }
 
-function isExtended(result: AnalysisResult, dir: "bullish" | "bearish"): RiskLevel {
-  if (result.marketRegimeContext?.marketPhase === "LATE_TREND") return "ELEVATED";
-  if (result.marketRegimeContext?.marketPhase === "TREND_MATURE") return "MODERATE";
-  if (result.marketRegimeContext?.continuationQuality === "EXHAUSTED") return "HIGH";
-  if (result.marketRegimeContext?.continuationQuality === "WEAK") return "ELEVATED";
-  return "LOW";
-}
-
-function computeExtensionRisk(
-  result: AnalysisResult,
-  dir: "bullish" | "bearish" | "neutral",
-  regime?: MarketRegimeContext,
-): RiskLevel {
+function computeExtensionRisk(regime?: MarketRegimeContext): RiskLevel {
   let risk: RiskLevel = "LOW";
 
   if (regime?.marketPhase === "LATE_TREND") risk = "ELEVATED";
@@ -212,8 +198,6 @@ function classifyPrimaryPath(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
   regime?: MarketRegimeContext,
-  fundamental?: FundamentalThesis,
-  scenario?: MarketScenarioContext,
 ): PathStatus {
   if (dir === "neutral") {
     if (regime?.regime === "RANGE") return "RANGE_CONTINUATION";
@@ -223,8 +207,6 @@ function classifyPrimaryPath(
   const htf = htfDir(result);
   const mtfA = mtfAligned(result, dir);
   const contraMtf = hasContraMtf(result, dir);
-  const extRisk = computeExtensionRisk(result, dir, regime);
-
   // Reversal favored — HTF broken + contra MTF + structural evidence
   if (regime?.trendTransition.transitionType === "REVERSAL_CONFIRMED") return "REVERSAL_FAVORED";
   if (regime?.trendTransition.transitionType === "REVERSAL_ATTEMPT" && contraMtf) return "REVERSAL_ATTEMPT";
@@ -253,7 +235,6 @@ function classifyPrimaryPath(
 function classifyAlternatePath(
   primary: PathStatus,
   dir: "bullish" | "bearish" | "neutral",
-  regime?: MarketRegimeContext,
 ): PathStatus {
   if (dir === "neutral") {
     return "UNCONFIRMED";
@@ -283,7 +264,6 @@ function classifyAlternatePath(
 function buildPathEvidence(
   result: AnalysisResult,
   dir: "bullish" | "bearish" | "neutral",
-  primary: PathStatus,
 ): PathEvidence[] {
   const evidence: PathEvidence[] = [];
 
@@ -581,7 +561,6 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const dir = dirBias(result);
   const regime = result.marketRegimeContext;
   const fundamental = result.fundamentalThesis;
-  const scenario = result.marketScenario;
   const horizon = getHorizon(result);
   const dataReliability = getDataReliability(result);
   const primaryDataUsable = dataQualityOk(result);
@@ -596,14 +575,14 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const currentState = `${dirLabel} HTF structure · ${phaseLabel} · ${regimeLabel} · continuation ${qualityLabel}`;
 
   // ── Path classification ──
-  const primaryPath = classifyPrimaryPath(result, dir, regime, fundamental, scenario);
-  const alternatePath = classifyAlternatePath(primaryPath, dir, regime);
+  const primaryPath = classifyPrimaryPath(result, dir, regime);
+  const alternatePath = classifyAlternatePath(primaryPath, dir);
 
   // ── Path status text ──
   const pathStatus = primaryPath.replace(/_/g, " ").toLowerCase();
 
   // ── Evidence ──
-  const pathEvidence = buildPathEvidence(result, dir, primaryPath);
+  const pathEvidence = buildPathEvidence(result, dir);
   const opposingEvidence = buildOpposingEvidence(result, dir as "bullish" | "bearish" | "neutral");
 
   // ── Trigger levels ──
@@ -670,7 +649,7 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
 
   // ── Path risks ──
   const pathRisks: string[] = [];
-  const extRisk = computeExtensionRisk(result, dir, regime);
+  const extRisk = computeExtensionRisk(regime);
   if (extRisk === "ELEVATED" || extRisk === "HIGH") {
     pathRisks.push(`Extension/chasing risk is ${extRisk.toLowerCase()}`);
   }
