@@ -182,6 +182,167 @@ describe("Phase 28 — Fundamental Thesis", () => {
     expect(["LOW", "MODERATE", "ELEVATED", "HIGH", "UNKNOWN"]).toContain(ft.eventRisk);
   });
 
+  it("uses fresh exact-instrument universal evidence to expose fundamental conflict", () => {
+    const observedAt = Date.now() - 60_000;
+    const universalIntelligenceContext = {
+      instrument: "EUR/USD",
+      assetClass: "forex",
+      assembledAt: observedAt,
+      forex: {
+        rates: { available: true, observedAt },
+      },
+      evidence: [{
+        instrument: "EUR/USD",
+        assetClass: "forex",
+        category: "RATES",
+        source: "Central-bank rate differential",
+        direction: "CONFLICTING",
+        strength: "strong",
+        quality: "VERIFIED",
+        freshness: "FRESH",
+        providerAvailable: true,
+        explanation: "Verified rate differential opposes the bullish technical thesis.",
+      }],
+      overallAvailability: "FULL",
+      overallQuality: "VERIFIED",
+      missingInformation: [],
+      analystSummary: "Exact instrument macro evidence fixture",
+    } as unknown as NonNullable<AnalysisInput["universalIntelligenceContext"]>;
+    const input = buildInput("EUR/USD", "forex", bullCandles(0, 1.1), {
+      universalIntelligenceContext,
+    });
+    const result = runAnalysis(input);
+    const ft = buildFundamentalThesis({ ...result, bias: "Bullish" });
+    expect(ft.macroEvidence.some((item) =>
+      item.source === "Central-bank rate differential" && item.direction === "conflicting",
+    )).toBe(true);
+    expect(ft.alignment).toBe("CONFLICTING");
+  });
+
+  it("distinguishes available neutral fundamental context from unavailable data", () => {
+    const observedAt = Date.now() - 60_000;
+    const universalIntelligenceContext = {
+      instrument: "EUR/USD",
+      assetClass: "forex",
+      assembledAt: observedAt,
+      forex: {
+        rates: { available: true, observedAt },
+      },
+      evidence: [{
+        instrument: "EUR/USD",
+        assetClass: "forex",
+        category: "RATES",
+        source: "Central-bank rate differential",
+        direction: "NEUTRAL",
+        strength: "moderate",
+        quality: "VERIFIED",
+        freshness: "FRESH",
+        providerAvailable: true,
+        explanation: "Verified rates context is directionally neutral.",
+      }],
+      overallAvailability: "FULL",
+      overallQuality: "VERIFIED",
+      missingInformation: [],
+      analystSummary: "Neutral exact instrument macro evidence fixture",
+    } as unknown as NonNullable<AnalysisInput["universalIntelligenceContext"]>;
+    const result = runAnalysis(buildInput("EUR/USD", "forex", bullCandles(0, 1.1), {
+      universalIntelligenceContext,
+    }));
+    const ft = buildFundamentalThesis({ ...result, bias: "Bullish" });
+    expect(ft.macroEvidence.some((item) =>
+      item.source === "Central-bank rate differential" && item.direction === "neutral",
+    )).toBe(true);
+    expect(ft.alignment).toBe("NEUTRAL");
+  });
+
+  it("maps actual high-impact calendar events to high event risk", () => {
+    const now = Date.now();
+    const input = buildInput("EUR/USD", "forex", bullCandles(0, 1.1), {
+      calendarData: {
+        provider: "trading-economics",
+        events: [{
+          id: "us-cpi",
+          event: "US CPI",
+          category: "Inflation",
+          country: "United States",
+          currency: "USD",
+          datetime: now + 60 * 60 * 1000,
+          importance: 3,
+          source: "Trading Economics",
+          status: "upcoming",
+        }],
+        macroRisk: {
+          level: "high",
+          explanation: "High-impact CPI event within 24 hours.",
+          highImpact24h: 1,
+          highImpact72h: 1,
+          nearestHighImpact: {
+            event: "US CPI",
+            currency: "USD",
+            datetime: now + 60 * 60 * 1000,
+            hoursUntil: 1,
+          },
+        },
+        timestamp: now,
+        freshness: "realtime",
+        confidence: "high",
+        availability: { upcoming24h: true, upcoming72h: true, recentReleased: false },
+      },
+    });
+    const result = runAnalysis(input);
+    const ft = buildFundamentalThesis({ ...result, bias: "Bullish" });
+    expect(ft.eventRisk).toBe("HIGH");
+    expect(ft.catalysts[0]?.description).toContain("US CPI");
+    expect(ft.catalysts[0]?.direction).toBe("unknown");
+  });
+
+  it("does not classify an empty low-confidence calendar as low event risk", () => {
+    const now = Date.now();
+    const input = buildInput("EUR/USD", "forex", bullCandles(0, 1.1), {
+      calendarData: {
+        provider: "trading-economics",
+        events: [],
+        macroRisk: {
+          level: "low",
+          explanation: "Provider returned an incomplete event set.",
+          highImpact24h: 0,
+          highImpact72h: 0,
+        },
+        timestamp: now,
+        freshness: "recent",
+        confidence: "low",
+        availability: { upcoming24h: false, upcoming72h: false, recentReleased: false },
+      },
+    });
+    const result = runAnalysis(input);
+    const ft = buildFundamentalThesis({ ...result, bias: "Bullish" });
+    expect(ft.eventRisk).toBe("UNKNOWN");
+  });
+
+  it("does not invent a moderate catalyst when calendar data has no upcoming events", () => {
+    const now = Date.now();
+    const input = buildInput("BTC/USD", "crypto", bullCandles(0, 50000), {
+      calendarData: {
+        provider: "trading-economics",
+        events: [],
+        macroRisk: {
+          level: "low",
+          explanation: "No high-impact events in the next 72 hours.",
+          highImpact24h: 0,
+          highImpact72h: 0,
+        },
+        timestamp: now,
+        freshness: "realtime",
+        confidence: "high",
+        availability: { upcoming24h: false, upcoming72h: false, recentReleased: false },
+      },
+    });
+    const result = runAnalysis(input);
+    const ft = buildFundamentalThesis({ ...result, bias: "Bullish" });
+    expect(ft.eventRisk).toBe("LOW");
+    expect(ft.catalysts).toHaveLength(0);
+  });
+
   it("alignment is traceable (I54)", () => {
     const input = buildInput("ETH/USD", "crypto", bullCandles(0, 3000));
     const result = runAnalysis(input);

@@ -119,8 +119,11 @@ function computeActionability(
     return { actionability: "WAIT", reason: "High event risk — waiting for catalyst resolution" };
   }
 
-  // Fundamental conflicting + weak continuation → WAIT
-  if (fundamental.alignment === "CONFLICTING" && (regime.continuationQuality === "WEAK" || regime.continuationQuality === "EXHAUSTED")) {
+  // Fundamental conflict or a mixed evidence set + weak continuation → WAIT
+  if (
+    (fundamental.alignment === "CONFLICTING" || fundamental.alignment === "MIXED") &&
+    (regime.continuationQuality === "WEAK" || regime.continuationQuality === "EXHAUSTED")
+  ) {
     return { actionability: "WAIT", reason: "Fundamental conflict with weak continuation — no clear actionability" };
   }
 
