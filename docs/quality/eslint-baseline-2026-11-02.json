@@ -3,15 +3,14 @@
   "generatedAt": "2026-11-02",
   "source": {
     "workflow": "CI",
-    "runId": 41391878537,
-    "url": "https://github.com/xstarz28/trade-intel-bot/actions/runs/41391878537",
-    "step": "Lint (advisory)",
-    "command": "npm run lint"
+    "runId": 41395127276,
+    "url": "https://github.com/xstarz28/trade-intel-bot/actions/runs/41395127276",
+    "step": "Enforce ESLint baseline without new violations"
   },
   "totals": {
-    "errors": 1503,
+    "errors": 1459,
     "warnings": 28,
-    "problems": 1531
+    "problems": 1487
   },
   "rules": {
     "@typescript-eslint/no-explicit-any": {
@@ -55,15 +54,15 @@
       "warnings": 5
     },
     "no-empty": {
-      "errors": 3,
+      "errors": 0,
       "warnings": 0
     },
     "no-useless-escape": {
-      "errors": 9,
+      "errors": 0,
       "warnings": 0
     },
     "no-prototype-builtins": {
-      "errors": 3,
+      "errors": 0,
       "warnings": 0
     },
     "@typescript-eslint/no-require-imports": {
@@ -71,7 +70,7 @@
       "warnings": 0
     },
     "prefer-const": {
-      "errors": 29,
+      "errors": 0,
       "warnings": 0
     },
     "@typescript-eslint/no-unused-expressions": {
@@ -467,11 +466,10 @@
       }
     },
     "src/lib/convex-provider.tsx": {
-      "errors": 18,
+      "errors": 17,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 3,
-        "no-empty": 1,
         "@typescript-eslint/no-explicit-any": 14
       }
     },
@@ -541,25 +539,21 @@
       }
     },
     "src/lib/data/crypto/binance-derivatives-adapter.ts": {
-      "errors": 2,
+      "errors": 1,
       "warnings": 0,
       "rules": {
-        "no-useless-escape": 1,
         "@typescript-eslint/no-explicit-any": 1
       }
     },
     "src/lib/data/crypto/binance-spot-market-adapter.ts": {
-      "errors": 1,
+      "errors": 0,
       "warnings": 0,
-      "rules": {
-        "no-useless-escape": 1
-      }
+      "rules": {}
     },
     "src/lib/data/crypto/bybit-derivatives-adapter.ts": {
-      "errors": 4,
+      "errors": 3,
       "warnings": 0,
       "rules": {
-        "no-useless-escape": 1,
         "@typescript-eslint/no-explicit-any": 3
       }
     },
@@ -585,27 +579,23 @@
       }
     },
     "src/lib/data/crypto/okx-derivatives-adapter.ts": {
-      "errors": 7,
+      "errors": 6,
       "warnings": 0,
       "rules": {
-        "no-useless-escape": 1,
         "@typescript-eslint/no-explicit-any": 6
       }
     },
     "src/lib/data/crypto/okx-spot-market-adapter.ts": {
-      "errors": 2,
+      "errors": 1,
       "warnings": 0,
       "rules": {
-        "no-useless-escape": 1,
         "@typescript-eslint/no-explicit-any": 1
       }
     },
     "src/lib/data/crypto/symbols.ts": {
-      "errors": 3,
+      "errors": 0,
       "warnings": 0,
-      "rules": {
-        "no-prototype-builtins": 3
-      }
+      "rules": {}
     },
     "src/lib/data/crypto/tokenomist-adapter.ts": {
       "errors": 8,
@@ -916,11 +906,10 @@
       }
     },
     "src/lib/market-stream/live-market-bridge.ts": {
-      "errors": 4,
+      "errors": 3,
       "warnings": 0,
       "rules": {
-        "@typescript-eslint/no-unused-vars": 3,
-        "no-useless-escape": 1
+        "@typescript-eslint/no-unused-vars": 3
       }
     },
     "src/lib/market-stream/live-polling-service.ts": {
@@ -982,12 +971,11 @@
       }
     },
     "src/lib/position-protection.phase58.test.ts": {
-      "errors": 14,
+      "errors": 12,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 4,
-        "@typescript-eslint/no-explicit-any": 8,
-        "prefer-const": 2
+        "@typescript-eslint/no-explicit-any": 8
       }
     },
     "src/lib/position-protection/__tests__/alert-lifecycle.test.ts": {
@@ -1034,11 +1022,10 @@
       }
     },
     "src/lib/position-protection/alert-runtime-bridge.ts": {
-      "errors": 10,
+      "errors": 9,
       "warnings": 0,
       "rules": {
-        "@typescript-eslint/no-unused-vars": 9,
-        "prefer-const": 1
+        "@typescript-eslint/no-unused-vars": 9
       }
     },
     "src/lib/position-protection/continuous-protection-controller.ts": {
@@ -1057,10 +1044,9 @@
       }
     },
     "src/lib/position-protection/fundamental-intelligence.ts": {
-      "errors": 4,
+      "errors": 3,
       "warnings": 0,
       "rules": {
-        "prefer-const": 1,
         "@typescript-eslint/no-unused-vars": 3
       }
     },
@@ -1079,11 +1065,9 @@
       }
     },
     "src/lib/position-protection/giveback-monitor.ts": {
-      "errors": 1,
+      "errors": 0,
       "warnings": 0,
-      "rules": {
-        "prefer-const": 1
-      }
+      "rules": {}
     },
     "src/lib/position-protection/intelligence-calibration.ts": {
       "errors": 1,
@@ -1157,12 +1141,11 @@
       }
     },
     "src/lib/position-protection/phase101-verification.test.ts": {
-      "errors": 29,
+      "errors": 28,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 24,
-        "@typescript-eslint/no-explicit-any": 4,
-        "prefer-const": 1
+        "@typescript-eslint/no-explicit-any": 4
       }
     },
     "src/lib/position-protection/phase102-direct-provider-health.test.ts": {
@@ -1324,38 +1307,34 @@
       }
     },
     "src/lib/position-protection/phase63-validation.test.ts": {
-      "errors": 30,
+      "errors": 28,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 20,
-        "@typescript-eslint/no-explicit-any": 8,
-        "prefer-const": 2
+        "@typescript-eslint/no-explicit-any": 8
       }
     },
     "src/lib/position-protection/phase64-validation.test.ts": {
-      "errors": 24,
+      "errors": 21,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 13,
-        "prefer-const": 3,
         "@typescript-eslint/no-explicit-any": 8
       }
     },
     "src/lib/position-protection/phase65-production-validation.test.ts": {
-      "errors": 29,
+      "errors": 14,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 11,
-        "prefer-const": 15,
         "@typescript-eslint/no-explicit-any": 3
       }
     },
     "src/lib/position-protection/phase66-production-validation.test.ts": {
-      "errors": 11,
+      "errors": 10,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 6,
-        "prefer-const": 1,
         "@typescript-eslint/no-explicit-any": 4
       }
     },
@@ -1507,11 +1486,9 @@
       }
     },
     "src/lib/position-protection/phase89-historical-timeline.test.ts": {
-      "errors": 1,
+      "errors": 0,
       "warnings": 0,
-      "rules": {
-        "prefer-const": 1
-      }
+      "rules": {}
     },
     "src/lib/position-protection/phase90-persistent-history.test.ts": {
       "errors": 1,
@@ -1610,12 +1587,11 @@
       }
     },
     "src/lib/position-protection/realtime-monitor.ts": {
-      "errors": 4,
+      "errors": 3,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 1,
-        "@typescript-eslint/no-explicit-any": 2,
-        "prefer-const": 1
+        "@typescript-eslint/no-explicit-any": 2
       }
     },
     "src/lib/position-protection/thesis-health.ts": {
@@ -1674,11 +1650,9 @@
       }
     },
     "src/lib/production.phase12.test.ts": {
-      "errors": 1,
+      "errors": 0,
       "warnings": 0,
-      "rules": {
-        "no-useless-escape": 1
-      }
+      "rules": {}
     },
     "src/lib/professional-thesis.phase28.test.ts": {
       "errors": 3,
@@ -1763,11 +1737,10 @@
       }
     },
     "src/lib/universal-intelligence.phase44.test.ts": {
-      "errors": 18,
+      "errors": 16,
       "warnings": 0,
       "rules": {
         "@typescript-eslint/no-unused-vars": 4,
-        "no-useless-escape": 2,
         "@typescript-eslint/no-explicit-any": 12
       }
     },
@@ -1786,12 +1759,11 @@
       }
     },
     "src/pages/Dashboard.tsx": {
-      "errors": 21,
+      "errors": 19,
       "warnings": 2,
       "rules": {
         "@typescript-eslint/no-unused-vars": 3,
         "@typescript-eslint/no-explicit-any": 11,
-        "no-empty": 2,
         "react-hooks/exhaustive-deps": 2,
         "react-hooks/refs": 4,
         "react-hooks/set-state-in-effect": 1
@@ -1803,6 +1775,8 @@
     "The totals field preserves ESLint's authoritative terminal summary (1,503 errors and 28 warnings).",
     "React Hooks compiler diagnostics are grouped under their specific react-hooks rule based on the diagnostic message.",
     "Generated Convex files are included because the existing repository lint command includes them.",
-    "This is a dated baseline, not a waiver or a claim that lint is clean."
-  ]
+    "This is a dated baseline, not a waiver or a claim that lint is clean.",
+    "Refreshed after PR #236 (29 prefer-const fixes) and PR #238 (9 regex, 3 own-property, and 3 empty-catch fixes); the latest main CI ratchet reports 1,459 errors and 28 warnings with zero regressions."
+  ],
+  "parsedDiagnostics": 1487
 }
