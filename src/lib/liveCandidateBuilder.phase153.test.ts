@@ -104,7 +104,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     };
     const candidate = buildCandidateFromSource(source, now);
 
-    expect(candidate.freshness).toBe("STALE");
+    expect(candidate.freshness).toBe("UNAVAILABLE");
     expect(candidate.investorForecastContext).toBeUndefined();
   });
 
