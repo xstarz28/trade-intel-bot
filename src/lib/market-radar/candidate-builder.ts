@@ -133,15 +133,20 @@ const RADAR_SOURCE_TIMEFRAME_RANK: Record<string, number> = {
   M1: 1, M5: 2, M15: 3, H1: 4, H4: 5, D1: 6, W1: 7,
 };
 
-function getInvestorStructure(technical?: TechnicalData): TimeframeStructureContext | undefined {
+function getInvestorStructure(
+  technical: TechnicalData | undefined,
+  currentTimeframe: string,
+): TimeframeStructureContext | undefined {
+  const currentRank = RADAR_SOURCE_TIMEFRAME_RANK[currentTimeframe] ?? 0;
   const candidates = [
     technical?.htfContext,
     ...(technical?.mtf?.timeframes ?? [])
       .filter((item) => item.available && (item.role === "macro" || item.role === "structure"))
       .map((item) => item.smc?.internalExternal.external),
-    technical?.smc?.internalExternal.external,
   ].filter((item): item is TimeframeStructureContext =>
-    !!item && (item.structure === "HH/HL" || item.structure === "LH/LL"),
+    !!item &&
+    (RADAR_SOURCE_TIMEFRAME_RANK[item.timeframe] ?? 0) > currentRank &&
+    (item.structure === "HH/HL" || item.structure === "LH/LL"),
   );
   return candidates.sort((a, b) =>
     (RADAR_SOURCE_TIMEFRAME_RANK[b.timeframe] ?? 0) -
@@ -220,7 +225,7 @@ function buildInvestmentProjection(
 
   const price = spot!;
   const observedAt = asOf!;
-  const structure = getInvestorStructure(technical);
+  const structure = getInvestorStructure(technical, market.timeframe);
   const structuralDirection = structure?.structure === "HH/HL"
     ? "bullish"
     : structure?.structure === "LH/LL"
