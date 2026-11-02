@@ -651,6 +651,18 @@ function scoreMacro(c: CandidateInput): ScoreComponent[] {
   return components;
 }
 
+function getAssetClassScore(c: CandidateInput): ScoreComponent[] {
+  switch (c.assetClass) {
+    case "crypto": return scoreCrypto(c);
+    case "forex": return scoreForex(c);
+    case "equity": return scoreEquity(c);
+    case "commodity": return scoreCommodity(c);
+    case "indices": return scoreIndex(c);
+    case "macro": return scoreMacro(c);
+    default: return [];
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════
 // SCORING ENGINE
 // ═══════════════════════════════════════════════════════════════
