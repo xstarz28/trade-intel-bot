@@ -20,6 +20,82 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(findLiveSnapshotForInstrument(liveSources, "BTC-USDT-SWAP")).toBe(nativeSource);
   });
 
+  it("builds an investor forecast context from the exact live snapshot without a prior manual analysis", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 210 }, (_, i) => {
+      const close = 100 + (210 - i) * 0.25;
+      const timestamp = now - (210 - i) * 60 * 60_000;
+      return { time: timestamp, timestamp, open: close - 0.1, high: close + 0.3, low: close - 0.3, close, volume: 1000 };
+    });
+    const higherTimeframeCandles = Array.from({ length: 80 }, (_, i) => {
+      const close = 100 + (80 - i) * 0.5;
+      const timestamp = now - (80 - i) * 24 * 60 * 60_000;
+      return { time: timestamp, timestamp, open: close - 0.2, high: close + 0.5, low: close - 0.5, close, volume: 20_000 };
+    });
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: candles[candles.length - 1]!.close, timestamp: now, source: "fixture" },
+        candles,
+        timeframe: "H1",
+        higherTimeframe: "D1",
+        higherTimeframeCandles,
+        dataFreshness: "realtime",
+      },
+      derivativesData: {
+        provider: "fixture",
+        symbol: "BTC/USD",
+        timestamp: now,
+        freshness: "realtime",
+        openInterest: { current: 1000 },
+        availability: { openInterest: true, fundingRate: false, longShort: false, liquidations: false },
+        confidence: "low",
+      },
+    }, now);
+
+    expect(candidate.dataCompleteness).toBe("PARTIAL");
+    expect(candidate.investorForecastContext).toBeDefined();
+    expect(candidate.investorForecastContext?.instrument).toBe("BTC/USD");
+    expect(candidate.investorForecastContext?.priceSnapshot?.price).toBe(candidate.currentPrice);
+    expect(candidate.investorForecastContext?.priceSnapshot?.timestamp).toBe(candidate.marketObservedAt);
+    expect(candidate.investorForecastContext?.technicalData?.htfContext?.timeframe).toBe("D1");
+  });
+
+  it("does not build investor forecast context from stale or unavailable market observations", () => {
+    const now = Date.now();
+    const source = {
+      instrument: "BTC/USD",
+      assetClass: "crypto" as const,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto" as const,
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now - 5 * 24 * 60 * 60_000, source: "fixture" },
+        candles: Array.from({ length: 80 }, (_, i) => ({
+          time: now - (80 - i) * 60_000,
+          timestamp: now - (80 - i) * 60_000,
+          open: 100,
+          high: 101,
+          low: 99,
+          close: 100,
+          volume: 10,
+        })),
+        timeframe: "H1" as const,
+        dataFreshness: "realtime" as const,
+      },
+    };
+    const candidate = buildCandidateFromSource(source, now);
+
+    expect(candidate.freshness).toBe("STALE");
+    expect(candidate.investorForecastContext).toBeUndefined();
+  });
+
   it("uses verified market snapshot as the candidate price and data source", () => {
     const now = Date.now();
 
