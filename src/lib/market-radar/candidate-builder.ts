@@ -865,7 +865,12 @@ export function buildRadarCandidate(
 
   // Analysis metadata (additive)
   if (source.analysisResult) {
-    candidate.hasAnalysis = true;
+    const hasAnalysisPayload =
+      source.analysisResult.confidence !== undefined ||
+      source.analysisResult.bias !== undefined ||
+      source.analysisResult.recommendation !== undefined ||
+      source.analysisResult.breakdown !== undefined;
+    if (hasAnalysisPayload) candidate.hasAnalysis = true;
     const confStr = source.analysisResult.confidence;
     if (confStr) {
       const num = parseInt(confStr, 10);
