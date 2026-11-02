@@ -238,6 +238,9 @@ describe("real Donchian + SMA true-range forward forecast OOS evaluation", () =>
         timeframe,
         warmupBars,
       );
+      expect(signalCount).toBe(observations.length);
+      expect(candidateWindowCount).toBeGreaterThanOrEqual(signalCount);
+      expect(observations.every((observation) => observation.direction !== "neutral")).toBe(true);
       const signalObservations = observations;
       const costSensitivity = signalObservations.length > 0
         ? COST_SCENARIOS.map((costBpsPerSide) => ({
