@@ -219,6 +219,42 @@ describe("Phase 28 — Fundamental Thesis", () => {
     expect(ft.alignment).toBe("CONFLICTING");
   });
 
+  it("distinguishes available neutral fundamental context from unavailable data", () => {
+    const observedAt = Date.now() - 60_000;
+    const universalIntelligenceContext = {
+      instrument: "EUR/USD",
+      assetClass: "forex",
+      assembledAt: observedAt,
+      forex: {
+        rates: { available: true, observedAt },
+      },
+      evidence: [{
+        instrument: "EUR/USD",
+        assetClass: "forex",
+        category: "RATES",
+        source: "Central-bank rate differential",
+        direction: "NEUTRAL",
+        strength: "moderate",
+        quality: "VERIFIED",
+        freshness: "FRESH",
+        providerAvailable: true,
+        explanation: "Verified rates context is directionally neutral.",
+      }],
+      overallAvailability: "FULL",
+      overallQuality: "VERIFIED",
+      missingInformation: [],
+      analystSummary: "Neutral exact instrument macro evidence fixture",
+    } as unknown as NonNullable<AnalysisInput["universalIntelligenceContext"]>;
+    const result = runAnalysis(buildInput("EUR/USD", "forex", bullCandles(0, 1.1), {
+      universalIntelligenceContext,
+    }));
+    const ft = buildFundamentalThesis({ ...result, bias: "Bullish" });
+    expect(ft.macroEvidence.some((item) =>
+      item.source === "Central-bank rate differential" && item.direction === "neutral",
+    )).toBe(true);
+    expect(ft.alignment).toBe("NEUTRAL");
+  });
+
   it("maps actual high-impact calendar events to high event risk", () => {
     const now = Date.now();
     const input = buildInput("EUR/USD", "forex", bullCandles(0, 1.1), {
