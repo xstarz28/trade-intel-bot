@@ -1005,6 +1005,40 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.revenueGrowth).toBeUndefined();
   });
 
+  it("rejects same-symbol analysis when the asset class differs from the live market snapshot", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 80 }, (_, i) => {
+      const timestamp = now - (80 - i) * 60 * 60_000;
+      return { time: timestamp, timestamp, open: 250, high: 252, low: 248, close: 250, volume: 100 };
+    });
+    const candidate = buildCandidateFromSource({
+      instrument: "AAPL",
+      assetClass: "equity",
+      marketData: {
+        instrument: "AAPL", instrumentType: "stock", provider: "fixture",
+        fetchTimestamp: now, price: { price: 250, timestamp: now, source: "fixture" },
+        candles, timeframe: "H1", dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "AAPL", instrumentType: "crypto", timeframe: "H1", timestamp: now,
+        priceSnapshot: { price: 250, timestamp: now, source: "fixture" },
+        bias: "Bullish", confidence: 80, recommendation: "LONG", tradingStyle: "intraday",
+        breakdown: { trend: 1, indicator: 1, fundamental: 2, sentiment: 2 },
+        fundamentalData: { available: true, peRatio: 10 },
+        derivativesData: {
+          confidence: "high",
+          fundingRate: { currentRate: 0.01 },
+          availability: { fundingRate: true, openInterest: false, longShort: false, liquidations: false },
+        },
+      } as any,
+    }, now);
+
+    expect(candidate.fundamentalScore).toBeUndefined();
+    expect(candidate.fundamentalEvidenceAvailable).toBe(false);
+    expect(candidate.positioningScore).toBeUndefined();
+    expect(candidate.positioningEvidenceAvailable).toBe(false);
+  });
+
   it("does not convert raw analysis fundamentals or calendar availability into signed evidence", () => {
     const now = Date.now();
     const source = {
