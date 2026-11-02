@@ -108,6 +108,52 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.investorForecastContext).toBeUndefined();
   });
 
+  it("does not count stale crypto evidence as an independent completeness domain", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 80 }, (_, i) => {
+      const timestamp = now - (80 - i) * 60_000;
+      return { time: timestamp, timestamp, open: 100, high: 101, low: 99, close: 100, volume: 10 };
+    });
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "fixture" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: now,
+        evidence: [{
+          source: "Tokenomist",
+          category: "TOKENOMICS",
+          direction: "SUPPORTING",
+          strength: "MEDIUM",
+          quality: "STALE",
+          freshness: "STALE",
+          dependencyGroup: "TOKENOMICS_UNLOCKS",
+          explanation: "Stale tokenomics evidence must not qualify completeness.",
+          providerAvailable: true,
+        }],
+        overallAvailability: "MINIMAL",
+        overallQuality: "STALE",
+        missingInformation: [],
+        dataFlags: ["STALE_TOKENOMICS"],
+        analystSummary: "Stale crypto evidence.",
+      } as any,
+    }, now);
+
+    expect(candidate.dataCompleteness).toBe("MINIMAL");
+    expect(candidate.investorForecastContext?.dataCompleteness).toBe("limited");
+  });
+
   it("uses verified market snapshot as the candidate price and data source", () => {
     const now = Date.now();
 
