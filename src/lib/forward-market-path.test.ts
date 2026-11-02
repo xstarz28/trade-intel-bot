@@ -67,6 +67,31 @@ describe("buildForwardMarketPath future opportunity watchlist", () => {
     });
   });
 
+  it("suppresses a saved projected plan and R:R when primary data quality is unavailable", () => {
+    const result = noTradeResult({
+      dataQualityContext: {
+        primaryData: { status: "UNAVAILABLE", reason: "Provider flagged data unavailable" },
+      } as AnalysisResult["dataQualityContext"],
+      projectedTradePlan: {
+        direction: "long",
+        entry: "66100",
+        entryBasis: "Stale provider close",
+        stopLoss: "65200",
+        slBasis: "Old swing low",
+        takeProfit: "67900",
+        tpBasis: "Old resistance",
+        riskReward: 2,
+      },
+    });
+
+    const path = buildForwardMarketPath(result);
+    expect(path.forwardOpportunity).toBeUndefined();
+    expect(path.watchLevels.some((level) => level.source === "projectedTradePlan")).toBe(false);
+    expect(path.confirmationConditions.join(" ")).not.toContain("66100");
+    expect(path.nextBestAction).not.toContain("66100");
+    expect(path.scenarioTree.some((node) => node.condition.includes("66100"))).toBe(false);
+  });
+
   it("provides numeric breakout and breakdown watch conditions without inventing an entry", () => {
     const path = buildForwardMarketPath(noTradeResult());
 

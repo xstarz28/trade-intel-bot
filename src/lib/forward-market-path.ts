@@ -158,7 +158,7 @@ function hasMaterialContradictions(result: AnalysisResult): boolean {
 
 function dataQualityOk(result: AnalysisResult): boolean {
   if (!result.dataQualityContext) return true;
-  return result.dataQualityContext.primaryData.status === "GOOD";
+  return ["GOOD", "DEGRADED"].includes(result.dataQualityContext.primaryData.status);
 }
 
 function getDataReliability(result: AnalysisResult): "good" | "degraded" | "insufficient" | "unavailable" {
@@ -442,8 +442,9 @@ function buildTriggerLevels(result: AnalysisResult): { triggers: TriggerLevel[];
 
   // An approved trade plan is executable; a projected plan is watch-only.
   // Preserve that distinction so a NO_TRADE decision never leaks into execution.
-  const activePlan = result.tradePlan;
-  const projectedPlan = !activePlan ? result.projectedTradePlan : undefined;
+  const primaryDataUsable = dataQualityOk(result);
+  const activePlan = primaryDataUsable ? result.tradePlan : undefined;
+  const projectedPlan = primaryDataUsable && !activePlan ? result.projectedTradePlan : undefined;
 
   if (activePlan) {
     watches.push({
@@ -583,6 +584,8 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
   const scenario = result.marketScenario;
   const horizon = getHorizon(result);
   const dataReliability = getDataReliability(result);
+  const primaryDataUsable = dataQualityOk(result);
+  const projectedPlan = primaryDataUsable ? result.projectedTradePlan : undefined;
 
   // ── Current state ──
   const dirLabel = dir === "neutral" ? "Neutral" : dir.charAt(0).toUpperCase() + dir.slice(1);
@@ -614,8 +617,8 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
     confirmationConditions.push("A candle closes beyond a real structural support/resistance level; a wick alone is insufficient");
     confirmationConditions.push("Directional displacement and volume/market-structure confirmation where reliable data is available");
     confirmationConditions.push("MTF alignment toward the breakout direction, without bypassing data-quality or risk gates");
-    if (result.projectedTradePlan) {
-      confirmationConditions.push(`Projected ${result.projectedTradePlan.direction} setup: wait for ${result.projectedTradePlan.entryBasis}; candidate entry ${result.projectedTradePlan.entry} is watch-only until all gates pass`);
+    if (projectedPlan) {
+      confirmationConditions.push(`Projected ${projectedPlan.direction} setup: wait for ${projectedPlan.entryBasis}; candidate entry ${projectedPlan.entry} is watch-only until all gates pass`);
     }
   } else {
     if (primaryPath === "CONTINUATION_FAVORED" || primaryPath === "CONTINUATION_POSSIBLE") {
@@ -710,8 +713,8 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
     nextBestAction = "Do not chase — wait for structural confirmation of reversal";
   } else if (extRisk === "HIGH") {
     nextBestAction = "Avoid chasing extension — wait for pullback or continuation confirmation";
-  } else if (dir === "neutral" && result.projectedTradePlan) {
-    const projected = result.projectedTradePlan;
+  } else if (dir === "neutral" && projectedPlan) {
+    const projected = projectedPlan;
     nextBestAction = `Add the projected ${projected.direction.toUpperCase()} setup to the watchlist, not as an entry order. Monitor candidate entry ${projected.entry}; require structural breakout/retest confirmation and re-run all execution, data-quality, and risk gates. Invalidate the scenario at ${projected.stopLoss}.`;
   } else if (dir === "neutral") {
     const support = result.keyLevels?.support;
@@ -734,8 +737,8 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
 
   // ── Scenario tree ──
   const scenarioTree = buildScenarioTree(dir, primaryPath, result.keyLevels?.invalidation ?? "");
-  if (dir === "neutral" && result.projectedTradePlan) {
-    const projected = result.projectedTradePlan;
+  if (dir === "neutral" && projectedPlan) {
+    const projected = projectedPlan;
     scenarioTree.unshift({
       label: `WATCHLIST: Projected ${projected.direction.toUpperCase()} setup (not executable)`,
       condition: `Price reaches candidate entry ${projected.entry} and confirms ${projected.entryBasis}; all risk/data gates must pass`,
@@ -796,7 +799,7 @@ export function buildForwardMarketPath(result: AnalysisResult): ForwardMarketPat
     investorView = "No clear HTF structural direction — wait for directional alignment and confirmation.";
   }
 
-  const opportunitySource = result.tradePlan ?? result.projectedTradePlan;
+  const opportunitySource = primaryDataUsable ? result.tradePlan ?? result.projectedTradePlan : undefined;
   const forwardOpportunity: ForwardOpportunityPlan | undefined = opportunitySource
     ? {
         status: result.tradePlan ? "ACTIONABLE" : "CONDITIONAL",

@@ -1655,7 +1655,20 @@ function decideTrade(
   // ── Gate 8: R:R ──
   let tradePlan: TradePlan | undefined;
   let projectedTradePlan: TradePlan | undefined;
-  if (
+  const primaryQuality = assessDataQuality(input).primaryData;
+  const primaryQualityBlocksPlan = new Set(["STALE", "UNAVAILABLE", "INVALID", "INSUFFICIENT"])
+    .has(primaryQuality.status);
+  if (primaryQualityBlocksPlan) {
+    // A watch-only projection still looks like a current price plan on the
+    // chart. Suppress its numeric levels when the provider's primary snapshot
+    // is stale, unavailable, invalid, or structurally insufficient. DEGRADED
+    // data remains eligible for a watch-only projection; existing conviction
+    // and decision rules continue to account for reduced history depth.
+    // This does not alter directional bias.
+    reasons.push(
+      `Primary data quality ${primaryQuality.status}: ${primaryQuality.reason}. Numeric entry/SL/TP/R:R levels are suppressed.`,
+    );
+  } else if (
     bias !== "Neutral" &&
     entry !== undefined && entry > 0 &&
     stopLevel !== undefined && tpLevel !== undefined

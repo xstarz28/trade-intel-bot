@@ -105,6 +105,31 @@ describe("state machine — tradeable states carry a full plan", () => {
 // ── NO_TRADE states — plan must be undefined ───────────────────────
 
 describe("state machine — every rejection yields NO_TRADE + no plan", () => {
+  it.each(["stale", "unavailable"] as const)(
+    "suppresses numeric entry/SL/TP/R:R projections when provider freshness is %s",
+    (dataFreshness) => {
+      const result = runAnalysis(input({
+        marketData: makeMarket(100, { dataFreshness }),
+      }));
+      expect(result.recommendation).toBe("NO_TRADE");
+      expect(result.tradePlan).toBeUndefined();
+      expect(result.projectedTradePlan).toBeUndefined();
+      expect(result.noTradeReasons.join(" ")).toMatch(/Primary data quality (STALE|UNAVAILABLE)/);
+      expect(result.forwardMarketPath?.forwardOpportunity).toBeUndefined();
+    },
+  );
+
+  it("suppresses numeric projections when primary history is insufficient for structural analysis", () => {
+    const result = runAnalysis(input({
+      technicalData: tech("HH/HL", { dataPoints: 19 }),
+    }));
+    expect(result.dataQualityContext?.primaryData.status).toBe("INSUFFICIENT");
+    expect(result.recommendation).toBe("NO_TRADE");
+    expect(result.projectedTradePlan).toBeUndefined();
+    expect(result.tradePlan).toBeUndefined();
+    expect(result.forwardMarketPath?.forwardOpportunity).toBeUndefined();
+  });
+
   it("does not render a projected plan when the nearest scalping target is beyond the ATR horizon", () => {
     const price = 100;
     const result = runAnalysis(input({
