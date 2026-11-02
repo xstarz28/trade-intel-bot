@@ -42,6 +42,36 @@ function momentumDirection(
   return "neutral";
 }
 
+function aggregateToHigherTimeframe(
+  candles: Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }>,
+  sourceTimeframe: "H1" | "D1",
+): Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }> {
+  const targetTimeframe = sourceTimeframe === "H1" ? "D1" : "W1";
+  const groups = new Map<number, Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }>>();
+  for (const candle of candles) {
+    const date = new Date(candle.timestamp);
+    let bucket: number;
+    if (targetTimeframe === "D1") {
+      bucket = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    } else {
+      const mondayOffset = (date.getUTCDay() + 6) % 7;
+      date.setUTCDate(date.getUTCDate() - mondayOffset);
+      bucket = Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate());
+    }
+    const rows = groups.get(bucket) ?? [];
+    rows.push(candle);
+    groups.set(bucket, rows);
+  }
+  return [...groups.entries()].sort((a, b) => a[0] - b[0]).map(([timestamp, rows]) => ({
+    timestamp,
+    open: rows[0].open,
+    high: Math.max(...rows.map((row) => row.high)),
+    low: Math.min(...rows.map((row) => row.low)),
+    close: rows[rows.length - 1].close,
+    volume: rows.reduce((sum, row) => sum + row.volume, 0),
+  }));
+}
+
 function structuralDirection(
   history: Array<{ high: number; low: number }>,
 ): "HH/HL" | "LH/LL" | "unknown" {
@@ -77,13 +107,18 @@ function createHistoricalForecast(
       : "Neutral";
 
   const prior20 = history.slice(-20);
-  const prior90 = history.slice(-90);
   const support = minLow(prior20);
   const resistance = maxHigh(prior20);
   const invalidation = bias === "Bullish" ? support : bias === "Bearish" ? resistance : undefined;
-  const htfStructure = structuralDirection(history.slice(-60));
-  const htfHigh = maxHigh(prior90);
-  const htfLow = minLow(prior90);
+  // Aggregate only completed lower-timeframe candles into a genuine higher-
+  // timeframe series: H1→D1 and D1→W1. No primary-timeframe structure is
+  // relabeled as HTF evidence.
+  const htfCandles = aggregateToHigherTimeframe(history, timeframe);
+  const htfStructure = structuralDirection(htfCandles.slice(-60));
+  const htfSwingWindow = htfCandles.slice(-90);
+  const htfHigh = maxHigh(htfSwingWindow);
+  const htfLow = minLow(htfSwingWindow);
+  const htfTimeframe = timeframe === "H1" ? "D1" : "W1";
   const dataAsOf = current.timestamp + (timeframe === "D1" ? DAY : 3_600_000);
 
   const result = {
@@ -114,19 +149,19 @@ function createHistoricalForecast(
       source: "binance-spot-historical-replay",
     },
     htfAlignment: {
-      htfTimeframe: "D1",
+      htfTimeframe,
       htfStructure,
       state: htfStructure === "unknown" ? "unknown" : "aligned",
     },
     technicalData: {
       htfContext: {
-        timeframe: "D1",
+        timeframe: htfTimeframe,
         structure: htfStructure,
         bosDirection: "none",
         chochDirection: "none",
         lastSwingHigh: htfHigh,
         lastSwingLow: htfLow,
-        dataPoints: prior90.length,
+        dataPoints: htfCandles.length,
       },
     },
   } as unknown as AnalysisResult;
@@ -142,9 +177,14 @@ function buildObservations(
   warmupBars: number,
 ): ForwardForecastObservation[] {
   const intervalMs = timeframe === "D1" ? DAY : 3_600_000;
-  const horizonBars = horizon === "investor" ? 90 : timeframe === "D1" ? 20 : 24;
-  const step = horizonBars + 1;
   const tradingStyle = timeframe === "D1" ? "swing" : "intraday";
+  // Derive replay spacing from the actual forecast contract. A 90-day step
+  // would create overlapping observations for the current 1–3 year investor
+  // horizon and falsely inflate the sample count.
+  const probe = createHistoricalForecast(instrument, candles, warmupBars, timeframe, tradingStyle);
+  const probeHorizon = horizon === "investor" ? probe.investor.horizon : probe.trader.horizon;
+  const horizonBars = Math.max(1, Math.ceil((probeHorizon.endsAt - probeHorizon.startsAt) / intervalMs));
+  const step = horizonBars + 1;
   const observations: ForwardForecastObservation[] = [];
 
   for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += step) {
@@ -245,16 +285,38 @@ describe("real historical forward forecast outcome evaluation", () => {
         expect(scenario.report.excludedReasons.overlapping_horizon ?? 0).toBe(0);
       }
 
+      const investorObservations = timeframe === "D1"
+        ? buildObservations(dataset.instrumentId, dataset.candles, timeframe, "investor", warmupBars)
+        : [];
       const investorCostSensitivity = timeframe === "D1"
         ? COST_SCENARIOS.map((costBpsPerSide) => ({
             costBpsPerSide,
             report: evaluateForwardForecastOutcomes(
-              buildObservations(dataset.instrumentId, dataset.candles, timeframe, "investor", warmupBars),
+              investorObservations,
               dataset.candles,
               { costBpsPerSide, minimumSampleCount: 30, enforceNonOverlapping: true },
             ),
           }))
         : [];
+      if (timeframe === "D1") {
+        // Historical depth cannot currently supply 30 independent 3-year
+        // observations. Report insufficient sample instead of counting
+        // overlapping starts as independent evidence.
+        expect(investorObservations.every((observation, index) =>
+          index === 0 || observation.dataAsOf > investorObservations[index - 1].horizonEndsAt
+        )).toBe(true);
+        if (investorObservations.length < 30) {
+          expect(investorCostSensitivity.every((scenario) =>
+            scenario.report.status === "INSUFFICIENT_SAMPLE" &&
+            (scenario.report.excludedReasons.overlapping_horizon ?? 0) === 0
+          )).toBe(true);
+        } else {
+          expect(investorCostSensitivity.every((scenario) =>
+            scenario.report.evaluatedCount >= 30 &&
+            (scenario.report.excludedReasons.overlapping_horizon ?? 0) === 0
+          )).toBe(true);
+        }
+      }
 
       reports.push({
         instrument: dataset.instrumentId,
@@ -267,12 +329,15 @@ describe("real historical forward forecast outcome evaluation", () => {
         oosStart: dataset.candles[warmupBars]?.timestamp,
         oosEnd: dataset.candles[dataset.candles.length - 1]?.timestamp,
         hypothesis: timeframe === "D1"
-          ? "Swing trader: EMA20/EMA50 direction; trailing 20-day support/resistance; 20-bar horizon. Investor: HH/HL or LH/LL from two prior 30-bar windows; 90-day swing bounds; 90-day horizon."
+          ? "Swing trader: EMA20/EMA50 direction; trailing 20-day support/resistance; 20-bar horizon. Investor: HH/HL or LH/LL from two prior 30-bar windows; 90-week swing bounds from aggregated weekly candles; 1–3 year planning horizon (3-year upper boundary)."
           : "Intraday trader: EMA20/EMA50 direction; trailing 20-hour support/resistance; 24-bar horizon.",
         baseline: "Rolling prior-only close-to-close momentum sign (100 bars for trader, 180 bars for investor).",
         traderObservations: traderObservations.length,
         traderCostSensitivity,
-        investorObservations: investorCostSensitivity[0]?.report.observationCount ?? 0,
+        investorHorizonBars: investorObservations[0]
+          ? Math.ceil((investorObservations[0].horizonEndsAt - investorObservations[0].dataAsOf) / DAY)
+          : undefined,
+        investorObservations: investorObservations.length,
         investorCostSensitivity,
       });
     }
