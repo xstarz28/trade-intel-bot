@@ -1,5 +1,6 @@
 import { chromium } from "playwright";
 import { access } from "node:fs/promises";
+import { extractForecastStatus } from "./forecast-contract-validation.mjs";
 
 const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzanalysis.vercel.app";
 const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
@@ -282,8 +283,9 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     if (!new RegExp(label, "i").test(text)) {
       throw new Error(`${instrument} forward-forecast card label is missing: ${label}`);
     }
-    if (!/\b(?:CONDITIONAL|UNAVAILABLE|BLOCKED DATA QUALITY)\b/i.test(text)) {
-      throw new Error(`${instrument} ${label} has no explicit forecast status`);
+    const forecastStatus = extractForecastStatus(text);
+    if (!forecastStatus) {
+      throw new Error(`${instrument} ${label} has no explicit status badge. Card text: ${text.slice(0, 1800)}`);
     }
     if (!/direction:\s*(?:bullish|bearish|neutral)/i.test(text) || !/horizon:\s*\S+/i.test(text)) {
       throw new Error(`${instrument} ${label} omitted its direction or forecast horizon`);
@@ -297,9 +299,9 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     if (!/source data as of:/i.test(text)) {
       throw new Error(`${instrument} ${label} omitted the source-data timestamp`);
     }
-    if (/\bCONDITIONAL\b/i.test(text)) {
+    if (forecastStatus === "CONDITIONAL") {
       if (!/objective:/i.test(text) || !/invalidation\/downside:/i.test(text)) {
-        throw new Error(`${instrument} ${label} is CONDITIONAL without both an objective and an invalidation`);
+        throw new Error(`${instrument} ${label} is CONDITIONAL without both an objective and an invalidation. Card text: ${text.slice(0, 2200)}`);
       }
       if (requireInvestorRatio && !/(?:objective \/ invalidation distance|structural upside\/downside):\s*[\d.]+\s*:/i.test(text)) {
         throw new Error(`${instrument} investor forecast is CONDITIONAL without a complete structural reward/risk ratio`);
@@ -308,7 +310,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
       throw new Error(`${instrument} ${label} is unavailable without a visible limitation`);
     }
     return {
-      status: (text.match(/\b(CONDITIONAL|UNAVAILABLE|BLOCKED DATA QUALITY)\b/i)?.[1] ?? "").toUpperCase(),
+      status: forecastStatus,
       direction: (text.match(/direction:\s*(bullish|bearish|neutral)/i)?.[1] ?? "").toLowerCase(),
       horizon: text.match(/horizon:\s*([^\n]+)/i)?.[1]?.trim() ?? null,
       calibration: "UNVALIDATED",
