@@ -745,10 +745,9 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
 
     expect(radarSource.universe.instrument).toBe("BTC/USD");
     expect(radarSource.snapshot).toBeNull();
-    expect(radarSource.analysisResult?.confidence).toBeUndefined();
-    expect(radarSource.analysisResult?.fundamentalScore).toBeUndefined();
-    expect(radarSource.analysisResult?.fundamentalEvidenceAvailable).toBe(false);
-    expect(radarSource.analysisResult?.positioningEvidenceAvailable).toBe(false);
+    expect(radarSource.analysisResult).toBeUndefined();
+    expect(radarSource.fundamentalEvidenceAvailable).toBe(false);
+    expect(radarSource.positioningEvidenceAvailable).toBe(false);
   });
 
   it("never borrows price or analysis confidence from a different instrument", () => {
@@ -986,9 +985,8 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
       } as any,
     });
 
-    expect(radarSource.analysisResult?.confidence).toBeUndefined();
-    expect(radarSource.analysisResult?.fundamentalScore).toBeUndefined();
-    expect(radarSource.analysisResult?.fundamentalEvidenceAvailable).toBe(false);
+    expect(radarSource.analysisResult).toBeUndefined();
+    expect(radarSource.fundamentalEvidenceAvailable).toBe(false);
     const candidate = buildRadarCandidate(radarSource, now);
     expect(candidate.hasAnalysis).toBeUndefined();
     expect(candidate.fundamentalScore).toBeUndefined();
