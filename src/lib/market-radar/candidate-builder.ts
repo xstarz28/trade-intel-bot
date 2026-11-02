@@ -621,7 +621,7 @@ export function toRadarCandidateSource(
     ...(treasury ? { treasury } : {}),
     analysisResult: {
       ...(analysis ? {
-        confidence: String(analysis.confidence),
+        confidence: analysis.confidence !== undefined ? String(analysis.confidence) : undefined,
         bias: analysis.bias,
         recommendation: analysis.recommendation,
         fundamentalScore: analysis.breakdown?.fundamental,
