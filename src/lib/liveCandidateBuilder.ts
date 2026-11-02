@@ -155,12 +155,17 @@ function hasScoredFundamentalEvidence(result: AnalysisResult | undefined): boole
   const hasReleasedHighImportanceSurprise = !!(
     calendar && calendar.confidence !== "unavailable" &&
     Array.isArray(calendar.events) &&
-    calendar.events.some((event) =>
-      event.status === "released" &&
-      event.actual !== undefined &&
-      event.forecast !== undefined &&
-      event.importance === 3
-    )
+    calendar.events.some((event) => {
+      if (
+        event.status !== "released" ||
+        event.actual === undefined ||
+        event.forecast === undefined ||
+        event.importance !== 3
+      ) return false;
+      const actual = typeof event.actual === "number" ? event.actual : Number.parseFloat(String(event.actual));
+      const forecast = typeof event.forecast === "number" ? event.forecast : Number.parseFloat(String(event.forecast));
+      return Number.isFinite(actual) && Number.isFinite(forecast);
+    })
   );
   return hasStockMetrics || hasMacroIndicators || hasReleasedHighImportanceSurprise;
 }
