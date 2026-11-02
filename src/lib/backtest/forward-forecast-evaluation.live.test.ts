@@ -334,6 +334,7 @@ describe("real historical forward forecast outcome evaluation", () => {
             }
             return {
               horizon,
+              boundarySemantics: horizon === "3+_YEARS" ? "MINIMUM" as const : "UPPER" as const,
               horizonBars: observations[0]
                 ? Math.ceil((observations[0].horizonEndsAt - observations[0].dataAsOf) / DAY)
                 : undefined,
@@ -358,7 +359,7 @@ describe("real historical forward forecast outcome evaluation", () => {
         oosStart: dataset.candles[warmupBars]?.timestamp,
         oosEnd: dataset.candles[dataset.candles.length - 1]?.timestamp,
         hypothesis: timeframe === "D1"
-          ? "Swing trader: EMA20/EMA50 direction; trailing 20-day support/resistance; 20-bar horizon. Investor: HH/HL or LH/LL from two prior 30-bar windows; 90-week swing bounds from aggregated weekly candles; each of the six explicit investment planning horizons is replayed independently."
+          ? "Swing trader: EMA20/EMA50 direction; trailing 20-day support/resistance; 20-bar horizon. Investor: HH/HL or LH/LL from two prior 30-bar windows; 90-week swing bounds from aggregated weekly candles; all six planning horizons are replayed independently. The 3+ years case is evaluated only at its 3-year minimum boundary."
           : "Intraday trader: EMA20/EMA50 direction; trailing 20-hour support/resistance; 24-bar horizon.",
         baseline: "Rolling prior-only close-to-close momentum sign (100 bars for trader, 180 bars for investor).",
         traderObservations: traderObservations.length,
@@ -384,7 +385,9 @@ describe("real historical forward forecast outcome evaluation", () => {
       reports,
       limitations: [
         "This is a pre-registered technical research proxy, not the complete multi-factor production analysis engine.",
-        "Investor forecasts are structural only; no fair value, DCF, fundamental target, or calibrated probability is produced.",
+        "Investor forecasts in this research replay are structural only; no fair value, DCF, fundamental target, or calibrated probability is produced.",
+        "The 3+ years planning horizon is evaluated only at its 3-year minimum boundary; available five-year history cannot validate an unbounded horizon or produce 30 independent multi-year observations.",
+        "Shorter investor horizons are evaluated independently without overlapping windows; horizons with fewer than 30 observations remain insufficient_sample and are not treated as validated.",
         "The prior 100/180-bar momentum baseline is calculated strictly before each signal candle.",
         "Overlapping horizons are excluded; only completed Binance Spot candles are used.",
         "Spot short scenarios are synthetic references, not executable spot shorts; borrow, funding, liquidation, and basis are not modeled.",
@@ -412,6 +415,7 @@ describe("real historical forward forecast outcome evaluation", () => {
           traderCostSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; expectancyBlockBootstrap95R: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
           investorHorizonEvaluations: Array<{
             horizon: InvestorForecastHorizon;
+            boundarySemantics: "UPPER" | "MINIMUM";
             horizonBars?: number;
             observations: number;
             costSensitivity: Array<{ costBpsPerSide: number; report: { evaluatedCount: number; directionalAccuracyPct: number | null; baselineAccuracyPct: number | null; accuracyLiftPct: number | null; accuracyLift95Pct: { lowerPct: number; upperPct: number } | null; accuracyLiftBlockBootstrap95Pct: { lowerPct: number; upperPct: number } | null; expectancyR: number | null; expectancyR95: { lower: number; upper: number } | null; expectancyBlockBootstrap95R: { lower: number; upper: number } | null; profitFactor: number | null; status: string } }>;
@@ -426,7 +430,7 @@ describe("real historical forward forecast outcome evaluation", () => {
         const traderRows = entry.traderCostSensitivity.map((s) => ({ horizon: "Trader", ...s }));
         const investorRows = entry.investorHorizonEvaluations.flatMap((evaluation) =>
           evaluation.costSensitivity.map((s) => ({
-            horizon: `Investor ${evaluation.horizon} (N=${evaluation.observations})`,
+            horizon: `Investor ${evaluation.horizon}${evaluation.boundarySemantics === "MINIMUM" ? " (3-year minimum boundary)" : ""} (N=${evaluation.observations})`,
             ...s,
           }))
         );
