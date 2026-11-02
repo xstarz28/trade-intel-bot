@@ -620,21 +620,21 @@ export function toRadarCandidateSource(
     ...(eia ? { eia } : {}),
     ...(treasury ? { treasury } : {}),
     analysisResult: {
-      ...(analysis ? {
-        confidence: analysis.confidence !== undefined ? String(analysis.confidence) : undefined,
-        bias: analysis.bias,
-        recommendation: analysis.recommendation,
-        fundamentalScore: analysis.breakdown?.fundamental,
-        positioningScore: analysis.breakdown?.sentiment,
+      ...(analysis ? { fundamentalScore: analysis.breakdown?.fundamental } : {}),
+      ...(matchingAnalysis ? {
+        confidence: matchingAnalysis.confidence !== undefined ? String(matchingAnalysis.confidence) : undefined,
+        bias: matchingAnalysis.bias,
+        recommendation: matchingAnalysis.recommendation,
+        positioningScore: matchingAnalysis.breakdown?.sentiment,
         technicalData: {
           htfBias,
-          mtfAlignment: technical?.mtf?.alignment ?? analysis.mtfSummary?.alignment,
+          mtfAlignment: technical?.mtf?.alignment ?? matchingAnalysis.mtfSummary?.alignment,
           marketRegime,
           atr: technical?.atr14,
         },
       } : {}),
       fundamentalEvidenceAvailable: hasFundamentalEvidence(analysis, source),
-      positioningEvidenceAvailable: hasScoredPositioningEvidence(analysis),
+      positioningEvidenceAvailable: hasScoredPositioningEvidence(matchingAnalysis),
     },
   };
 }
