@@ -627,7 +627,7 @@ export function toRadarCandidateSource(
         fundamentalScore: analysis.breakdown?.fundamental,
         positioningScore: analysis.breakdown?.sentiment,
         fundamentalEvidenceAvailable: hasFundamentalEvidence(analysis, source),
-        positioningEvidenceAvailable: hasScoredPositioningEvidence(matchingAnalysis),
+        positioningEvidenceAvailable: hasScoredPositioningEvidence(analysis),
         technicalData: {
           htfBias,
           mtfAlignment: technical?.mtf?.alignment ?? analysis.mtfSummary?.alignment,
