@@ -38,15 +38,36 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Skip smoke when a newer main revision superseded this deployment
+        id: freshness
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_main_sha="$(git ls-remote origin refs/heads/main | awk '{print $1}')"
+          if [ -z "${latest_main_sha}" ]; then
+            echo "::error::Could not resolve the current main revision; refusing an ungrounded production smoke."
+            exit 1
+          fi
+          if [ "${EXPECTED_SHA,,}" != "${latest_main_sha,,}" ]; then
+            echo "superseded=true" >> "${GITHUB_OUTPUT}"
+            echo "Skipping stale smoke for ${EXPECTED_SHA}; current main is ${latest_main_sha}. The newer deployment owns production verification."
+          else
+            echo "superseded=false" >> "${GITHUB_OUTPUT}"
+            echo "Smoke revision is current main: ${EXPECTED_SHA}"
+          fi
+
       - name: Install repository dependencies
+        if: steps.freshness.outputs.superseded != 'true'
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
       - name: Install browser harness
+        if: steps.freshness.outputs.superseded != 'true'
         run: |
           npm install --no-save --legacy-peer-deps playwright@1.55.0
           npx playwright install --with-deps chromium
 
       - name: Verify the exact revision is live on the production domain
+        if: steps.freshness.outputs.superseded != 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -67,6 +88,7 @@ jobs:
           fi
 
       - name: Run real production analysis
+        if: steps.freshness.outputs.superseded != 'true'
         run: node scripts/production-runtime-smoke.mjs
 
       - name: Publish smoke summary
@@ -74,4 +96,5 @@ jobs:
         run: |
           echo "Target: ${XSTARZ_SMOKE_URL}"
           echo "Commit: ${GITHUB_SHA}"
-          echo "The smoke is green only when the deployed commit matches, guest access works, and BTC/USD, XAU/USD, EUR/USD and AAPL each render a real price snapshot, provider source and data-quality state; the page also renders a provider OHLCV chart."
+          echo "Superseded: ${{ steps.freshness.outputs.superseded || 'false' }}"
+          echo "The smoke is green only when the current main deployment matches, guest access works, and BTC/USD, XAU/USD, EUR/USD and AAPL each render a real price snapshot, provider source and data-quality state; the page also renders a provider OHLCV chart."
