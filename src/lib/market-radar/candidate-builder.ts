@@ -619,23 +619,25 @@ export function toRadarCandidateSource(
     ...(cot ? { cot } : {}),
     ...(eia ? { eia } : {}),
     ...(treasury ? { treasury } : {}),
-    analysisResult: {
-      ...(analysis ? { fundamentalScore: analysis.breakdown?.fundamental } : {}),
-      ...(matchingAnalysis ? {
-        confidence: matchingAnalysis.confidence !== undefined ? String(matchingAnalysis.confidence) : undefined,
-        bias: matchingAnalysis.bias,
-        recommendation: matchingAnalysis.recommendation,
-        positioningScore: matchingAnalysis.breakdown?.sentiment,
-        technicalData: {
-          htfBias,
-          mtfAlignment: technical?.mtf?.alignment ?? matchingAnalysis.mtfSummary?.alignment,
-          marketRegime,
-          atr: technical?.atr14,
-        },
-      } : {}),
-      fundamentalEvidenceAvailable: hasFundamentalEvidence(analysis, source),
-      positioningEvidenceAvailable: hasScoredPositioningEvidence(matchingAnalysis),
-    },
+    ...(candidateAnalysis ? {
+      analysisResult: {
+        ...(analysis ? { fundamentalScore: analysis.breakdown?.fundamental } : {}),
+        ...(matchingAnalysis ? {
+          confidence: matchingAnalysis.confidence !== undefined ? String(matchingAnalysis.confidence) : undefined,
+          bias: matchingAnalysis.bias,
+          recommendation: matchingAnalysis.recommendation,
+          positioningScore: matchingAnalysis.breakdown?.sentiment,
+          technicalData: {
+            htfBias,
+            mtfAlignment: technical?.mtf?.alignment ?? matchingAnalysis.mtfSummary?.alignment,
+            marketRegime,
+            atr: technical?.atr14,
+          },
+        } : {}),
+        fundamentalEvidenceAvailable: hasFundamentalEvidence(analysis, source),
+        positioningEvidenceAvailable: hasScoredPositioningEvidence(matchingAnalysis),
+      },
+    } : {}),
   };
 }
 
@@ -883,7 +885,7 @@ export function buildRadarCandidate(
     if (source.analysisResult.positioningScore !== undefined) {
       candidate.positioningScore = source.analysisResult.positioningScore;
     }
-    if (source.analysisResult.fundamentalEvidenceAvailable !== undefined) {
+    if (hasAnalysisPayload && source.analysisResult.fundamentalEvidenceAvailable !== undefined) {
       candidate.fundamentalEvidenceAvailable = source.analysisResult.fundamentalEvidenceAvailable;
     }
     if (source.analysisResult.positioningEvidenceAvailable !== undefined) {
