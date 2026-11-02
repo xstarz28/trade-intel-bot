@@ -154,7 +154,9 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
       source.derivativesData?.freshness !== "unavailable") domains.add("derivatives");
   if (source.calendarData?.events?.some((event) => event.status === "upcoming" || event.status === "released")) domains.add("calendar");
   if (source.treasuryData?.available || source.cotData?.available || source.eiaData?.available) domains.add("macro-positioning");
-  if (source.cryptoIntelligenceContext?.instrument === source.instrument && source.cryptoIntelligenceContext.evidence.length > 0) domains.add("crypto-intelligence");
+  if (source.cryptoIntelligenceContext?.instrument === source.instrument && source.cryptoIntelligenceContext.evidence.some((item) =>
+    item.providerAvailable && item.quality === "VERIFIED" && (item.freshness === "FRESH" || item.freshness === "DELAYED")
+  )) domains.add("crypto-intelligence");
   if (universal?.forex?.rates?.available || universal?.forex?.yields?.available) domains.add("rates");
   if (universal?.forex?.positioning?.available || universal?.commodity?.positioning?.available) domains.add("positioning");
   if (universal?.commodity?.inventory?.available) domains.add("inventory");
