@@ -285,7 +285,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     }
     const forecastStatus = extractForecastStatus(text);
     if (!forecastStatus) {
-      throw new Error(`${instrument} ${label} has no explicit status badge`);
+      throw new Error(`${instrument} ${label} has no explicit status badge. Card text: ${text.slice(0, 1800)}`);
     }
     if (!/direction:\s*(?:bullish|bearish|neutral)/i.test(text) || !/horizon:\s*\S+/i.test(text)) {
       throw new Error(`${instrument} ${label} omitted its direction or forecast horizon`);
@@ -301,7 +301,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     }
     if (forecastStatus === "CONDITIONAL") {
       if (!/objective:/i.test(text) || !/invalidation\/downside:/i.test(text)) {
-        throw new Error(`${instrument} ${label} is CONDITIONAL without both an objective and an invalidation`);
+        throw new Error(`${instrument} ${label} is CONDITIONAL without both an objective and an invalidation. Card text: ${text.slice(0, 2200)}`);
       }
       if (requireInvestorRatio && !/(?:objective \/ invalidation distance|structural upside\/downside):\s*[\d.]+\s*:/i.test(text)) {
         throw new Error(`${instrument} investor forecast is CONDITIONAL without a complete structural reward/risk ratio`);
