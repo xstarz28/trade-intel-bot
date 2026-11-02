@@ -688,4 +688,91 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(shortForecast.trader.horizon).toEqual(defaultForecast.trader.horizon);
   });
 
+
+  it("uses authoritative adaptive MTF structure instead of stale legacy HTF context", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      timeframe: "H4",
+      timestamp,
+      priceSnapshot: { price: 100_000, timestamp: timestamp - 1_000, source: "test" },
+      htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
+      technicalData: {
+        htfContext: {
+          timeframe: "D1",
+          structure: "LH/LL",
+          bosDirection: "bearish",
+          chochDirection: "none",
+          lastSwingHigh: 105_000,
+          lastSwingLow: 95_000,
+          dataPoints: 80,
+        },
+        mtf: {
+          requestedTimeframe: "H4",
+          chainUsed: ["W1", "H4"],
+          unavailable: [],
+          alignment: "ALIGNED_BULLISH",
+          htfBias: "long",
+          htfTimeframe: "W1",
+          setupTimeframe: "H4",
+          timeframes: [{
+            timeframe: "W1",
+            role: "macro",
+            available: true,
+            smc: {
+              timeframe: "W1",
+              liquidityPools: [],
+              internalExternal: {
+                external: {
+                  timeframe: "W1",
+                  structure: "HH/HL",
+                  bosDirection: "bullish",
+                  chochDirection: "none",
+                  lastSwingHigh: 125_000,
+                  lastSwingLow: 88_000,
+                  dataPoints: 100,
+                },
+                internal: {
+                  timeframe: "W1",
+                  structure: "HH/HL",
+                  bosDirection: "bullish",
+                  chochDirection: "none",
+                  dataPoints: 100,
+                },
+              },
+            } as any,
+          }],
+        },
+      } as AnalysisResult["technicalData"],
+    }));
+
+    expect(forecast.investor.direction).toBe("bullish");
+    expect(forecast.investor.objective?.price).toBe(125_000);
+  });
+
+  it("does not relabel primary-timeframe SMC as higher-timeframe investment structure", () => {
+    const forecast = buildForwardForecast(baseResult({
+      htfAlignment: undefined,
+      technicalData: {
+        structure: "HH/HL",
+        smc: {
+          internalExternal: {
+            external: {
+              timeframe: "H1",
+              structure: "HH/HL",
+              bosDirection: "bullish",
+              chochDirection: "none",
+              lastSwingHigh: 112_000,
+              lastSwingLow: 94_000,
+              dataPoints: 80,
+            },
+          },
+        },
+      } as AnalysisResult["technicalData"],
+    }));
+
+    expect(forecast.investor.direction).toBe("neutral");
+    expect(forecast.investor.status).toBe("UNAVAILABLE");
+    expect(forecast.investor.objective).toBeUndefined();
+  });
+
 });
