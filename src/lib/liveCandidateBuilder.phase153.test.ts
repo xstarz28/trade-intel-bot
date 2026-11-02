@@ -47,15 +47,27 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
         higherTimeframeCandles,
         dataFreshness: "realtime",
       },
-      derivativesData: {
-        provider: "fixture",
-        symbol: "BTC/USD",
-        timestamp: now,
-        freshness: "realtime",
-        openInterest: { current: 1000 },
-        availability: { openInterest: true, fundingRate: false, longShort: false, liquidations: false },
-        confidence: "low",
-      },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: now,
+        evidence: [{
+          source: "Tokenomist",
+          category: "TOKENOMICS",
+          direction: "SUPPORTING",
+          strength: "MEDIUM",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "TOKENOMICS_UNLOCKS",
+          explanation: "Verified tokenomics evidence from the exact instrument.",
+          providerAvailable: true,
+        }],
+        overallAvailability: "MINIMAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Verified crypto tokenomics evidence.",
+      } as any,
     }, now);
 
     expect(candidate.dataCompleteness).toBe("PARTIAL");
