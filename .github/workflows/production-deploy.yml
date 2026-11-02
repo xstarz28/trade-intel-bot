@@ -31,6 +31,7 @@ jobs:
       CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
       VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
       XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
     steps:
       - name: Require confirmation for manual deploys
         if: ${{ github.event_name == 'workflow_dispatch' }}
@@ -60,6 +61,9 @@ jobs:
           test -n "${CONVEX_DEPLOY_KEY:-}" || { echo "::error::CONVEX_DEPLOY_KEY missing"; exit 1; }
           test "${CONVEX_DEPLOYMENT:-}" = "${EXPECTED_DEPLOYMENT}" || { echo "::error::Wrong CONVEX_DEPLOYMENT"; exit 1; }
           test "${VITE_CONVEX_URL:-}" = "${EXPECTED_URL}" || { echo "::error::Wrong VITE_CONVEX_URL"; exit 1; }
+          test -n "${SEC_USER_AGENT:-}" || { echo "::error::SEC_USER_AGENT GitHub Actions secret is required for SEC EDGAR production access"; exit 1; }
+          test "${#SEC_USER_AGENT}" -le 250 || { echo "::error::SEC_USER_AGENT must be 250 characters or fewer"; exit 1; }
+          [[ "$SEC_USER_AGENT" =~ \([^)]*@[^)]+\) ]] || { echo "::error::SEC_USER_AGENT must include a parenthesized contact email, e.g. Product Ops (contact@example.com)"; exit 1; }
 
       - name: Set production site URL
         run: |
@@ -84,6 +88,12 @@ jobs:
           else
             echo "::warning::TOKENOMIST_API_KEY GitHub Actions secret is missing; Tokenomist will remain unavailable until configured."
           fi
+
+      - name: Configure SEC EDGAR identification in Convex production
+        run: |
+          set -euo pipefail
+          npx convex env set SEC_USER_AGENT "$SEC_USER_AGENT"
+          echo "::notice::SEC EDGAR User-Agent configured in Convex production."
 
       - name: Build and deploy backend
         run: npx convex deploy --yes --typecheck disable --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
