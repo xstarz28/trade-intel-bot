@@ -641,7 +641,7 @@ describe("Radar investor valuation provenance", () => {
         structure: "HH/HL",
         lastSwingHigh: 120,
         lastSwingLow: 90,
-        dataPoints: 80,
+        dataPoints: 180,
       },
     } as unknown as TechnicalData;
     return {
