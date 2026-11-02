@@ -9,6 +9,7 @@
  */
 
 import type { AnalysisResult } from "@/types/analysis";
+import type { TimeframeStructureContext } from "@/lib/data/market-types";
 import { buildInvestorFundamentalOutlook, type InvestorFundamentalOutlook, type InvestorValuationStatus } from "@/lib/investor-fundamental-outlook";
 
 export type ForecastDirection = "bullish" | "bearish" | "neutral";
@@ -161,6 +162,45 @@ function traderHorizon(result: AnalysisResult, asOf: number): ForecastHorizon {
 const TIMEFRAME_RANK: Record<string, number> = {
   M1: 1, M5: 2, M15: 3, H1: 4, H4: 5, D1: 6, W1: 7,
 };
+
+/**
+ * Resolve the actual higher-timeframe external structure. Adaptive MTF is
+ * authoritative when present; legacy HTF context is accepted only when it
+ * is strictly above the analyzed timeframe. Primary-timeframe SMC is never
+ * relabeled as long-term investment structure.
+ */
+function investorStructureContext(result: AnalysisResult): TimeframeStructureContext | undefined {
+  const technical = result.technicalData;
+  const primaryRank = TIMEFRAME_RANK[result.timeframe] ?? 0;
+
+  if (technical?.mtf) {
+    const htfTimeframe = technical.mtf.htfTimeframe;
+    if (!htfTimeframe || (TIMEFRAME_RANK[htfTimeframe] ?? 0) <= primaryRank) return undefined;
+    const slot = technical.mtf.timeframes.find((item) =>
+      item.timeframe === htfTimeframe &&
+      item.available &&
+      (item.role === "macro" || item.role === "structure"),
+    );
+    const external = slot?.smc?.internalExternal?.external;
+    if (
+      !external ||
+      external.timeframe !== htfTimeframe ||
+      !Number.isFinite(external.dataPoints) ||
+      external.dataPoints < 20
+    ) return undefined;
+    return external;
+  }
+
+  const legacy = technical?.htfContext;
+  if (
+    !legacy ||
+    (TIMEFRAME_RANK[legacy.timeframe] ?? 0) <= primaryRank ||
+    !Number.isFinite(legacy.dataPoints) ||
+    legacy.dataPoints < 20
+  ) return undefined;
+  return legacy;
+}
+
 
 function investorHorizon(asOf: number, requested: InvestorForecastHorizon = "1-3_YEARS"): ForecastHorizon {
   const windows: Record<InvestorForecastHorizon, {
@@ -371,10 +411,10 @@ function investorForecast(
   const horizon = investorHorizon(snapshot?.timestamp ?? result.timestamp, requestedHorizon);
   const blocked = dataStatus(result);
   const fundamentalOutlook = buildInvestorFundamentalOutlook(result, blocked ? undefined : snapshot?.price);
-  const structure = result.technicalData?.htfContext ?? result.technicalData?.smc?.internalExternal?.external;
-  const direction: ForecastDirection = result.htfAlignment?.htfStructure === "HH/HL" || structure?.structure === "HH/HL"
+  const structure = investorStructureContext(result);
+  const direction: ForecastDirection = structure?.structure === "HH/HL"
     ? "bullish"
-    : result.htfAlignment?.htfStructure === "LH/LL" || structure?.structure === "LH/LL"
+    : structure?.structure === "LH/LL"
       ? "bearish"
       : "neutral";
   const evidence: string[] = [];
