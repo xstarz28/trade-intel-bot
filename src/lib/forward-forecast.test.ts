@@ -562,4 +562,98 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.fundamentalOutlook.valuationReference).toBeUndefined();
   });
 
+
+  it("uses the higher-timeframe horizon band instead of a fixed 90-day investor window", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      timeframe: "H4",
+      htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
+      technicalData: {
+        htfContext: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 120_000, lastSwingLow: 90_000, dataPoints: 100 },
+      } as AnalysisResult["technicalData"],
+      timestamp,
+      priceSnapshot: { price: 100_000, timestamp: timestamp - 1_000, source: "test-provider" },
+    }));
+    expect(forecast.investor.horizon.label).toContain("1–3 years");
+    expect(forecast.investor.horizon.endsAt - forecast.investor.horizon.startsAt).toBe(2 * 365 * 86_400_000);
+  });
+
+  it("publishes an accumulation zone only from a fresh validated higher-timeframe bullish order block", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      timeframe: "H4",
+      timestamp,
+      priceSnapshot: { price: 100_000, timestamp: timestamp - 1_000, source: "test-provider" },
+      htfAlignment: { htfTimeframe: "W1", htfStructure: "HH/HL", state: "aligned" },
+      technicalData: {
+        htfContext: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 120_000, lastSwingLow: 90_000, dataPoints: 100 },
+        mtf: {
+          requestedTimeframe: "H4",
+          chainUsed: ["W1", "H4"],
+          unavailable: [],
+          alignment: "ALIGNED_BULLISH",
+          htfBias: "long",
+          htfTimeframe: "W1",
+          setupTimeframe: "H4",
+          timeframes: [{
+            timeframe: "W1",
+            role: "macro",
+            available: true,
+            smc: {
+              timeframe: "W1",
+              liquidityPools: [],
+              internalExternal: {
+                external: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 100 },
+                internal: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 100 },
+                internalConflict: false,
+              },
+              fvgs: [],
+              orderBlocks: [{
+                direction: "bullish",
+                lower: 92_000,
+                upper: 96_000,
+                timeframe: "W1",
+                createdAt: timestamp - 10_000,
+                status: "fresh",
+                evidence: {
+                  precedingOpposingCandle: true,
+                  displacementAfter: true,
+                  structuralBreakAfter: true,
+                  displacementRangeAtr: 1.8,
+                },
+              }],
+              vwap: { available: false, priceLocation: "unavailable" },
+              volumeProfile: { available: false },
+            },
+          }],
+        },
+      } as unknown as AnalysisResult["technicalData"],
+    }));
+    expect(forecast.investor.accumulationZone).toMatchObject({
+      lower: 92_000,
+      upper: 96_000,
+      timeframe: "W1",
+      source: "validated_bullish_order_block",
+    });
+  });
+
+  it("keeps bearish investment objective return negative while measuring invalidation distance positively", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      bias: "Bearish",
+      timestamp,
+      priceSnapshot: { price: 100, timestamp: timestamp - 1_000, source: "test-provider" },
+      htfAlignment: { htfTimeframe: "D1", htfStructure: "LH/LL", state: "aligned" },
+      technicalData: {
+        htfContext: { timeframe: "D1", structure: "LH/LL", bosDirection: "bearish", chochDirection: "none", lastSwingHigh: 110, lastSwingLow: 80, dataPoints: 100 },
+      } as AnalysisResult["technicalData"],
+    }));
+    expect(forecast.investor.direction).toBe("bearish");
+    expect(forecast.investor.objective?.price).toBe(80);
+    expect(forecast.investor.invalidation?.price).toBe(110);
+    expect(forecast.investor.potentialUpsidePct).toBeCloseTo(-20);
+    expect(forecast.investor.potentialDownsidePct).toBeCloseTo(10);
+    expect(forecast.investor.potentialUpsideDownsideRatio).toBeCloseTo(2);
+  });
+
 });

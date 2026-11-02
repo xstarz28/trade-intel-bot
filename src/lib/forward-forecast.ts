@@ -50,6 +50,15 @@ export interface TraderForwardForecast {
   limitations: string[];
 }
 
+export interface InvestorAccumulationZone {
+  lower: number;
+  upper: number;
+  timeframe: string;
+  source: "validated_bullish_order_block";
+  createdAt: number;
+  evidence: string[];
+}
+
 export interface InvestorForwardForecast {
   status: ForecastStatus;
   direction: ForecastDirection;
@@ -57,8 +66,10 @@ export interface InvestorForwardForecast {
   alternateScenarios?: AlternateForecastScenario[];
   /** Current spot used as a transparent investment comparison reference, not an order. */
   entry?: ForecastLevel;
-  /** Observed higher-timeframe support reference; not a guaranteed fill or accumulation zone. */
+  /** Nearest observed support reference; not a guaranteed fill or accumulation zone. */
   accumulationReference?: ForecastLevel;
+  /** Higher-timeframe bullish order block with validated displacement and structure break. */
+  accumulationZone?: InvestorAccumulationZone;
   objective?: ForecastLevel;
   invalidation?: ForecastLevel;
   /** Price-distance ratio from the spot reference to objective versus invalidation. */
@@ -136,16 +147,71 @@ function traderHorizon(result: AnalysisResult, asOf: number): ForecastHorizon {
   };
 }
 
+const TIMEFRAME_RANK: Record<string, number> = {
+  M1: 1, M5: 2, M15: 3, H1: 4, H4: 5, D1: 6, W1: 7,
+};
+
 function investorHorizon(result: AnalysisResult, asOf: number): ForecastHorizon {
-  const weekly = result.technicalData?.htfContext?.timeframe === "W1" || result.timeframe === "W1";
-  const duration = weekly ? 26 * 7 * DAY_MS : 90 * DAY_MS;
-  const label = weekly ? "26 weeks · structural cycle" : "3 months · structural thesis";
+  const htfTimeframe = result.technicalData?.htfContext?.timeframe ??
+    result.technicalData?.mtf?.timeframes
+      ?.filter((item) => item.available && (item.role === "macro" || item.role === "structure"))
+      .sort((a, b) => (TIMEFRAME_RANK[b.timeframe] ?? 0) - (TIMEFRAME_RANK[a.timeframe] ?? 0))[0]?.timeframe ??
+    result.timeframe;
+  const rank = TIMEFRAME_RANK[htfTimeframe] ?? TIMEFRAME_RANK[result.timeframe] ?? 4;
+  const horizon = rank >= TIMEFRAME_RANK.W1
+    ? { label: "1–3 years · weekly structural thesis", duration: 2 * 365 * DAY_MS, basis: "Two-year planning point inside the 1–3 year weekly-structure research band; not a calibrated price forecast." }
+    : rank >= TIMEFRAME_RANK.D1
+      ? { label: "6–12 months · daily structural thesis", duration: 365 * DAY_MS, basis: "One-year planning point inside the 6–12 month higher-timeframe research band; not a calibrated price forecast." }
+      : rank >= TIMEFRAME_RANK.H4
+        ? { label: "3–6 months · higher-timeframe thesis", duration: 180 * DAY_MS, basis: "Six-month planning point inside the 3–6 month higher-timeframe research band; not a calibrated price forecast." }
+        : { label: "1–3 months · structural thesis", duration: 90 * DAY_MS, basis: "Three-month planning point inside the 1–3 month structural research band; not a calibrated price forecast." };
   return {
-    label,
+    label: horizon.label,
     startsAt: asOf,
-    endsAt: asOf + duration,
-    basis: "Explicit research horizon convention; not an empirically calibrated forecast window.",
+    endsAt: asOf + horizon.duration,
+    basis: horizon.basis,
   };
+}
+
+function investorAccumulationZone(result: AnalysisResult, spot: number): InvestorAccumulationZone | undefined {
+  const primaryRank = TIMEFRAME_RANK[result.timeframe] ?? 0;
+  const candidates = (result.technicalData?.mtf?.timeframes ?? [])
+    .filter((item) =>
+      item.available &&
+      (item.role === "macro" || item.role === "structure") &&
+      (TIMEFRAME_RANK[item.timeframe] ?? 0) > primaryRank &&
+      item.smc,
+    )
+    .flatMap((item) => (item.smc?.orderBlocks ?? []).flatMap((block) => {
+      if (
+        block.direction !== "bullish" ||
+        block.status !== "fresh" ||
+        !block.evidence.precedingOpposingCandle ||
+        !block.evidence.displacementAfter ||
+        !block.evidence.structuralBreakAfter ||
+        !Number.isFinite(block.lower) ||
+        !Number.isFinite(block.upper) ||
+        block.lower <= 0 ||
+        block.upper <= block.lower ||
+        block.lower >= spot
+      ) return [];
+      return [{
+        lower: block.lower,
+        upper: block.upper,
+        timeframe: item.timeframe,
+        source: "validated_bullish_order_block" as const,
+        createdAt: block.createdAt,
+        evidence: [
+          "Fresh bullish order block from an available higher timeframe.",
+          "Preceding opposing candle, subsequent displacement, and structural break are all verified.",
+        ],
+      }];
+    }));
+  if (candidates.length === 0) return undefined;
+  return candidates.sort((a, b) =>
+    (TIMEFRAME_RANK[b.timeframe] ?? 0) - (TIMEFRAME_RANK[a.timeframe] ?? 0) ||
+    Math.max(0, spot - a.upper) - Math.max(0, spot - b.upper),
+  )[0];
 }
 
 function alternateScenarios(
@@ -288,7 +354,9 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
       : undefined;
   const objective = valuationObjective ?? structuralObjective;
   const invalidation = downside ?? upside;
-  const potentialUpsidePct = objective === undefined ? undefined : Math.abs((objective / snapshot.price - 1) * 100);
+  // Signed objective return preserves bearish downside as a negative value.
+  // The invalidation distance remains an absolute adverse-move measure.
+  const potentialUpsidePct = objective === undefined ? undefined : (objective / snapshot.price - 1) * 100;
   const potentialDownsidePct = invalidation === undefined ? undefined : Math.abs((invalidation / snapshot.price - 1) * 100);
   let structuralRatio: number | undefined;
   if (structuralObjective !== undefined && invalidation !== undefined) {
@@ -297,7 +365,7 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
     if (structuralReward > 0 && structuralRisk > 0) structuralRatio = structuralReward / structuralRisk;
   }
   const potentialRatio = potentialUpsidePct !== undefined && potentialDownsidePct !== undefined && potentialDownsidePct > 0
-    ? potentialUpsidePct / potentialDownsidePct
+    ? Math.abs(potentialUpsidePct) / potentialDownsidePct
     : undefined;
   if (valuationObjective !== undefined) evidence.push("Directional objective uses a fresh, exact-instrument provider valuation reference; its source type remains explicit.");
   else if (structuralObjective !== undefined) evidence.push("Objective comes from the actual higher-timeframe external swing structure.");
@@ -313,6 +381,7 @@ function investorForecast(result: AnalysisResult, snapshot: { price: number; tim
     accumulationReference: direction === "bullish" && downside !== undefined
       ? { price: downside, source: "higher-timeframe external swing low", meaning: "Observed support reference; not a guaranteed accumulation fill" }
       : undefined,
+    accumulationZone: direction === "bullish" ? investorAccumulationZone(result, snapshot.price) : undefined,
     objective: objective === undefined ? undefined : {
       price: objective,
       source: valuationObjective !== undefined ? fundamentalOutlook.valuationReference!.kind : "higher-timeframe external swing",
