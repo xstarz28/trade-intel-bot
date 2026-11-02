@@ -28,6 +28,7 @@ jobs:
       # Keep runtime smoke on the same public hostname that the release job verifies.
       XSTARZ_SMOKE_URL: https://xstarzanalysis.vercel.app
       EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      XSTARZ_SMOKE_STORAGE_STATE_B64: ${{ secrets.XSTARZ_SMOKE_STORAGE_STATE_B64 }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,6 +56,28 @@ jobs:
             echo "superseded=false" >> "${GITHUB_OUTPUT}"
             echo "Smoke revision is current main: ${EXPECTED_SHA}"
           fi
+
+      - name: Require and prepare authenticated production browser state
+        if: steps.freshness.outputs.superseded != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${XSTARZ_SMOKE_STORAGE_STATE_B64:-}" ]; then
+            echo "::error::XSTARZ_SMOKE_STORAGE_STATE_B64 GitHub Actions secret is required; authenticated production E2E cannot be skipped."
+            exit 1
+          fi
+          state_file="$RUNNER_TEMP/xstarz-production-storage-state.json"
+          printf '%s' "$XSTARZ_SMOKE_STORAGE_STATE_B64" | base64 --decode > "$state_file"
+          node --input-type=module - "$state_file" <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const state = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+          if (!state || !Array.isArray(state.cookies) || !Array.isArray(state.origins) || (state.cookies.length === 0 && state.origins.every((origin) => !Array.isArray(origin.localStorage) || origin.localStorage.length === 0))) {
+            throw new Error('Storage state must be a non-empty Playwright authenticated state with cookies or origin localStorage.');
+          }
+          NODE
+          chmod 600 "$state_file"
+          echo "XSTARZ_SMOKE_STORAGE_STATE=$state_file" >> "$GITHUB_ENV"
+          echo "Authenticated browser state prepared without printing credentials."
 
       - name: Install repository dependencies
         if: steps.freshness.outputs.superseded != 'true'
