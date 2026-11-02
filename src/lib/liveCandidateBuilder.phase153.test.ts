@@ -938,7 +938,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.fundamentalScore).toBeUndefined();
     expect(candidate.fundamentalEvidenceAvailable).toBeUndefined();
     expect(candidate.positioningScore).toBeUndefined();
-    expect(candidate.positioningEvidenceAvailable).toBeUndefined();
+    expect(candidate.positioningEvidenceAvailable).toBe(false);
   });
 
   it("maps available universal equity fundamentals into ranking inputs", () => {
