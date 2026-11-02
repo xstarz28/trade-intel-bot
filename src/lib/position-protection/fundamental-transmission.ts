@@ -13,16 +13,6 @@ import type {
   EvidenceDirection,
   DimensionAvailability,
   AssetClass,
-  InflationRegime,
-  InflationDriver,
-  RateRegime,
-  RealYieldRegime,
-  CurrencyRegime,
-  LiquidityRegime,
-  GrowthRegime,
-  EnergyRegime,
-  GeopoliticalRegime,
-  OverallRegime,
 } from "./fundamental-regime";
 
 // ═══════════════════════════════════════════════════════════════
@@ -160,7 +150,6 @@ export function classifyMacroRegime(
   const growth = regime.growthRegime;
   const inflation = regime.inflationRegime;
   const overall = regime.overallRegime;
-  const liquidity = regime.liquidityRegime;
 
   // Guard: insufficient data
   if (

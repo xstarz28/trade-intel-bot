@@ -19,7 +19,7 @@
  */
 
 import type { AnalysisResult } from "@/types/analysis";
-import type { DecisionTrace, ConvictionLayerContribution } from "@/lib/decision-trace";
+import type { DecisionTrace } from "@/lib/decision-trace";
 
 // ── Types ────────────────────────────────────────────────────────
 
