@@ -131,11 +131,65 @@ describe("mapSecQuarterlyFundamentals", () => {
     expect(rows[0].revenue).toBe(102000000000);
   });
 
-  it("rejects CIK mismatches and ignores annual filings", () => {
+  it("rejects CIK mismatches", () => {
     const { facts, submissions } = fixtures();
     expect(mapSecQuarterlyFundamentals("AAPL", "0000789019", facts, submissions)).toEqual([]);
-    submissions.filings.recent.form = ["10-K"];
-    expect(mapSecQuarterlyFundamentals("AAPL", cik, facts, submissions)).toEqual([]);
+  });
+
+  it("maps annual 10-K facts only for the SEC report date, excluding comparative annual periods", () => {
+    const annualAccession = "0000320193-26-000020";
+    const annualStart = "2025-01-01";
+    const annualEnd = "2025-12-31";
+    const annualFiled = "2026-02-10";
+    const annualFacts = {
+      cik: 320193,
+      facts: {
+        "us-gaap": {
+          EarningsPerShareDiluted: {
+            units: {
+              "USD / shares": [
+                { accn: annualAccession, filed: annualFiled, start: annualStart, end: annualEnd, val: 7.25, fy: 2025, fp: "FY" },
+                { accn: annualAccession, filed: annualFiled, start: "2024-01-01", end: "2024-12-31", val: 6.10, fy: 2025, fp: "FY" },
+              ],
+            },
+          },
+          RevenueFromContractWithCustomerExcludingAssessedTax: {
+            units: {
+              USD: [
+                { accn: annualAccession, filed: annualFiled, start: annualStart, end: annualEnd, val: 410_000_000_000, fy: 2025, fp: "FY" },
+                { accn: annualAccession, filed: annualFiled, start: "2024-01-01", end: "2024-12-31", val: 390_000_000_000, fy: 2025, fp: "FY" },
+              ],
+            },
+          },
+        },
+      },
+    };
+    const annualSubmissions = {
+      cik,
+      filings: {
+        recent: {
+          accessionNumber: [annualAccession],
+          filingDate: [annualFiled],
+          reportDate: [annualEnd],
+          acceptanceDateTime: ["2026-02-10T16:31:12.000Z"],
+          form: ["10-K"],
+          fy: [2025],
+          fp: ["FY"],
+        },
+      },
+    };
+    const rows = mapSecQuarterlyFundamentals("AAPL", cik, annualFacts, annualSubmissions);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      form: "10-K",
+      filingDate: annualFiled,
+      fiscalPeriodStart: annualStart,
+      fiscalPeriodEnd: annualEnd,
+      fiscalYear: 2025,
+      fiscalPeriod: "FY",
+      eps: 7.25,
+      revenue: 410_000_000_000,
+    });
   });
 
   it("ignores malformed dates and malformed numeric facts", () => {
