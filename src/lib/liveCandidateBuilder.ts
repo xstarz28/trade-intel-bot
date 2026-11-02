@@ -140,11 +140,17 @@ function constrainByProviderFreshness(
 function hasScoredFundamentalEvidence(result: AnalysisResult | undefined): boolean {
   if (!result) return false;
   const fund = result.fundamentalData;
-  const hasStockMetrics = result.instrumentType === "stock" && fund?.available === true && [
-    fund.peRatio, fund.profitMargin, fund.earningsPerShare, fund.pegRatio,
-    fund.operatingMargin, fund.returnOnEquity, fund.returnOnAssets,
-    fund.revenueGrowth, fund.earningsGrowth,
-  ].some((value) => typeof value === "number" && Number.isFinite(value));
+  const hasStockMetrics = result.instrumentType === "stock" && fund?.available === true && (
+    (fund.peRatio !== undefined && fund.peRatio > 0) ||
+    (fund.profitMargin !== undefined && fund.profitMargin > 0.2) ||
+    (fund.earningsPerShare !== undefined && fund.earningsPerShare > 0) ||
+    (fund.pegRatio !== undefined && fund.pegRatio > 0) ||
+    fund.operatingMargin !== undefined ||
+    fund.returnOnEquity !== undefined ||
+    fund.returnOnAssets !== undefined ||
+    fund.revenueGrowth !== undefined ||
+    fund.earningsGrowth !== undefined
+  );
   const macro = result.macroData;
   const hasMacroIndicators = !!(
     macro && macro.confidence !== "unavailable" &&
