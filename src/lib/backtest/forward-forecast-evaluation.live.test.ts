@@ -142,9 +142,14 @@ function buildObservations(
   warmupBars: number,
 ): ForwardForecastObservation[] {
   const intervalMs = timeframe === "D1" ? DAY : 3_600_000;
-  const horizonBars = horizon === "investor" ? 90 : timeframe === "D1" ? 20 : 24;
-  const step = horizonBars + 1;
   const tradingStyle = timeframe === "D1" ? "swing" : "intraday";
+  // Derive replay spacing from the actual forecast contract. A 90-day step
+  // would create overlapping observations for the current 1–3 year investor
+  // horizon and falsely inflate the sample count.
+  const probe = createHistoricalForecast(instrument, candles, warmupBars, timeframe, tradingStyle);
+  const probeHorizon = horizon === "investor" ? probe.investor.horizon : probe.trader.horizon;
+  const horizonBars = Math.max(1, Math.ceil((probeHorizon.endsAt - probeHorizon.startsAt) / intervalMs));
+  const step = horizonBars + 1;
   const observations: ForwardForecastObservation[] = [];
 
   for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += step) {
@@ -245,16 +250,28 @@ describe("real historical forward forecast outcome evaluation", () => {
         expect(scenario.report.excludedReasons.overlapping_horizon ?? 0).toBe(0);
       }
 
+      const investorObservations = timeframe === "D1"
+        ? buildObservations(dataset.instrumentId, dataset.candles, timeframe, "investor", warmupBars)
+        : [];
       const investorCostSensitivity = timeframe === "D1"
         ? COST_SCENARIOS.map((costBpsPerSide) => ({
             costBpsPerSide,
             report: evaluateForwardForecastOutcomes(
-              buildObservations(dataset.instrumentId, dataset.candles, timeframe, "investor", warmupBars),
+              investorObservations,
               dataset.candles,
               { costBpsPerSide, minimumSampleCount: 30, enforceNonOverlapping: true },
             ),
           }))
         : [];
+      if (timeframe === "D1") {
+        // Historical depth cannot supply 30 independent 3-year observations.
+        // Report insufficient sample instead of counting overlapping starts.
+        expect(investorObservations.length).toBeLessThan(30);
+        expect(investorCostSensitivity.every((scenario) =>
+          scenario.report.status === "INSUFFICIENT_SAMPLE" &&
+          (scenario.report.excludedReasons.overlapping_horizon ?? 0) === 0
+        )).toBe(true);
+      }
 
       reports.push({
         instrument: dataset.instrumentId,
@@ -267,12 +284,16 @@ describe("real historical forward forecast outcome evaluation", () => {
         oosStart: dataset.candles[warmupBars]?.timestamp,
         oosEnd: dataset.candles[dataset.candles.length - 1]?.timestamp,
         hypothesis: timeframe === "D1"
-          ? "Swing trader: EMA20/EMA50 direction; trailing 20-day support/resistance; 20-bar horizon. Investor: HH/HL or LH/LL from two prior 30-bar windows; 90-day swing bounds; 90-day horizon."
+          ? "Swing trader: EMA20/EMA50 direction; trailing 20-day support/resistance; 20-bar horizon. Investor: HH/HL or LH/LL from two prior 30-bar windows; 90-day swing bounds; 1–3 year planning horizon (3-year upper boundary)."
           : "Intraday trader: EMA20/EMA50 direction; trailing 20-hour support/resistance; 24-bar horizon.",
         baseline: "Rolling prior-only close-to-close momentum sign (100 bars for trader, 180 bars for investor).",
         traderObservations: traderObservations.length,
         traderCostSensitivity,
-        investorObservations: investorCostSensitivity[0]?.report.observationCount ?? 0,
+        investorHorizonBars: investorObservations.length > 0
+          ? Math.ceil((createHistoricalForecast(dataset.instrumentId, dataset.candles, warmupBars, "D1", "swing").investor.horizon.endsAt -
+              createHistoricalForecast(dataset.instrumentId, dataset.candles, warmupBars, "D1", "swing").investor.horizon.startsAt) / DAY)
+          : undefined,
+        investorObservations: investorObservations.length,
         investorCostSensitivity,
       });
     }
