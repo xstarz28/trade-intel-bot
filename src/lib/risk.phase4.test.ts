@@ -372,6 +372,83 @@ describe("computePositionSizing — quantity rounding integrity", () => {
   });
 });
 
+describe("computePositionSizing — malformed numeric input guards", () => {
+  it("rejects non-finite or non-positive entry and stop prices", () => {
+    expect(computePositionSizing({
+      equity: 100000,
+      riskPercent: 0.01,
+      entry: Number.POSITIVE_INFINITY,
+      stopLoss: 99,
+      spec: fullSpec,
+      now: NOW,
+    })).toMatchObject({ available: false, unavailableReason: "entry and structural stop must be finite positive prices" });
+
+    expect(computePositionSizing({
+      equity: 100000,
+      riskPercent: 0.01,
+      entry: 100,
+      stopLoss: Number.NaN,
+      spec: fullSpec,
+      now: NOW,
+    })).toMatchObject({ available: false, unavailableReason: "entry and structural stop must be finite positive prices" });
+  });
+
+  it("rejects infinite contract size/quantity step and invalid explicit minimum quantity", () => {
+    const base = { equity: 100000, riskPercent: 0.01, entry: 100, stopLoss: 99, now: NOW };
+    expect(computePositionSizing({ ...base, spec: { ...fullSpec, contractSize: Number.POSITIVE_INFINITY } }))
+      .toMatchObject({ available: false });
+    expect(computePositionSizing({ ...base, spec: { ...fullSpec, quantityStep: Number.POSITIVE_INFINITY } }))
+      .toMatchObject({ available: false });
+    expect(computePositionSizing({ ...base, spec: { ...fullSpec, minQuantity: Number.NaN } }))
+      .toMatchObject({ available: false });
+  });
+
+  it("does not report an available zero-quantity position when risk budget is below one step", () => {
+    const result = computePositionSizing({
+      equity: 100,
+      riskPercent: 0.001,
+      entry: 100,
+      stopLoss: 99,
+      spec: { ...fullSpec, contractSize: 10000, quantityStep: 0.01, minQuantity: undefined },
+      now: NOW,
+    });
+    expect(result.available).toBe(false);
+    expect(result.quantity).toBeUndefined();
+    expect(result.unavailableReason).toContain("less than one tradable quantity step");
+  });
+
+  it("preserves valid quantities for sub-nanounit quantity steps", () => {
+    const result = computePositionSizing({
+      equity: 100000,
+      riskPercent: 0.01,
+      entry: 2,
+      stopLoss: 1,
+      spec: {
+        ...fullSpec,
+        contractSize: 10_000_000_000_000,
+        quantityStep: 0.0000000001,
+        minQuantity: 0.0000000001,
+      },
+      now: NOW,
+    });
+    expect(result.available).toBe(true);
+    expect(result.quantity).toBe(0.0000000001);
+  });
+
+  it("rejects overflow in computed quote-currency risk per unit", () => {
+    const result = computePositionSizing({
+      equity: 100000,
+      riskPercent: 0.01,
+      entry: Number.MAX_VALUE,
+      stopLoss: 1,
+      spec: { ...fullSpec, contractSize: 2 },
+      now: NOW,
+    });
+    expect(result.available).toBe(false);
+    expect(result.unavailableReason).toContain("not finite and positive");
+  });
+});
+
 // ── Engine integration — decision independence ─────────────────────
 
 function makeMarket(price: number): MarketData {

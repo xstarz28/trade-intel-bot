@@ -34,9 +34,12 @@ export interface InstrumentSpec {
 export function specGaps(spec: InstrumentSpec | undefined): string[] {
   if (!spec) return ["instrument specification not provided"];
   const gaps: string[] = [];
-  if (!spec.contractSize || spec.contractSize <= 0) gaps.push("contract size");
-  if (!spec.quoteCurrency) gaps.push("quote currency");
-  if (!spec.quantityStep || spec.quantityStep <= 0) gaps.push("quantity step");
+  if (!Number.isFinite(spec.contractSize) || (spec.contractSize ?? 0) <= 0) gaps.push("contract size");
+  if (typeof spec.quoteCurrency !== "string" || !spec.quoteCurrency.trim()) gaps.push("quote currency");
+  if (!Number.isFinite(spec.quantityStep) || (spec.quantityStep ?? 0) <= 0) gaps.push("quantity step");
+  if (spec.minQuantity !== undefined && (!Number.isFinite(spec.minQuantity) || spec.minQuantity <= 0)) {
+    gaps.push("minimum quantity");
+  }
   return gaps;
 }
 
@@ -130,11 +133,17 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
         "risk percent not provided or outside the accepted 0–10% guard band — choose your own risk per trade",
     };
   }
+  if (
+    !Number.isFinite(req.entry) || req.entry <= 0 ||
+    !Number.isFinite(req.stopLoss) || req.stopLoss <= 0
+  ) {
+    return { available: false, unavailableReason: "entry and structural stop must be finite positive prices" };
+  }
   const gaps = specGaps(req.spec);
   if (gaps.length > 0) {
     return {
       available: false,
-      unavailableReason: `cannot compute position size — incomplete instrument specification (${gaps.join(", ")})`,
+      unavailableReason: `cannot compute position size — incomplete or invalid instrument specification (${gaps.join(", ")})`,
     };
   }
   const spec = req.spec!;
@@ -144,8 +153,8 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
   }
 
   // ── Currency resolution (Phase 4) ────────────────────────────────
-  const quoteCcy = spec.quoteCurrency!.toUpperCase();
-  const accountCcy = req.accountCurrency?.toUpperCase();
+  const quoteCcy = spec.quoteCurrency!.trim().toUpperCase();
+  const accountCcy = req.accountCurrency?.trim().toUpperCase();
   let conversion: ConversionInfo | undefined;
   let denomFactor = 1;
   if (accountCcy) {
@@ -172,18 +181,44 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
   const denom = accountCcy ?? quoteCcy;
 
   const riskAmount = req.equity * req.riskPercent;
+  if (!Number.isFinite(riskAmount) || riskAmount <= 0) {
+    return { available: false, unavailableReason: "computed risk budget is not finite and positive" };
+  }
   const riskPerUnitQuote = distance * spec.contractSize!;
-  if (!(riskPerUnitQuote > 0)) {
-    return { available: false, unavailableReason: "computed risk per unit is zero — check contract size" };
+  if (!Number.isFinite(riskPerUnitQuote) || riskPerUnitQuote <= 0) {
+    return { available: false, unavailableReason: "computed quote-currency risk per unit is not finite and positive — check price distance and contract size" };
   }
   const riskPerUnit = riskPerUnitQuote * denomFactor;
+  if (!Number.isFinite(riskPerUnit) || riskPerUnit <= 0) {
+    return { available: false, unavailableReason: "computed account-currency risk per unit is not finite and positive" };
+  }
 
   const rawQuantity = riskAmount / riskPerUnit;
+  if (!Number.isFinite(rawQuantity) || rawQuantity <= 0) {
+    return { available: false, unavailableReason: "computed raw position quantity is not finite and positive" };
+  }
   const step = spec.quantityStep!;
   let quantity = Math.floor(rawQuantity / step) * step;
 
-  // Guard floating-point residue before the minimum-quantity comparison.
-  quantity = Math.round(quantity * 1e9) / 1e9;
+  // Keep the step-rounded quantity at full useful precision; a fixed 1e-9
+  // multiplier incorrectly erased valid quantities for finer-grained specs.
+  quantity = Number(quantity.toPrecision(15));
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    if (spec.minQuantity !== undefined) {
+      return {
+        available: false,
+        unavailableReason: `required risk budget yields ${rawQuantity.toFixed(6)} units — below the instrument minimum of ${spec.minQuantity}`,
+        riskAmount,
+        riskPerUnit,
+      };
+    }
+    return {
+      available: false,
+      unavailableReason: `risk budget yields less than one tradable quantity step (${step})`,
+      riskAmount,
+      riskPerUnit,
+    };
+  }
 
   if (spec.minQuantity !== undefined && quantity < spec.minQuantity) {
     return {
@@ -199,10 +234,10 @@ export function computePositionSizing(req: PositionSizingRequest): PositionSizin
     riskAmount,
     riskPerUnit,
     quantity,
-    quantityUnit: `${spec.quoteCurrency}-quoted contract${spec.contractSize !== 1 ? ` (×${spec.contractSize})` : ""}`,
+    quantityUnit: `${quoteCcy}-quoted contract${spec.contractSize !== 1 ? ` (×${spec.contractSize})` : ""}`,
     appliedRiskPercent: req.riskPercent,
     denominationCurrency: denom,
     conversion,
-    specificationSource: spec.source ?? "user-provided",
+    specificationSource: spec.source?.trim() || "user-provided",
   };
 }
