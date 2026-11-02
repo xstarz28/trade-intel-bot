@@ -1,6 +1,12 @@
 name: Real forward forecast outcome evaluation
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "src/lib/forward-forecast.ts"
+      - "src/lib/backtest/forward-forecast-evaluation*"
+      - ".github/workflows/forward-forecast-outcome-evaluation.yml"
   pull_request:
     branches: [main]
     paths:

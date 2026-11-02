@@ -54,14 +54,14 @@ import { buildExecutionData, parseOkxOrderBook, type ExecutionData } from "./exe
 const TIMEOUT_MS = 15_000;
 
 async function safeFetch(url: string, init?: RequestInit): Promise<Response | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-    const res = await fetch(url, { ...init, signal: controller.signal });
-    clearTimeout(timer);
-    return res;
+    return await fetch(url, { ...init, signal: controller.signal });
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -501,7 +501,7 @@ describe("Phase 39 — CFTC COT Public Endpoint (Live)", () => {
     } else {
       console.log("[Phase 39] CFTC COT endpoint unreachable from test environment");
     }
-  }, TIMEOUT_MS);
+  }, TIMEOUT_MS * 2);
 
   it("fetches Gold COT data", async () => {
     const url =
@@ -523,7 +523,7 @@ describe("Phase 39 — CFTC COT Public Endpoint (Live)", () => {
     } else {
       console.log("[Phase 39] CFTC Gold COT endpoint unreachable");
     }
-  }, TIMEOUT_MS);
+  }, TIMEOUT_MS * 2);
 });
 
 // ─── Treasury Public Endpoint ───────────────────────────────────────
