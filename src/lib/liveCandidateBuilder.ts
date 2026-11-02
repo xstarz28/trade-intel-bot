@@ -14,7 +14,8 @@
 import type { CandidateInput, DataCompletenessLevel } from "./recommendation-engine";
 import type { AssetClass } from "./data/universal/types";
 import type { MarketData, TechnicalData } from "./data/market-types";
-import type { AnalysisResult } from "@/types/analysis";
+import type { AnalysisResult, Timeframe } from "@/types/analysis";
+import type { CryptoIntelligenceContext } from "./data/crypto/types";
 import type { UniversalIntelligenceContext } from "./data/universal/types";
 import type { CryptoDerivativesData } from "./data/derivatives-types";
 import type { EconomicCalendarData } from "./data/calendar-types";
@@ -57,6 +58,8 @@ export interface LiveCandidateSource {
   technicalData?: TechnicalData;
   /** Analysis result from a previous run (if available). */
   analysisResult?: AnalysisResult;
+  /** Asset-specific crypto fundamentals/derivatives context, if available. */
+  cryptoIntelligenceContext?: CryptoIntelligenceContext;
   /** Universal intelligence context (if available). */
   universalIntelligence?: UniversalIntelligenceContext;
   /** Crypto derivatives data (if available). */
@@ -151,6 +154,7 @@ function assessDataCompleteness(source: LiveCandidateSource, technicalData?: Tec
       source.derivativesData?.freshness !== "unavailable") domains.add("derivatives");
   if (source.calendarData?.events?.some((event) => event.status === "upcoming" || event.status === "released")) domains.add("calendar");
   if (source.treasuryData?.available || source.cotData?.available || source.eiaData?.available) domains.add("macro-positioning");
+  if (source.cryptoIntelligenceContext?.instrument === source.instrument && source.cryptoIntelligenceContext.evidence.length > 0) domains.add("crypto-intelligence");
   if (universal?.forex?.rates?.available || universal?.forex?.yields?.available) domains.add("rates");
   if (universal?.forex?.positioning?.available || universal?.commodity?.positioning?.available) domains.add("positioning");
   if (universal?.commodity?.inventory?.available) domains.add("inventory");
@@ -172,6 +176,92 @@ function normalizeCandidateTimeframe(value?: string): string | undefined {
     "4H": "H4", "4HR": "H4", "1D": "D1", "1DAY": "D1", "1W": "W1", "1WEEK": "W1",
   };
   return aliases[normalized] ?? normalized;
+}
+
+const SUPPORTED_FORECAST_TIMEFRAMES = new Set<Timeframe>(["M1", "M5", "M15", "H1", "H4", "D1", "W1"]);
+
+function mapAssetClassToInstrumentType(assetClass: AssetClass): AnalysisResult["instrumentType"] {
+  if (assetClass === "equity") return "stock";
+  if (assetClass === "macro") return "indices";
+  return assetClass;
+}
+
+/**
+ * Build an investor-only context from the exact provider snapshot when no
+ * matching full analysis exists. The neutral/NO_TRADE fields are sentinels
+ * required by the shared forecast type; they are never surfaced as a trading
+ * recommendation. All price, OHLCV, HTF and fundamental fields remain sourced.
+ */
+function buildInvestorForecastContext(args: {
+  source: LiveCandidateSource;
+  technicalData: TechnicalData | undefined;
+  orderedCandles: NonNullable<MarketData["candles"]>;
+  dataCompleteness: DataCompletenessLevel;
+  now: number;
+}): AnalysisResult | undefined {
+  const { source, technicalData, orderedCandles, dataCompleteness, now } = args;
+  const marketData = source.marketData;
+  const snapshot = marketData?.price;
+  const timeframe = normalizeCandidateTimeframe(marketData?.timeframe);
+  const instrumentType = mapAssetClassToInstrumentType(source.assetClass);
+  if (
+    !marketData ||
+    marketData.instrument !== source.instrument ||
+    !snapshot ||
+    !Number.isFinite(snapshot.price) ||
+    snapshot.price <= 0 ||
+    !Number.isFinite(snapshot.timestamp) ||
+    snapshot.timestamp <= 0 ||
+    !timeframe ||
+    !SUPPORTED_FORECAST_TIMEFRAMES.has(timeframe as Timeframe) ||
+    !technicalData ||
+    now < snapshot.timestamp
+  ) return undefined;
+  if (marketData.instrumentType && marketData.instrumentType !== instrumentType) return undefined;
+
+  const completeness = dataCompleteness === "FULL"
+    ? "full"
+    : dataCompleteness === "PARTIAL"
+      ? "partial"
+      : "limited";
+  const dataFlags = [
+    ...(source.universalIntelligence?.dataFlags ?? []),
+    ...(source.cryptoIntelligenceContext?.dataFlags ?? []),
+  ];
+  const summary = source.universalIntelligence?.analystSummary ??
+    source.cryptoIntelligenceContext?.analystSummary ??
+    "No verified fundamental summary is available for this snapshot.";
+
+  return {
+    id: `investor-context-${source.instrument}-${timeframe}-${snapshot.timestamp}`,
+    instrument: source.instrument,
+    instrumentType,
+    timeframe: timeframe as Timeframe,
+    bias: "Neutral",
+    confidence: 0,
+    recommendation: "NO_TRADE",
+    noTradeReasons: ["Investor outlook context only; no trading recommendation is created."],
+    tradingStyle: "swing",
+    technicalSummary: "Provider-backed OHLCV and higher-timeframe structure context.",
+    fundamentalSummary: summary,
+    breakdown: { trend: 0, indicator: 0, fundamental: 0, sentiment: 0 },
+    keyLevels: { support: "N/A", resistance: "N/A", invalidation: "N/A" },
+    riskNote: "Investor outlook only; this context does not authorize trade execution.",
+    dataCompleteness: completeness,
+    dataFlags,
+    timestamp: now,
+    priceSnapshot: snapshot,
+    technicalData,
+    candles: orderedCandles,
+    dataSource: marketData.provider,
+    derivativesData: source.derivativesData,
+    calendarData: source.calendarData,
+    treasuryContext: source.treasuryData,
+    cotContext: source.cotData,
+    eiaContext: source.eiaData,
+    cryptoIntelligenceContext: source.cryptoIntelligenceContext,
+    universalIntelligenceContext: source.universalIntelligence,
+  } as AnalysisResult;
 }
 
 function deriveCryptoMarketType(instrument: string, providerInstrumentId?: string): "spot" | "perpetual" | "futures" | undefined {
@@ -453,6 +543,10 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
       source.universalIntelligence.assetClass === source.assetClass
       ? source.universalIntelligence
       : undefined,
+    cryptoIntelligenceContext: source.cryptoIntelligenceContext?.instrument === source.instrument &&
+      source.cryptoIntelligenceContext.instrumentType === "crypto"
+      ? source.cryptoIntelligenceContext
+      : undefined,
     derivativesData: source.derivativesData &&
       matchesDerivativeSymbol(
         source.instrument,
@@ -600,7 +694,16 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     // Analysis metadata
     analysisConfidence: ar?.confidence,
     hasAnalysis: !!ar,
-    ...(ar ? { analysisResult: ar } : {}),
+    ...((hasLiveData && ar) ? { investorForecastContext: ar } : {}),
+    ...((hasLiveData && !ar) ? {
+      investorForecastContext: buildInvestorForecastContext({
+        source,
+        technicalData: candleDerivedTechnical,
+        orderedCandles: orderedCandles ?? [],
+        dataCompleteness,
+        now,
+      }),
+    } : {}),
     hasLongHorizonThesis: !!ar?.longHorizonThesis,
     hasMacro: !!source.treasuryData?.available || !!source.calendarData,
     hasExecutionQuality: extractSpreadBps(source) !== undefined,
