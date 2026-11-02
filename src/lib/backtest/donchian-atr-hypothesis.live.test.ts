@@ -134,12 +134,13 @@ function buildDonchianObservations(
   candles: Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume: number }>,
   timeframe: "H1" | "D1",
   warmupBars: number,
-): { observations: ForwardForecastObservation[]; signalCount: number } {
+): { observations: ForwardForecastObservation[]; signalCount: number; candidateWindowCount: number } {
   const intervalMs = timeframe === "D1" ? DAY : HOUR;
   const horizonBars = timeframe === "D1" ? 20 : 24;
   const tradingStyle = timeframe === "D1" ? "swing" : "intraday";
   const observations: ForwardForecastObservation[] = [];
   let signalCount = 0;
+  let candidateWindowCount = 0;
 
   // Evaluate every completed candle. The outcome evaluator performs the
   // non-overlapping horizon purge after signal generation; fixed-grid
@@ -147,11 +148,16 @@ function buildDonchianObservations(
   for (let index = warmupBars; index + horizonBars + 1 < candles.length; index += 1) {
     const baselineHistory = candles.slice(index - 100, index);
     if (baselineHistory.length < 100) continue;
+    candidateWindowCount += 1;
     const baselineDirection = momentumDirection(baselineHistory);
     const baselineTrainingEndTime = candles[index - 1].timestamp + intervalMs;
     const forecast = createDonchianForecast(instrument, candles, index, timeframe, tradingStyle);
     const selected = forecast.trader;
-    if (selected.direction !== "neutral") signalCount += 1;
+    // Only actual directional signals belong in the forecast evaluation
+    // population. Neutral/no-trade windows are counted separately for coverage;
+    // including them here would inflate accuracy and the independent sample N.
+    if (selected.direction === "neutral") continue;
+    signalCount += 1;
     observations.push({
       id: `${instrument}-${timeframe}-donchian-atr-${index}`,
       instrument,
@@ -165,7 +171,7 @@ function buildDonchianObservations(
       invalidationPrice: selected.invalidation?.price,
     });
   }
-  return { observations, signalCount };
+  return { observations, signalCount, candidateWindowCount };
 }
 
 describe("real Donchian + SMA true-range forward forecast OOS evaluation", () => {
@@ -226,15 +232,16 @@ describe("real Donchian + SMA true-range forward forecast OOS evaluation", () =>
       expect(dataset.candleCount).toBeGreaterThanOrEqual(minimumBars);
       expect(dataset.gaps).toHaveLength(0);
       const warmupBars = timeframe === "D1" ? 600 : 300;
-      const { observations, signalCount } = buildDonchianObservations(
+      const { observations, signalCount, candidateWindowCount } = buildDonchianObservations(
         dataset.instrumentId,
         dataset.candles,
         timeframe,
         warmupBars,
       );
-      expect(observations.length).toBeGreaterThanOrEqual(30);
-
-      const signalObservations = observations.filter((observation) => observation.direction !== "neutral");
+      expect(signalCount).toBe(observations.length);
+      expect(candidateWindowCount).toBeGreaterThanOrEqual(signalCount);
+      expect(observations.every((observation) => observation.direction !== "neutral")).toBe(true);
+      const signalObservations = observations;
       const costSensitivity = signalObservations.length > 0
         ? COST_SCENARIOS.map((costBpsPerSide) => ({
             costBpsPerSide,
@@ -265,13 +272,14 @@ describe("real Donchian + SMA true-range forward forecast OOS evaluation", () =>
         oosEnd: dataset.candles[dataset.candles.length - 1]?.timestamp,
         hypothesis: "Donchian 55-bar breakout with EMA50/EMA200 trend filter; stop 2 × SMA(true range, 20); objective 3 × SMA(true range, 20); next-open entry; 20 D1 / 24 H1 bar horizon.",
         baseline: "Prior 100 completed bars: close-to-close momentum sign.",
-        opportunityCount: observations.length,
+        candidateWindowCount,
+        opportunityCount: candidateWindowCount,
         signalCount,
         independentSignalCount,
-        signalCoveragePct: observations.length ? signalCount / observations.length * 100 : 0,
+        signalCoveragePct: candidateWindowCount ? signalCount / candidateWindowCount * 100 : 0,
         evaluationStatus: signalCount === 0 ? "NO_SIGNALS" : independentSignalCount < 30 ? "INSUFFICIENT_SAMPLE" : "SAMPLE_GATE_REACHED",
         nominalRiskReward: 1.5,
-        evaluationPopulation: "Signal-only: neutral/no-trade windows are excluded from directional accuracy and baseline comparison; coverage is reported separately.",
+        evaluationPopulation: "Signal-only: only non-neutral directional forecasts enter accuracy, baseline, and expectancy calculations. Neutral/no-trade candidate windows are counted only in candidateWindowCount and signal coverage.",
         costSensitivity,
       });
     }
@@ -319,6 +327,7 @@ describe("real Donchian + SMA true-range forward forecast OOS evaluation", () =>
         const entry = item as {
           instrument: string;
           timeframe: string;
+          candidateWindowCount: number;
           opportunityCount: number;
           signalCount: number;
           independentSignalCount: number;
@@ -328,7 +337,7 @@ describe("real Donchian + SMA true-range forward forecast OOS evaluation", () =>
         };
         const lines = [
           `## ${entry.instrument} · ${entry.timeframe}`,
-          `Opportunities: ${entry.opportunityCount} · raw signals: ${entry.signalCount} · independent OOS signals: ${entry.independentSignalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}% · status: ${entry.evaluationStatus}`,
+          `Candidate windows: ${entry.candidateWindowCount} · directional signals: ${entry.signalCount} · independent OOS signals: ${entry.independentSignalCount} · coverage: ${entry.signalCoveragePct.toFixed(1)}% · status: ${entry.evaluationStatus}`,
           "",
           "| Cost bps/side | Signal N | Accuracy | Baseline | Lift | Lift block 95% CI | Expectancy R | Exp. block 95% CI | PF | Status |",
           "|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|",
