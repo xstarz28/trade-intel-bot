@@ -82,7 +82,7 @@ export function interpretFundamental(
 ): FundamentalInterpretation {
   const hasComparison = dp.expected !== null && dp.previous !== null;
   let surpriseDirection: FundamentalInterpretation["surpriseDirection"] = "UNKNOWN";
-  let positionImpact: FundamentalInterpretation["positionImpact"] = "INSUFFICIENT";
+  const positionImpact: FundamentalInterpretation["positionImpact"] = "INSUFFICIENT";
 
   if (!hasComparison) {
     return {
