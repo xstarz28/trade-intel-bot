@@ -439,7 +439,7 @@ describe("F — Investor Horizon Ranking", () => {
     } as unknown as AnalysisResult;
 
     const result = generateRecommendation([
-      makeCandidate({ analysisResult: analysis, marketObservedAt: timestamp - 1000 }),
+      makeCandidate({ investorForecastContext: analysis, marketObservedAt: timestamp - 1000 }),
     ], "3+_YEARS");
 
     expect(result.rankedInstruments[0]?.investorForecast?.horizon.label).toContain("3+ years");
@@ -473,7 +473,7 @@ describe("F — Investor Horizon Ranking", () => {
     } as unknown as AnalysisResult;
 
     const result = generateRecommendation([
-      makeCandidate({ analysisResult: analysis, marketObservedAt: timestamp - 1000 }),
+      makeCandidate({ investorForecastContext: analysis, marketObservedAt: timestamp - 1000 }),
     ], "1-3_YEARS");
 
     expect(result.rankedInstruments[0]?.investorForecast).toBeUndefined();
@@ -1228,7 +1228,7 @@ describe("Evidence availability integrity", () => {
     } as unknown as AnalysisResult;
 
     const result = generateRecommendation([
-      makeCandidate({ analysisResult: analysis, marketObservedAt: timestamp - 2000 }),
+      makeCandidate({ investorForecastContext: analysis, marketObservedAt: timestamp - 2000 }),
     ], "1-3_YEARS");
 
     expect(result.rankedInstruments[0]?.investorForecast).toBeUndefined();

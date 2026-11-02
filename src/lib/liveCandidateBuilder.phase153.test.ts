@@ -20,6 +20,213 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(findLiveSnapshotForInstrument(liveSources, "BTC-USDT-SWAP")).toBe(nativeSource);
   });
 
+  it("builds an investor forecast context from the exact live snapshot without a prior manual analysis", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 210 }, (_, i) => {
+      const close = 100 + (210 - i) * 0.25;
+      const timestamp = now - (210 - i) * 60 * 60_000;
+      return { time: timestamp, timestamp, open: close - 0.1, high: close + 0.3, low: close - 0.3, close, volume: 1000 };
+    });
+    const higherTimeframeCandles = Array.from({ length: 80 }, (_, i) => {
+      const close = 100 + (80 - i) * 0.5;
+      const timestamp = now - (80 - i) * 24 * 60 * 60_000;
+      return { time: timestamp, timestamp, open: close - 0.2, high: close + 0.5, low: close - 0.5, close, volume: 20_000 };
+    });
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: candles[candles.length - 1]!.close, timestamp: now, source: "fixture" },
+        candles,
+        timeframe: "H1",
+        higherTimeframe: "D1",
+        higherTimeframeCandles,
+        dataFreshness: "realtime",
+      },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: now,
+        evidence: [{
+          source: "Tokenomist",
+          category: "TOKENOMICS",
+          direction: "SUPPORTING",
+          strength: "MEDIUM",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "TOKENOMICS_UNLOCKS",
+          explanation: "Verified tokenomics evidence from the exact instrument.",
+          providerAvailable: true,
+        }],
+        overallAvailability: "MINIMAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Verified crypto tokenomics evidence.",
+      } as any,
+    }, now);
+
+    expect(candidate.dataCompleteness).toBe("PARTIAL");
+    expect(candidate.investorForecastContext).toBeDefined();
+    expect(candidate.investorForecastContext?.instrument).toBe("BTC/USD");
+    expect(candidate.investorForecastContext?.priceSnapshot?.price).toBe(candidate.currentPrice);
+    expect(candidate.investorForecastContext?.priceSnapshot?.timestamp).toBe(candidate.marketObservedAt);
+    expect(candidate.investorForecastContext?.technicalData?.htfContext?.timeframe).toBe("D1");
+  });
+
+  it("does not build investor forecast context from stale or unavailable market observations", () => {
+    const now = Date.now();
+    const source = {
+      instrument: "BTC/USD",
+      assetClass: "crypto" as const,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto" as const,
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now - 5 * 24 * 60 * 60_000, source: "fixture" },
+        candles: Array.from({ length: 80 }, (_, i) => ({
+          time: now - (80 - i) * 60_000,
+          timestamp: now - (80 - i) * 60_000,
+          open: 100,
+          high: 101,
+          low: 99,
+          close: 100,
+          volume: 10,
+        })),
+        timeframe: "H1" as const,
+        dataFreshness: "realtime" as const,
+      },
+    };
+    const candidate = buildCandidateFromSource(source, now);
+
+    expect(candidate.freshness).toBe("UNAVAILABLE");
+    expect(candidate.investorForecastContext).toBeUndefined();
+  });
+
+  it("counts verified crypto evidence embedded in a matching background analysis", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 210 }, (_, i) => {
+      const timestamp = now - (210 - i) * 60 * 60_000;
+      return { time: timestamp, timestamp, open: 100, high: 101, low: 99, close: 100, volume: 100 };
+    });
+    const higherTimeframeCandles = Array.from({ length: 80 }, (_, i) => {
+      const timestamp = now - (80 - i) * 24 * 60 * 60_000;
+      return { time: timestamp, timestamp, open: 100, high: 102, low: 98, close: 101, volume: 1000 };
+    });
+    const analysis = {
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H1",
+      bias: "Neutral",
+      confidence: 0,
+      recommendation: "NO_TRADE",
+      noTradeReasons: [],
+      tradingStyle: "intraday",
+      technicalSummary: "",
+      fundamentalSummary: "",
+      breakdown: { trend: 0, indicator: 0, fundamental: 0, sentiment: 0 },
+      keyLevels: { support: "N/A", resistance: "N/A", invalidation: "N/A" },
+      riskNote: "",
+      dataCompleteness: "partial",
+      dataFlags: [],
+      timestamp: now,
+      priceSnapshot: { price: 100, timestamp: now, source: "fixture" },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: now,
+        evidence: [{
+          source: "Tokenomist",
+          category: "TOKENOMICS",
+          direction: "SUPPORTING",
+          strength: "MEDIUM",
+          quality: "VERIFIED",
+          freshness: "FRESH",
+          dependencyGroup: "TOKENOMICS_UNLOCKS",
+          explanation: "Verified tokenomics evidence.",
+          providerAvailable: true,
+        }],
+        overallAvailability: "MINIMAL",
+        overallQuality: "VERIFIED",
+        missingInformation: [],
+        dataFlags: [],
+        analystSummary: "Verified tokenomics evidence.",
+      },
+    } as unknown as AnalysisResult;
+
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "fixture" },
+        candles,
+        timeframe: "H1",
+        higherTimeframe: "D1",
+        higherTimeframeCandles,
+        dataFreshness: "realtime",
+      },
+      analysisResult: analysis,
+    }, now);
+
+    expect(candidate.dataCompleteness).toBe("PARTIAL");
+    expect(candidate.investorForecastContext).toBe(analysis);
+  });
+
+  it("does not count stale crypto evidence as an independent completeness domain", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 80 }, (_, i) => {
+      const timestamp = now - (80 - i) * 60_000;
+      return { time: timestamp, timestamp, open: 100, high: 101, low: 99, close: 100, volume: 10 };
+    });
+    const candidate = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 100, timestamp: now, source: "fixture" },
+        candles,
+        timeframe: "H1",
+        dataFreshness: "realtime",
+      },
+      cryptoIntelligenceContext: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        assembledAt: now,
+        evidence: [{
+          source: "Tokenomist",
+          category: "TOKENOMICS",
+          direction: "SUPPORTING",
+          strength: "MEDIUM",
+          quality: "STALE",
+          freshness: "STALE",
+          dependencyGroup: "TOKENOMICS_UNLOCKS",
+          explanation: "Stale tokenomics evidence must not qualify completeness.",
+          providerAvailable: true,
+        }],
+        overallAvailability: "MINIMAL",
+        overallQuality: "STALE",
+        missingInformation: [],
+        dataFlags: ["STALE_TOKENOMICS"],
+        analystSummary: "Stale crypto evidence.",
+      } as any,
+    }, now);
+
+    expect(candidate.dataCompleteness).toBe("MINIMAL");
+    expect(candidate.investorForecastContext?.dataCompleteness).toBe("limited");
+  });
+
   it("uses verified market snapshot as the candidate price and data source", () => {
     const now = Date.now();
 

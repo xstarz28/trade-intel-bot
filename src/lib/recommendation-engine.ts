@@ -142,8 +142,8 @@ export interface CandidateInput {
   hasAnalysis?: boolean;
   /** Whether long-horizon thesis is available. */
   hasLongHorizonThesis?: boolean;
-  /** Exact same-instrument, same-price-snapshot analysis for horizon-specific investor forecasting. */
-  analysisResult?: AnalysisResult;
+  /** Exact live-snapshot context used only to derive the investor outlook; never a trade decision. */
+  investorForecastContext?: AnalysisResult;
   /** Whether derivatives data is available. */
   hasDerivatives?: boolean;
   /** Whether fundamental data is available. */
@@ -1126,11 +1126,11 @@ export function generateRecommendation(
         ? "indices"
         : c.assetClass;
     const matchingInvestorAnalysis = !isTradingMode &&
-      c.analysisResult?.instrument === c.instrument &&
-      c.analysisResult.instrumentType === expectedAnalysisType &&
-      c.analysisResult.priceSnapshot?.price === c.currentPrice &&
-      c.analysisResult.priceSnapshot?.timestamp === c.marketObservedAt
-      ? c.analysisResult
+      c.investorForecastContext?.instrument === c.instrument &&
+      c.investorForecastContext.instrumentType === expectedAnalysisType &&
+      c.investorForecastContext.priceSnapshot?.price === c.currentPrice &&
+      c.investorForecastContext.priceSnapshot?.timestamp === c.marketObservedAt
+      ? c.investorForecastContext
       : undefined;
     const investorForecast = matchingInvestorAnalysis
       ? buildForwardForecast(matchingInvestorAnalysis, {
