@@ -76,6 +76,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.investorForecastContext?.priceSnapshot?.price).toBe(candidate.currentPrice);
     expect(candidate.investorForecastContext?.priceSnapshot?.timestamp).toBe(candidate.marketObservedAt);
     expect(candidate.investorForecastContext?.technicalData?.htfContext?.timeframe).toBe("D1");
+    expect(candidate.fundamentalEvidenceAvailable).toBe(true);
   });
 
   it("does not build investor forecast context from stale or unavailable market observations", () => {
@@ -179,6 +180,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
 
     expect(candidate.dataCompleteness).toBe("PARTIAL");
     expect(candidate.investorForecastContext).toBe(analysis);
+    expect(candidate.fundamentalEvidenceAvailable).toBe(true);
   });
 
   it("does not count stale crypto evidence as an independent completeness domain", () => {
@@ -225,6 +227,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
 
     expect(candidate.dataCompleteness).toBe("MINIMAL");
     expect(candidate.investorForecastContext?.dataCompleteness).toBe("limited");
+    expect(candidate.fundamentalEvidenceAvailable).toBe(false);
   });
 
   it("uses verified market snapshot as the candidate price and data source", () => {
