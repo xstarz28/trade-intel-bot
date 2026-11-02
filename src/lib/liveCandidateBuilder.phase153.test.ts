@@ -929,7 +929,7 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
           breakdown: { positive: 4, negative: 1, neutral: 0 }, confidence: "medium", articles: [],
         },
       } as any,
-    }, now);
+    });
 
     expect(radarSource.analysisResult).toBeUndefined();
     const candidate = buildRadarCandidate(radarSource, now);
