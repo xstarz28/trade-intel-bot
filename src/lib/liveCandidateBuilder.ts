@@ -619,7 +619,11 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
   const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
     analysisPrice.price === marketPrice.price &&
     analysisPrice.timestamp === marketPrice.timestamp;
+  const sameInstrumentType = !matchingMarketData?.instrumentType ||
+    !source.analysisResult?.instrumentType ||
+    source.analysisResult.instrumentType === matchingMarketData.instrumentType;
   const matchingAnalysis = source.analysisResult?.instrument === source.instrument &&
+    sameInstrumentType &&
     !!marketTimeframe &&
     analysisTimeframe === marketTimeframe &&
     sameObservedPriceSnapshot
