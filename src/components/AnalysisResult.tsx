@@ -234,8 +234,17 @@ export function AnalysisResultDisplay({ result }: AnalysisResultProps) {
           timeframe={result.timeframe}
           candles={result.candles}
           keyLevels={result.keyLevels}
-          tradePlan={result.recommendation === "NO_TRADE" ? undefined : result.tradePlan}
-          projectedTradePlan={result.projectedTradePlan}
+          tradePlan={
+            (!result.dataQualityContext || result.dataQualityContext.primaryData.status === "GOOD") &&
+            result.recommendation !== "NO_TRADE"
+              ? result.tradePlan
+              : undefined
+          }
+          projectedTradePlan={
+            !result.dataQualityContext || result.dataQualityContext.primaryData.status === "GOOD"
+              ? result.projectedTradePlan
+              : undefined
+          }
           technicalData={result.technicalData}
         />
       )}
