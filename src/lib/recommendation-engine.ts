@@ -18,7 +18,7 @@ import type { AssetClass } from "./data/universal/types";
 import type { AnalysisResult } from "@/types/analysis";
 import { buildForwardForecast, type InvestorForwardForecast, type InvestorForecastHorizon } from "./forward-forecast";
 import type { ConditionalEntryScenario } from "./conditional-entry-scenarios";
-import { getAllInstruments, getProviderSymbol, type ResolutionStatus } from "./data/universal/instruments";
+import { getAllInstruments } from "./data/universal/instruments";
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -280,12 +280,6 @@ export interface UniversalRecommendationResult {
 // ═══════════════════════════════════════════════════════════════
 // HORIZON PROFILES
 // ═══════════════════════════════════════════════════════════════
-
-const ZERO_WEIGHTS: HorizonWeights = {
-  htfStructure: 0, mtfAlignment: 0, marketRegime: 0, volatility: 0,
-  liquidity: 0, fundamentals: 0, macro: 0, derivatives: 0,
-  dataQuality: 0, riskReward: 0,
-};
 
 function normalizeWeights(w: HorizonWeights): HorizonWeights {
   const total = Object.values(w).reduce((s, v) => s + v, 0);
@@ -655,18 +649,6 @@ function scoreMacro(c: CandidateInput): ScoreComponent[] {
   }
 
   return components;
-}
-
-function getAssetClassScore(c: CandidateInput): ScoreComponent[] {
-  switch (c.assetClass) {
-    case "crypto": return scoreCrypto(c);
-    case "forex": return scoreForex(c);
-    case "equity": return scoreEquity(c);
-    case "commodity": return scoreCommodity(c);
-    case "indices": return scoreIndex(c);
-    case "macro": return scoreMacro(c);
-    default: return [];
-  }
 }
 
 // ═══════════════════════════════════════════════════════════════
