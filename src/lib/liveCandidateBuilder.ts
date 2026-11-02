@@ -148,7 +148,8 @@ function hasScoredFundamentalEvidence(result: AnalysisResult | undefined): boole
   const macro = result.macroData;
   const hasMacroIndicators = !!(
     macro && macro.confidence !== "unavailable" &&
-    Array.isArray(macro.indicators) && macro.indicators.length > 0
+    Array.isArray(macro.indicators) && macro.indicators.length > 0 &&
+    (macro.indicators.some((indicator) => indicator.sentiment !== undefined) || macro.dxyTrend !== undefined)
   );
   const calendar = result.calendarData;
   const hasReleasedHighImportanceSurprise = !!(
