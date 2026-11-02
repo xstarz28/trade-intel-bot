@@ -900,6 +900,45 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.positioningEvidenceAvailable).toBe(false);
   });
 
+  it("does not reuse radar fundamental scores from a different price observation", () => {
+    const now = Date.now();
+    const radarSource = toRadarCandidateSource({
+      instrument: "EUR/USD",
+      assetClass: "forex",
+      marketData: {
+        instrument: "EUR/USD", instrumentType: "forex", provider: "fixture",
+        fetchTimestamp: now,
+        price: { price: 1.1, timestamp: now, source: "fixture" },
+        candles: [{ timestamp: now, open: 1.09, high: 1.11, low: 1.08, close: 1.1, volume: 10 }],
+        timeframe: "H1", dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "EUR/USD", instrumentType: "forex", timeframe: "H1",
+        timestamp: now - 24 * 60 * 60_000,
+        priceSnapshot: { price: 1.09, timestamp: now - 24 * 60 * 60_000, source: "fixture" },
+        bias: "Bullish", confidence: 75, recommendation: "BUY", tradingStyle: "intraday",
+        breakdown: { trend: 1, indicator: 1, fundamental: 2, sentiment: 2 },
+        macroData: {
+          provider: "fixture", timestamp: now - 24 * 60 * 60_000,
+          indicators: [{ name: "policy differential", relevance: "high", sentiment: "positive" }],
+          summary: "stale fixture macro", confidence: "medium",
+        },
+        sentimentData: {
+          provider: "fixture", timestamp: now - 24 * 60 * 60_000,
+          averageScore: 0.5, articleCount: 5, label: "bullish",
+          breakdown: { positive: 4, negative: 1, neutral: 0 }, confidence: "medium", articles: [],
+        },
+      } as any,
+    }, now);
+
+    expect(radarSource.analysisResult).toBeUndefined();
+    const candidate = buildRadarCandidate(radarSource, now);
+    expect(candidate.fundamentalScore).toBeUndefined();
+    expect(candidate.fundamentalEvidenceAvailable).toBe(false);
+    expect(candidate.positioningScore).toBeUndefined();
+    expect(candidate.positioningEvidenceAvailable).toBeUndefined();
+  });
+
   it("maps available universal equity fundamentals into ranking inputs", () => {
     const now = Date.now();
     const candidate = buildCandidateFromSource({
