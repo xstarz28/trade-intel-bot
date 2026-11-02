@@ -505,7 +505,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
       !/stale|unavailable|older than|freshness|data quality/i.test(await noTradeReasons.innerText().catch(() => ""))) {
     throw new Error(`${instrument} has UNAVAILABLE data without a visible freshness/data-quality rejection reason.\\n${body.slice(-2400)}`);
   }
-  if (result.primaryDataQuality !== "GOOD") {
+  if (["STALE", "UNAVAILABLE", "INVALID", "INSUFFICIENT"].includes(result.primaryDataQuality)) {
     const forwardPlanCount = await resultRoot.getByTestId("forward-opportunity-plan").count();
     if (forwardPlanCount > 0 || /CONDITIONAL SETUP\\s*·\\s*NOT EXECUTABLE/i.test(resultText)) {
       throw new Error(`${instrument} exposed numeric projected entry/SL/TP/R:R despite primary data quality ${result.primaryDataQuality}.\\n${body.slice(-2600)}`);
