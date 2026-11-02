@@ -552,6 +552,9 @@ export function scanRadar(
         ...(isTradingHorizon(horizon) && source.conditionalScenarios?.length
           ? { conditionalScenarios: source.conditionalScenarios }
           : {}),
+        ...(!isTradingHorizon(horizon) && source.investmentProjection
+          ? { investmentProjection: { ...source.investmentProjection, horizon } }
+          : {}),
         lifecycle,
         qualityTier,
         score: scored.score,
