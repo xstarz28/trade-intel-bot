@@ -204,6 +204,31 @@ describe("SEC EDGAR point-in-time investor evidence", () => {
     expect(outlook.evidence.every((item) => item.source === "SEC EDGAR Form 10-Q")).toBe(true);
   });
 
+  it("uses annual 10-K filings for year-over-year investor fundamentals", () => {
+    const secEdgarObservations = [
+      {
+        ticker: "MSFT", cik: "0000789019", accessionNumber: "0000789019-25-000001",
+        form: "10-K", filingDate: "2025-02-10", fiscalPeriodStart: "2024-07-01",
+        fiscalPeriodEnd: "2025-06-30", fiscalYear: 2025, fiscalPeriod: "FY",
+        revenue: 100, eps: 5, sourceUrl: "https://www.sec.gov/Archives/edgar/data/789019/2025/fy.htm",
+      },
+      {
+        ticker: "MSFT", cik: "0000789019", accessionNumber: "0000789019-26-000001",
+        form: "10-K", filingDate: "2026-02-10", fiscalPeriodStart: "2025-07-01",
+        fiscalPeriodEnd: "2026-06-30", fiscalYear: 2026, fiscalPeriod: "FY",
+        revenue: 120, eps: 6, sourceUrl: "https://www.sec.gov/Archives/edgar/data/789019/2026/fy.htm",
+      },
+    ];
+    const outlook = buildInvestorFundamentalOutlook(
+      providerResult("MSFT", "stock", { secEdgarObservations }),
+      100,
+    );
+    expect(outlook.evidenceStatus).toBe("VERIFIED");
+    expect(outlook.evidence.map((item) => item.category).sort()).toEqual(["EPS_GROWTH", "REVENUE_GROWTH"]);
+    expect(outlook.evidence.every((item) => item.source === "SEC EDGAR Form 10-K")).toBe(true);
+    expect(outlook.evidence.every((item) => item.asOf === Date.parse("2026-02-10T00:00:00.000Z"))).toBe(true);
+  });
+
   it("does not create a growth signal without a prior same-period filing", () => {
     const secEdgarObservations = [{
       ticker: "MSFT", cik: "0000789019", accessionNumber: "0000789019-26-000001",
