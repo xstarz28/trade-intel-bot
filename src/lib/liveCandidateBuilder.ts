@@ -599,6 +599,7 @@ export function buildCandidateFromSource(source: LiveCandidateSource, now: numbe
     // Analysis metadata
     analysisConfidence: ar?.confidence,
     hasAnalysis: !!ar,
+    ...(ar ? { analysisResult: ar } : {}),
     hasLongHorizonThesis: !!ar?.longHorizonThesis,
     hasMacro: !!source.treasuryData?.available || !!source.calendarData,
     hasExecutionQuality: extractSpreadBps(source) !== undefined,
