@@ -869,6 +869,58 @@ describe("Phase 153 — Live Candidate Builder integrity", () => {
     expect(candidate.positioningEvidenceAvailable).toBe(true);
   });
 
+  it("does not count non-finite fundamentals or derivatives as measured evidence", () => {
+    const now = Date.now();
+    const candles = Array.from({ length: 80 }, (_, i) => {
+      const timestamp = now - (80 - i) * 60 * 60_000;
+      return { time: timestamp, timestamp, open: 200, high: 202, low: 198, close: 200, volume: 100 };
+    });
+    const stock = buildCandidateFromSource({
+      instrument: "AAPL",
+      assetClass: "equity",
+      marketData: {
+        instrument: "AAPL", instrumentType: "stock", provider: "fixture",
+        fetchTimestamp: now, price: { price: 200, timestamp: now, source: "fixture" },
+        candles, timeframe: "H1", dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "AAPL", instrumentType: "stock", timeframe: "H1", timestamp: now,
+        priceSnapshot: { price: 200, timestamp: now, source: "fixture" },
+        bias: "Neutral", confidence: 50, recommendation: "NO_TRADE",
+        breakdown: { trend: 0, indicator: 0, fundamental: 0, sentiment: 0 },
+        fundamentalData: {
+          provider: "fixture", timestamp: now, instrumentType: "stock", available: true,
+          peRatio: Number.NaN, operatingMargin: Number.POSITIVE_INFINITY,
+        },
+      } as any,
+    }, now);
+    expect(stock.fundamentalEvidenceAvailable).toBe(false);
+
+    const crypto = buildCandidateFromSource({
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      marketData: {
+        instrument: "BTC/USD", instrumentType: "crypto", provider: "fixture",
+        fetchTimestamp: now, price: { price: 60_000, timestamp: now, source: "fixture" },
+        candles, timeframe: "H1", dataFreshness: "realtime",
+      },
+      analysisResult: {
+        instrument: "BTC/USD", instrumentType: "crypto", timeframe: "H1", timestamp: now,
+        priceSnapshot: { price: 60_000, timestamp: now, source: "fixture" },
+        bias: "Neutral", confidence: 50, recommendation: "NO_TRADE",
+        breakdown: { trend: 0, indicator: 0, fundamental: 0, sentiment: 0 },
+        derivativesData: {
+          confidence: "high",
+          fundingRate: { currentRate: Number.NaN },
+          openInterest: { change1h: Number.POSITIVE_INFINITY },
+          longShort: { accountRatio: Number.NaN },
+          availability: { fundingRate: true, openInterest: true, longShort: true, liquidations: false },
+        },
+      } as any,
+    }, now);
+    expect(crypto.positioningEvidenceAvailable).toBe(false);
+  });
+
   it("does not mislabel COT or volume-only sentiment as scored positioning evidence", () => {
     const now = Date.now();
     const candles = Array.from({ length: 80 }, (_, i) => {
