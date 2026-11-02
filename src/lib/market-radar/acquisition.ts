@@ -9,10 +9,9 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import type { MarketSnapshot, FreshnessLevel } from "./types";
+import type { MarketSnapshot } from "./types";
 import { RadarCache } from "./cache";
 import { RateLimitController } from "./rate-limit";
-import { assessFreshness } from "./freshness";
 
 // ═══════════════════════════════════════════════════════════════
 // ACQUISITION RESULT
@@ -92,7 +91,8 @@ export class MarketDataAcquisitionService {
     now?: number,
   ): Promise<AcquisitionResult> {
     const startTime = Date.now();
-    const timestamp = now ?? Date.now();
+    // Preserve the optional clock argument for existing callers; acquisition timing uses wall-clock latency.
+    void now;
 
     // Check cache first (stale-while-revalidate)
     const cached = this.cache.get<MarketSnapshot>(
