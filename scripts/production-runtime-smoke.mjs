@@ -264,6 +264,64 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     throw new Error(`Analysis result has an unknown decision state: ${recommendation}`);
   }
 
+  // Future-price discovery is a core product contract, not an optional
+  // narrative. Require both trader and investor forecasts on every live
+  // analysis, while allowing an honest UNAVAILABLE result when evidence or
+  // horizon history is insufficient.
+  const forecastContract = resultRoot.getByTestId("forward-forecast-contract");
+  if (await forecastContract.count() !== 1) {
+    throw new Error(`${instrument} live analysis omitted the trader/investor forward-forecast contract`);
+  }
+  const forecastCards = forecastContract.locator(":scope > div");
+  if (await forecastCards.count() !== 2) {
+    throw new Error(`${instrument} forward-forecast contract must render exactly one trader and one investor forecast`);
+  }
+  const traderForecastText = await forecastCards.nth(0).innerText();
+  const investorForecastText = await forecastCards.nth(1).innerText();
+  const validateForecastCard = (label, text, requireInvestorRatio = false) => {
+    if (!new RegExp(label, "i").test(text)) {
+      throw new Error(`${instrument} forward-forecast card label is missing: ${label}`);
+    }
+    if (!/\b(?:CONDITIONAL|UNAVAILABLE|BLOCKED DATA QUALITY)\b/i.test(text)) {
+      throw new Error(`${instrument} ${label} has no explicit forecast status`);
+    }
+    if (!/direction:\s*(?:bullish|bearish|neutral)/i.test(text) || !/horizon:\s*\S+/i.test(text)) {
+      throw new Error(`${instrument} ${label} omitted its direction or forecast horizon`);
+    }
+    if (!/window:\s*.+\s[–-]\s.+/i.test(text)) {
+      throw new Error(`${instrument} ${label} omitted its explicit forecast window`);
+    }
+    if (!/unvalidated/i.test(text)) {
+      throw new Error(`${instrument} ${label} must disclose that forecast calibration is UNVALIDATED`);
+    }
+    if (!/source data as of:/i.test(text)) {
+      throw new Error(`${instrument} ${label} omitted the source-data timestamp`);
+    }
+    if (/\bCONDITIONAL\b/i.test(text)) {
+      if (!/objective:/i.test(text) || !/invalidation\/downside:/i.test(text)) {
+        throw new Error(`${instrument} ${label} is CONDITIONAL without both an objective and an invalidation`);
+      }
+      if (requireInvestorRatio && !/(?:objective \/ invalidation distance|structural upside\/downside):\s*[\d.]+\s*:/i.test(text)) {
+        throw new Error(`${instrument} investor forecast is CONDITIONAL without a complete structural reward/risk ratio`);
+      }
+    } else if (!/!\s+/.test(text)) {
+      throw new Error(`${instrument} ${label} is unavailable without a visible limitation`);
+    }
+    return {
+      status: (text.match(/\b(CONDITIONAL|UNAVAILABLE|BLOCKED DATA QUALITY)\b/i)?.[1] ?? "").toUpperCase(),
+      direction: (text.match(/direction:\s*(bullish|bearish|neutral)/i)?.[1] ?? "").toLowerCase(),
+      horizon: text.match(/horizon:\s*([^\n]+)/i)?.[1]?.trim() ?? null,
+      calibration: "UNVALIDATED",
+      hasObjective: /objective:/i.test(text),
+      hasInvalidation: /invalidation\/downside:/i.test(text),
+      hasRewardRisk: /(?:gross R:R|objective \/ invalidation distance|structural upside\/downside):/i.test(text),
+    };
+  };
+  const forwardForecast = {
+    trader: validateForecastCard("trader forecast", traderForecastText),
+    investor: validateForecastCard("investor forecast", investorForecastText, true),
+  };
+
   const executablePlan = resultRoot.getByTestId("analysis-executable-trade-plan");
   const noTradeReasons = resultRoot.getByTestId("analysis-no-trade-reasons");
   if (recommendation === "NO_TRADE") {
@@ -417,6 +475,7 @@ async function runAnalysis(targetPage, instrument, type, expectedTimeframe = "M5
     price: priceMatch?.[1] ?? null,
     source: sourceMatch?.[1]?.trim() ?? null,
     primaryDataQuality: quality ?? null,
+    forwardForecast,
     cryptoIntelligence,
     profileEvidence,
     resultText: resultText.slice(0, 7000),
