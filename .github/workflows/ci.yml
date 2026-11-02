@@ -54,6 +54,23 @@ jobs:
           src/lib/data/sec-edgar.ts src/convex/marketRadarScheduler.ts src/convex/secEdgar.ts
       - name: Strict lint for authentication modules changed in this PR
         run: npx eslint src/lib/auth-provider-mode.ts src/lib/auth-provider-mode.test.ts src/lib/auth-redirect.ts src/lib/auth-redirect.test.ts src/pages/Auth.tsx
-      - name: Lint (advisory)
-        continue-on-error: true
-        run: npm run lint
+      - name: Enforce ESLint baseline without new violations
+        run: |
+          mkdir -p artifacts
+          set +e
+          npx eslint . --format json > artifacts/eslint-current.json
+          lint_status=$?
+          set -e
+          if [ "$lint_status" -gt 1 ]; then
+            echo "::error::ESLint failed to execute; inspect configuration or parser errors."
+            exit "$lint_status"
+          fi
+          node scripts/check-eslint-baseline.mjs artifacts/eslint-current.json docs/quality/eslint-baseline-2026-11-02.json
+      - name: Upload machine-readable ESLint diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eslint-diagnostics-${{ github.run_id }}
+          path: artifacts/eslint-current.json
+          if-no-files-found: ignore
+          retention-days: 14
