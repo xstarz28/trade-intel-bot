@@ -183,7 +183,7 @@ const TIMEFRAME_DAYS: Record<string, number> = {
   W1: 7,
 };
 
-function minimumInvestorStructureBars(
+export function minimumInvestorStructureBars(
   horizon: InvestorForecastHorizon,
   timeframe: string,
 ): number {

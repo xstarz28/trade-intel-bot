@@ -8,11 +8,12 @@
  * Missing components remain missing — never fabricated.
  */
 
-import type { CandidateInput, DataCompletenessLevel } from "@/lib/recommendation-engine";
+import type { CandidateInput, DataCompletenessLevel, InvestorHorizon } from "@/lib/recommendation-engine";
 import type { MarketSnapshot, FreshnessLevel, InvestorOpportunityProjection } from "./types";
 import type { UniverseEntry } from "./types";
 import type { TechnicalData, TimeframeStructureContext } from "../data/market-types";
 import { buildInvestorFundamentalOutlook, type InvestorValuationReference } from "../investor-fundamental-outlook";
+import { minimumInvestorStructureBars, type InvestorForecastHorizon } from "../forward-forecast";
 import { assessFreshness } from "./freshness";
 import { extractSetupEvidence, hasFundamentalEvidence, hasScoredPositioningEvidence, type LiveCandidateSource } from "../liveCandidateBuilder";
 import { calculateTechnical } from "../data/technical";
@@ -38,7 +39,9 @@ export interface RadarCandidateSource {
   positioningEvidenceAvailable?: boolean;
   /** Conditional entry/invalidations/targets derived from this exact candle snapshot. */
   conditionalScenarios?: ConditionalEntryScenario[];
-  /** Structural and valuation-backed price plan for investment horizons only. */
+  /** Horizon-specific structural and valuation-backed investment price plans. */
+  investmentProjections?: Partial<Record<InvestorHorizon, Omit<InvestorOpportunityProjection, "horizon">>>;
+  /** Backward-compatible default 1–3 year projection; horizon map is authoritative. */
   investmentProjection?: Omit<InvestorOpportunityProjection, "horizon">;
   /** Optional additional intelligence. */
   derivatives?: {
@@ -140,6 +143,7 @@ const RADAR_SOURCE_TIMEFRAME_RANK: Record<string, number> = {
 function getInvestorStructure(
   technical: TechnicalData | undefined,
   currentTimeframe: string,
+  horizon: InvestorForecastHorizon,
 ): TimeframeStructureContext | undefined {
   const currentRank = RADAR_SOURCE_TIMEFRAME_RANK[currentTimeframe] ?? 0;
   const candidates = [
@@ -150,6 +154,8 @@ function getInvestorStructure(
   ].filter((item): item is TimeframeStructureContext =>
     !!item &&
     (RADAR_SOURCE_TIMEFRAME_RANK[item.timeframe] ?? 0) > currentRank &&
+    Number.isFinite(item.dataPoints) &&
+    item.dataPoints >= minimumInvestorStructureBars(horizon, item.timeframe) &&
     (item.structure === "HH/HL" || item.structure === "LH/LL"),
   );
   return candidates.sort((a, b) =>
@@ -163,6 +169,7 @@ function getInvestorAccumulationZone(
   currentTimeframe: string | undefined,
   spot: number,
   asOf: number,
+  horizon: InvestorForecastHorizon,
 ): InvestorOpportunityProjection["accumulationZone"] {
   const currentRank = RADAR_SOURCE_TIMEFRAME_RANK[currentTimeframe ?? ""] ?? 0;
   const candidates = (technical?.mtf?.timeframes ?? [])
@@ -170,6 +177,8 @@ function getInvestorAccumulationZone(
       item.available &&
       (item.role === "macro" || item.role === "structure") &&
       (RADAR_SOURCE_TIMEFRAME_RANK[item.timeframe] ?? 0) > currentRank &&
+      Number.isFinite(item.smc?.internalExternal.external.dataPoints) &&
+      (item.smc?.internalExternal.external.dataPoints ?? 0) >= minimumInvestorStructureBars(horizon, item.timeframe) &&
       item.smc,
     )
     .flatMap((item) => (item.smc?.orderBlocks ?? []).flatMap((block) => {
@@ -250,6 +259,7 @@ function buildInvestmentProjection(
   technical: TechnicalData | undefined,
   analysis: LiveCandidateSource["analysisResult"],
   intelligence: LiveCandidateSource["universalIntelligence"],
+  horizon: InvestorHorizon,
 ): Omit<InvestorOpportunityProjection, "horizon"> | undefined {
   if (!market) return undefined;
   const spot = market.price?.price;
@@ -273,7 +283,7 @@ function buildInvestmentProjection(
 
   const price = spot!;
   const observedAt = asOf!;
-  const structure = getInvestorStructure(technical, market.timeframe);
+  const structure = getInvestorStructure(technical, market.timeframe, horizon as InvestorForecastHorizon);
   const structuralDirection = structure?.structure === "HH/HL"
     ? "bullish"
     : structure?.structure === "LH/LL"
@@ -329,7 +339,7 @@ function buildInvestmentProjection(
     ? reward / risk
     : undefined;
   const accumulationZone = direction === "bullish"
-    ? getInvestorAccumulationZone(technical, market.timeframe, price, observedAt)
+    ? getInvestorAccumulationZone(technical, market.timeframe, price, observedAt, horizon as InvestorForecastHorizon)
     : undefined;
   const qualified = direction !== "neutral" &&
     objective !== undefined &&
@@ -552,7 +562,21 @@ export function toRadarCandidateSource(
       /XAU|GOLD/i.test(source.instrument)
     ? deriveMacroYieldEvidence(source.treasuryData).goldLongEffect * 2
     : undefined;
-  const investmentProjection = buildInvestmentProjection(market, technical, analysis, intelligence);
+  const investorHorizons: InvestorHorizon[] = [
+    "1-4_WEEKS",
+    "1-3_MONTHS",
+    "3-6_MONTHS",
+    "6-12_MONTHS",
+    "1-3_YEARS",
+    "3+_YEARS",
+  ];
+  const investmentProjections = Object.fromEntries(
+    investorHorizons.flatMap((horizon) => {
+      const projection = buildInvestmentProjection(market, technical, analysis, intelligence, horizon);
+      return projection ? [[horizon, projection]] : [];
+    }),
+  ) as Partial<Record<InvestorHorizon, Omit<InvestorOpportunityProjection, "horizon">>>;
+  const investmentProjection = investmentProjections["1-3_YEARS"];
 
   const snapshot: MarketSnapshot | null = market ? {
     instrument: market.instrument,
@@ -612,7 +636,7 @@ export function toRadarCandidateSource(
     },
     snapshot,
     ...(conditionalScenarios.length > 0 ? { conditionalScenarios } : {}),
-    ...(investmentProjection ? { investmentProjection } : {}),
+    ...(Object.keys(investmentProjections).length > 0 ? { investmentProjections, investmentProjection } : {}),
     ...(derivatives ? { derivatives } : {}),
     ...(Object.values(fundamentals).some((value) => value !== undefined) ? { fundamentals } : {}),
     ...(setupEvidence ? setupEvidence : {}),

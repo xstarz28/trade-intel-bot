@@ -169,9 +169,12 @@ function selectSourcesForHorizon(
       // This lets a D1 source with verified W1 structure beat a W1 source that
       // has no higher-timeframe reference, without changing trading selection.
       if (!isTradingHorizon(horizon)) {
-        const planRank = (source: RadarCandidateSource) =>
-          source.investmentProjection?.status === "CONDITIONAL" ? 0 :
-          source.investmentProjection?.status === "BLOCKED_DATA_QUALITY" ? 2 : 1;
+        const planRank = (source: RadarCandidateSource) => {
+          const projection = source.investmentProjections?.[horizon] ??
+            (horizon === "1-3_YEARS" ? source.investmentProjection : undefined);
+          return projection?.status === "CONDITIONAL" ? 0 :
+            projection?.status === "BLOCKED_DATA_QUALITY" ? 2 : 1;
+        };
         const planDifference = planRank(a) - planRank(b);
         if (planDifference !== 0) return planDifference;
       }
@@ -563,8 +566,15 @@ export function scanRadar(
         ...(isTradingHorizon(horizon) && source.conditionalScenarios?.length
           ? { conditionalScenarios: source.conditionalScenarios }
           : {}),
-        ...(!isTradingHorizon(horizon) && source.investmentProjection
-          ? { investmentProjection: { ...source.investmentProjection, horizon } }
+        ...(!isTradingHorizon(horizon) && (source.investmentProjections?.[horizon] ??
+          (horizon === "1-3_YEARS" ? source.investmentProjection : undefined))
+          ? {
+              investmentProjection: {
+                ...(source.investmentProjections?.[horizon] ??
+                  (horizon === "1-3_YEARS" ? source.investmentProjection : undefined))!,
+                horizon,
+              },
+            }
           : {}),
         lifecycle,
         qualityTier,

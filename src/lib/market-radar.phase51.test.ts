@@ -330,8 +330,8 @@ describe("Radar investment price projections", () => {
             timeframe: "W1",
             liquidityPools: [],
             internalExternal: {
-              external: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 100 },
-              internal: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 100 },
+              external: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", lastSwingHigh: 120_000, lastSwingLow: 90_000, dataPoints: 180 },
+              internal: { timeframe: "W1", structure: "HH/HL", bosDirection: "bullish", chochDirection: "none", dataPoints: 180 },
               internalConflict: false,
             },
             fvgs: [],
@@ -423,6 +423,43 @@ describe("Radar investment price projections", () => {
       rewardRiskRatio: 2,
     });
     expect(investing).not.toHaveProperty("conditionalScenarios");
+  });
+
+  it("applies different minimum higher-timeframe history requirements to each investor horizon", () => {
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: {
+        htfContext: {
+          timeframe: "W1",
+          structure: "HH/HL",
+          lastSwingHigh: 120_000,
+          lastSwingLow: 90_000,
+          dataPoints: 100,
+        },
+      } as TechnicalData,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 100_000, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "realtime",
+      },
+    };
+    const source = toRadarCandidateSource(liveSource);
+    expect(source.investmentProjections?.["1-4_WEEKS"]).toMatchObject({
+      status: "CONDITIONAL",
+      objective: { price: 120_000 },
+      invalidation: { price: 90_000 },
+    });
+    expect(source.investmentProjections?.["1-3_YEARS"]).toMatchObject({
+      status: "UNAVAILABLE",
+      direction: "neutral",
+    });
+    expect(source.investmentProjection?.status).toBe("UNAVAILABLE");
   });
 
   it("does not treat primary-timeframe structure as a long-term investor thesis", () => {
@@ -604,7 +641,7 @@ describe("Radar investor valuation provenance", () => {
         structure: "HH/HL",
         lastSwingHigh: 120,
         lastSwingLow: 90,
-        dataPoints: 80,
+        dataPoints: 180,
       },
     } as unknown as TechnicalData;
     return {
