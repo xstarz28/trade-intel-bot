@@ -404,6 +404,37 @@ describe("Radar investment price projections", () => {
     expect(investing).not.toHaveProperty("conditionalScenarios");
   });
 
+  it("does not treat primary-timeframe structure as a long-term investor thesis", () => {
+    const technical = {
+      structure: "HH/HL",
+      dataPoints: 80,
+      swingHighs: [120],
+      swingLows: [90],
+      supportLevels: [90],
+      resistanceLevels: [120],
+    } as unknown as TechnicalData;
+    const liveSource: LiveCandidateSource = {
+      instrument: "BTC/USD",
+      assetClass: "crypto",
+      technicalData: technical,
+      marketData: {
+        instrument: "BTC/USD",
+        instrumentType: "crypto",
+        provider: "test-provider",
+        fetchTimestamp: NOW,
+        price: { price: 100, timestamp: NOW, source: "test-provider" },
+        candles: [],
+        timeframe: "D1",
+        dataFreshness: "realtime",
+      },
+    };
+    const projection = toRadarCandidateSource(liveSource).investmentProjection;
+    expect(projection?.status).toBe("UNAVAILABLE");
+    expect(projection?.direction).toBe("neutral");
+    expect(projection?.objective).toBeUndefined();
+    expect(projection?.invalidation).toBeUndefined();
+  });
+
   it("suppresses partial investment targets when a valid invalidation level is missing", () => {
     const technical = {
       structure: "HH/HL",
