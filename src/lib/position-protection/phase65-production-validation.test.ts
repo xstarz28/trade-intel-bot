@@ -321,7 +321,7 @@ describe("B. Provider Routing", () => {
 
 describe("C. Event Normalization", () => {
   it("bridgeQuoteToEvents produces valid events", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
       provider: "OKX",
@@ -339,7 +339,7 @@ describe("C. Event Normalization", () => {
   });
 
   it("bridgeQuoteToEvents rejects invalid instrument", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "",
       provider: "OKX",
@@ -352,7 +352,7 @@ describe("C. Event Normalization", () => {
   });
 
   it("bridgeQuoteToEvents rejects invalid price", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
       provider: "OKX",
@@ -365,7 +365,7 @@ describe("C. Event Normalization", () => {
   });
 
   it("bridgeQuoteToEvents handles stale data", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
       provider: "OKX",
@@ -379,7 +379,7 @@ describe("C. Event Normalization", () => {
   });
 
   it("bridgeCandleToEvents produces candle + price events", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const candle: ProviderCandleData = {
       instrument: "BTC/USDT",
       provider: "TwelveData",
@@ -398,14 +398,14 @@ describe("C. Event Normalization", () => {
   });
 
   it("bridgeProviderStatusChange handles disconnect", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const result = bridgeProviderStatusChange(state, "OKX", ["BTC/USDT"], "disconnected", "timeout");
     expect(result.events.length).toBe(1);
     expect(result.events[0].eventType).toBe("PROVIDER_DEGRADED");
   });
 
   it("bridgeProviderStatusChange handles recovery", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const result = bridgeProviderStatusChange(state, "OKX", ["BTC/USDT"], "recovered");
     expect(result.events.length).toBe(1);
     expect(result.events[0].eventType).toBe("PROVIDER_RECOVERED");
@@ -980,7 +980,7 @@ describe("R. No Fabrication", () => {
   });
 
   it("no fabricated prices in events", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
       provider: "OKX",
@@ -1032,7 +1032,7 @@ describe("S. No Auto-Execution", () => {
 
 describe("T. Security", () => {
   it("no API keys in events", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT",
       provider: "OKX",
@@ -1167,7 +1167,7 @@ describe("W. Multiple Positions", () => {
 
 describe("X. Controller Compatibility", () => {
   it("controller processes price events", () => {
-    let state = createControllerState();
+    const state = createControllerState();
     const pos = registerPosition(state, {
       positionId: "test-1",
       instrument: "BTC/USDT",
@@ -1290,7 +1290,7 @@ describe("Z. Critical Scenario: Profitable SHORT → Protection", () => {
 
 describe("AA. Freshness", () => {
   it("fresh data is POLLING mode", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const quote: ProviderQuoteData = {
       instrument: "BTC/USDT", provider: "OKX", price: 105000,
       timestamp: NOW, freshness: "FRESH",
@@ -1301,7 +1301,7 @@ describe("AA. Freshness", () => {
   });
 
   it("stale threshold detection works", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     // Manually set last event at
     state.lastEventAt.set("BTC/USDT", NOW - 600_000); // 10 minutes ago
     const mode = checkInstrumentFreshness(state, "BTC/USDT", NOW, 300_000);
@@ -1309,7 +1309,7 @@ describe("AA. Freshness", () => {
   });
 
   it("missing data returns UNAVAILABLE", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const mode = checkInstrumentFreshness(state, "BTC/USDT", NOW);
     expect(mode).toBe("UNAVAILABLE");
   });
@@ -1350,7 +1350,7 @@ describe("AB. Stream Orchestrator Compatibility", () => {
 
 describe("AC. Live Bridge Compatibility", () => {
   it("bridge handles full provider data", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const result = bridgeQuoteToEvents(state, {
       instrument: "EUR/USD",
       provider: "TwelveData",
@@ -1365,7 +1365,7 @@ describe("AC. Live Bridge Compatibility", () => {
   });
 
   it("bridge tracks events bridged count", () => {
-    let state = createBridgeState();
+    const state = createBridgeState();
     const result = bridgeQuoteToEvents(state, {
       instrument: "BTC/USDT", provider: "OKX", price: 105000,
       timestamp: NOW, freshness: "FRESH",
