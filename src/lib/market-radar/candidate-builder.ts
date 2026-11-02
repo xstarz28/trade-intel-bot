@@ -390,7 +390,10 @@ export function toRadarCandidateSource(
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
-  const instrumentAnalysis = source.analysisResult?.instrument === source.instrument
+  const instrumentAnalysis = source.analysisResult?.instrument === source.instrument &&
+    (!market?.instrumentType ||
+      !source.analysisResult.instrumentType ||
+      source.analysisResult.instrumentType === market.instrumentType)
     ? source.analysisResult
     : undefined;
   const marketTimeframe = normalizeRadarSourceTimeframe(market?.timeframe);
