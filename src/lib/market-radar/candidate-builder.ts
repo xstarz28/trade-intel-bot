@@ -390,19 +390,24 @@ export function toRadarCandidateSource(
   const market = source.marketData?.instrument === source.instrument
     ? source.marketData
     : undefined;
-  const instrumentAnalysis = source.analysisResult?.instrument === source.instrument &&
-    (!market?.instrumentType ||
-      !source.analysisResult.instrumentType ||
-      source.analysisResult.instrumentType === market.instrumentType)
+  const candidateAnalysis = source.analysisResult?.instrument === source.instrument
     ? source.analysisResult
     : undefined;
   const marketTimeframe = normalizeRadarSourceTimeframe(market?.timeframe);
-  const analysisTimeframe = normalizeRadarSourceTimeframe(instrumentAnalysis?.timeframe);
-  const analysisPrice = instrumentAnalysis?.priceSnapshot;
+  const analysisTimeframe = normalizeRadarSourceTimeframe(candidateAnalysis?.timeframe);
+  const analysisPrice = candidateAnalysis?.priceSnapshot;
   const marketPrice = market?.price;
   const sameObservedPriceSnapshot = !!analysisPrice && !!marketPrice &&
     analysisPrice.price === marketPrice.price &&
     analysisPrice.timestamp === marketPrice.timestamp;
+  const sameInstrumentType = !market?.instrumentType ||
+    !candidateAnalysis?.instrumentType ||
+    candidateAnalysis.instrumentType === market.instrumentType;
+  // Fundamentals may be reused across setup timeframes, but never across
+  // different price observations or asset-class identities.
+  const instrumentAnalysis = candidateAnalysis && sameObservedPriceSnapshot && sameInstrumentType
+    ? candidateAnalysis
+    : undefined;
   // Technical data is reusable only for the exact market observation and
   // timeframe that produced it. Same-instrument fundamentals remain valid
   // context, but a different-timeframe technical read must not leak into setup evidence.
