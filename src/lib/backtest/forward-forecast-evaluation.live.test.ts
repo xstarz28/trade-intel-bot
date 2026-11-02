@@ -227,6 +227,56 @@ function buildObservations(
   return observations;
 }
 
+describe("investor horizon OOS spacing", () => {
+  it("uses independent samples for every declared investor horizon", () => {
+    const candles = Array.from({ length: 1_800 }, (_, index) => {
+      const timestamp = Date.UTC(2021, 0, 1) + index * DAY;
+      const close = 100 + index * 0.02 + Math.sin(index / 30);
+      const open = close - 0.1;
+      return {
+        timestamp,
+        open,
+        high: Math.max(open, close) + 0.5,
+        low: Math.min(open, close) - 0.5,
+        close,
+        volume: 1_000,
+      };
+    });
+    const expected = [
+      ["1-4_WEEKS", 28, 41],
+      ["1-3_MONTHS", 90, 13],
+      ["3-6_MONTHS", 183, 6],
+      ["6-12_MONTHS", 365, 3],
+      ["1-3_YEARS", 1_095, 1],
+      ["3+_YEARS", 1_095, 1],
+    ] as const;
+
+    for (const [horizon, expectedBars, expectedCount] of expected) {
+      const observations = buildObservations(
+        "BTCUSDT", candles, "D1", "investor", 600, horizon,
+      );
+      expect(observations).toHaveLength(expectedCount);
+      expect(observations.every((item) =>
+        item.horizonEndsAt - item.dataAsOf === expectedBars * DAY &&
+        item.baselineTrainingEndTime < item.dataAsOf
+      )).toBe(true);
+      expect(observations.every((item, index) =>
+        index === 0 || item.dataAsOf > observations[index - 1].horizonEndsAt
+      )).toBe(true);
+
+      const report = evaluateForwardForecastOutcomes(observations, candles, {
+        costBpsPerSide: 15,
+        minimumSampleCount: 30,
+        enforceNonOverlapping: true,
+      });
+      expect(report.evaluatedCount).toBe(expectedCount);
+      expect(report.excludedReasons.overlapping_horizon ?? 0).toBe(0);
+      if (expectedCount < 30) expect(report.status).toBe("INSUFFICIENT_SAMPLE");
+      else expect(report.status).not.toBe("INSUFFICIENT_SAMPLE");
+    }
+  });
+});
+
 describe("real historical forward forecast outcome evaluation", () => {
   it.skipIf(!enabled)("replays trader and investor structural forecasts on untouched Binance Spot assets and writes provenance reports", async () => {
     const requestedBars = 1_800;
