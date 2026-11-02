@@ -24,7 +24,7 @@ export function toBybitLinearSymbol(instrument: string): string | null {
   const cleaned = instrument.trim().toUpperCase();
   if (!isCryptoInstrument(cleaned)) return null;
   const mapped = toCoinGlassSymbol(cleaned);
-  const base = mapped ?? cleaned.split(/[\/-]/)[0];
+  const base = mapped ?? cleaned.split(/[/-]/)[0];
   return base && /^[A-Z0-9]{2,20}$/.test(base) ? base + "USDT" : null;
 }
 
