@@ -1,0 +1,1808 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-11-02",
+  "source": {
+    "workflow": "CI",
+    "runId": 41391878537,
+    "url": "https://github.com/xstarz28/trade-intel-bot/actions/runs/41391878537",
+    "step": "Lint (advisory)",
+    "command": "npm run lint"
+  },
+  "totals": {
+    "errors": 1503,
+    "warnings": 28,
+    "problems": 1531
+  },
+  "rules": {
+    "@typescript-eslint/no-explicit-any": {
+      "errors": 602,
+      "warnings": 0
+    },
+    "react-hooks/set-state-in-effect": {
+      "errors": 6,
+      "warnings": 0
+    },
+    "@typescript-eslint/no-unused-vars": {
+      "errors": 828,
+      "warnings": 0
+    },
+    "react-hooks/rules-of-hooks": {
+      "errors": 1,
+      "warnings": 0
+    },
+    "react-hooks/purity": {
+      "errors": 6,
+      "warnings": 0
+    },
+    "react-hooks/immutability": {
+      "errors": 5,
+      "warnings": 0
+    },
+    "react-hooks/refs": {
+      "errors": 7,
+      "warnings": 0
+    },
+    "react-hooks/exhaustive-deps": {
+      "errors": 0,
+      "warnings": 15
+    },
+    "react-refresh/only-export-components": {
+      "errors": 0,
+      "warnings": 8
+    },
+    "eslint-comments/no-unused-disable": {
+      "errors": 0,
+      "warnings": 5
+    },
+    "no-empty": {
+      "errors": 3,
+      "warnings": 0
+    },
+    "no-useless-escape": {
+      "errors": 9,
+      "warnings": 0
+    },
+    "no-prototype-builtins": {
+      "errors": 3,
+      "warnings": 0
+    },
+    "@typescript-eslint/no-require-imports": {
+      "errors": 2,
+      "warnings": 0
+    },
+    "prefer-const": {
+      "errors": 29,
+      "warnings": 0
+    },
+    "@typescript-eslint/no-unused-expressions": {
+      "errors": 2,
+      "warnings": 0
+    }
+  },
+  "files": {
+    "src/components/CustomAlertRulesPanel.tsx": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/components/InstrumentInput.tsx": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "react-hooks/set-state-in-effect": 1,
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/components/IntelligenceDashboard.tsx": {
+      "errors": 11,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 10,
+        "react-hooks/rules-of-hooks": 1
+      }
+    },
+    "src/components/Journal.tsx": {
+      "errors": 8,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 6,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/components/MarketDataHealthPanel.tsx": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/components/MarketOpportunities.tsx": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 7
+      }
+    },
+    "src/components/MarketOverviewPanel.tsx": {
+      "errors": 5,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 5
+      }
+    },
+    "src/components/NotificationCenter.tsx": {
+      "errors": 10,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2,
+        "@typescript-eslint/no-explicit-any": 8
+      }
+    },
+    "src/components/PortfolioIntelligence.tsx": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 6
+      }
+    },
+    "src/components/PositionProtectionControlCenter.tsx": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/components/PositionProtectionDashboard.tsx": {
+      "errors": 26,
+      "warnings": 5,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 13,
+        "react-hooks/purity": 3,
+        "react-hooks/immutability": 5,
+        "@typescript-eslint/no-explicit-any": 4,
+        "react-hooks/refs": 1,
+        "react-hooks/exhaustive-deps": 5
+      }
+    },
+    "src/components/PositionProtectionDetail.tsx": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/components/PositionProtectionPanel.tsx": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/components/PositionRegistrationForm.tsx": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/components/PositionRegistrationPanel.tsx": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/components/ProtectionAlertCenter.tsx": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/components/RuntimeHealthDashboard.tsx": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "react-hooks/purity": 1,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/components/TraderWorkspace.tsx": {
+      "errors": 18,
+      "warnings": 1,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 14,
+        "@typescript-eslint/no-explicit-any": 4,
+        "react-hooks/exhaustive-deps": 1
+      }
+    },
+    "src/components/UserIntelligenceFeed.tsx": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/components/analytical-context-panel.tsx": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/components/ui/badge.tsx": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "react-refresh/only-export-components": 1
+      }
+    },
+    "src/components/ui/button-group.tsx": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "react-refresh/only-export-components": 1
+      }
+    },
+    "src/components/ui/button.tsx": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "react-refresh/only-export-components": 1
+      }
+    },
+    "src/components/ui/carousel.tsx": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "react-hooks/set-state-in-effect": 1
+      }
+    },
+    "src/components/ui/form.tsx": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "react-refresh/only-export-components": 1
+      }
+    },
+    "src/components/ui/navigation-menu.tsx": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "react-refresh/only-export-components": 1
+      }
+    },
+    "src/components/ui/sidebar.tsx": {
+      "errors": 1,
+      "warnings": 1,
+      "rules": {
+        "react-hooks/purity": 1,
+        "react-refresh/only-export-components": 1
+      }
+    },
+    "src/components/ui/toggle.tsx": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "react-refresh/only-export-components": 1
+      }
+    },
+    "src/convex/_generated/api.js": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "eslint-comments/no-unused-disable": 1
+      }
+    },
+    "src/convex/_generated/dataModel.d.ts": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "eslint-comments/no-unused-disable": 1
+      }
+    },
+    "src/convex/_generated/server.d.ts": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "eslint-comments/no-unused-disable": 1
+      }
+    },
+    "src/convex/_generated/server.js": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "eslint-comments/no-unused-disable": 1
+      }
+    },
+    "src/convex/alertRules.ts": {
+      "errors": 10,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 10
+      }
+    },
+    "src/convex/alphaVantage.ts": {
+      "errors": 13,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 13
+      }
+    },
+    "src/convex/analyses.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/convex/coinglass.ts": {
+      "errors": 13,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 13
+      }
+    },
+    "src/convex/eia.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/convex/historicalIntelligence.ts": {
+      "errors": 16,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 16
+      }
+    },
+    "src/convex/journal.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 7
+      }
+    },
+    "src/convex/marketData.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/convex/notificationPreferences.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 4
+      }
+    },
+    "src/convex/notifications.ts": {
+      "errors": 10,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 10
+      }
+    },
+    "src/convex/positionProtection.ts": {
+      "errors": 12,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 12
+      }
+    },
+    "src/convex/runtimeHealth.ts": {
+      "errors": 11,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 11
+      }
+    },
+    "src/convex/tradingEconomics.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 7
+      }
+    },
+    "src/convex/treasury.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/hooks/use-mobile.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "react-hooks/set-state-in-effect": 1
+      }
+    },
+    "src/lib/adversarial.phase13.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/analysis-engine.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/analyst-thesis.phase26.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/analyst-thesis.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/analytical-context.phase55.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/analytical-context.phase56.test.ts": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2,
+        "@typescript-eslint/no-explicit-any": 4
+      }
+    },
+    "src/lib/convex-provider.tsx": {
+      "errors": 18,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3,
+        "no-empty": 1,
+        "@typescript-eslint/no-explicit-any": 14
+      }
+    },
+    "src/lib/cot-engine.phase7.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/crypto-intelligence.phase41.test.ts": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 5
+      }
+    },
+    "src/lib/crypto-presentation.phase42.test.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 4
+      }
+    },
+    "src/lib/data-integrity.phase23.test.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/lib/data-quality.phase25.test.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/data-quality.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/alpha-vantage/normalize.test.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/data/calendar-types.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/classic-price-action.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/crypto/binance-derivatives-adapter.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "no-useless-escape": 1,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/data/crypto/binance-spot-market-adapter.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "no-useless-escape": 1
+      }
+    },
+    "src/lib/data/crypto/bybit-derivatives-adapter.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "no-useless-escape": 1,
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/lib/data/crypto/coinglass-adapter.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/lib/data/crypto/defillama-adapter.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 4
+      }
+    },
+    "src/lib/data/crypto/intelligence.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/crypto/okx-derivatives-adapter.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "no-useless-escape": 1,
+        "@typescript-eslint/no-explicit-any": 6
+      }
+    },
+    "src/lib/data/crypto/okx-spot-market-adapter.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "no-useless-escape": 1,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/data/crypto/symbols.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "no-prototype-builtins": 3
+      }
+    },
+    "src/lib/data/crypto/tokenomist-adapter.ts": {
+      "errors": 8,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 8
+      }
+    },
+    "src/lib/data/mtf.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/technical.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/data/treasury.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/universal/analytical-context.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/universal/cache.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/universal/coverage.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/data/universal/engine-types.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 7
+      }
+    },
+    "src/lib/data/universal/engines.ts": {
+      "errors": 25,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 7,
+        "@typescript-eslint/no-explicit-any": 18
+      }
+    },
+    "src/lib/data/universal/evidence.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/data/universal/instruments.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/data/universal/live/client.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/data/universal/providers.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/data/universal/routing-engine.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/decision-integrity.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/lib/defensive.phase10.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/eia-engine.phase7.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/evidence-challenge.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/execution-engine.phase7.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/forward-forecast.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/hardening.phase10.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/i18n/i18n.test.ts": {
+      "errors": 61,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 57
+      }
+    },
+    "src/lib/i18n/index.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/journal-e2e.phase32.test.ts": {
+      "errors": 5,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 5
+      }
+    },
+    "src/lib/journal.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/live-provider-fabric.phase52.test.ts": {
+      "errors": 13,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 9
+      }
+    },
+    "src/lib/live-provider-fabric.phase53.test.ts": {
+      "errors": 13,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 8,
+        "@typescript-eslint/no-explicit-any": 5
+      }
+    },
+    "src/lib/live-provider-validation.phase39.test.ts": {
+      "errors": 10,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 9,
+        "@typescript-eslint/no-require-imports": 1
+      }
+    },
+    "src/lib/live-provider-verification.phase54.test.ts": {
+      "errors": 5,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 5
+      }
+    },
+    "src/lib/live-provider.phase46.test.ts": {
+      "errors": 9,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 7,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/live-realism.phase33.test.ts": {
+      "errors": 9,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 8,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/live-scanner.phase50.test.ts": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2,
+        "@typescript-eslint/no-explicit-any": 4
+      }
+    },
+    "src/lib/liveCandidateBuilder.phase153.test.ts": {
+      "errors": 26,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 26
+      }
+    },
+    "src/lib/long-horizon-thesis.phase35.test.ts": {
+      "errors": 17,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 5,
+        "@typescript-eslint/no-explicit-any": 12
+      }
+    },
+    "src/lib/long-horizon-thesis.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/market-quality.phase24.test.ts": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/market-radar/acquisition.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/market-radar/provider-registry.ts": {
+      "errors": 14,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 12,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/market-radar/rate-limit.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/market-radar/verification.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 5,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/market-scenario.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/market-stream.phase59.test.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/market-stream/live-market-bridge.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3,
+        "no-useless-escape": 1
+      }
+    },
+    "src/lib/market-stream/live-polling-service.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/lib/market-stream/provider-adapters.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/market-stream/provider-routing.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/market-stream/reconnection-engine.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/market-stream/stream-orchestrator.ts": {
+      "errors": 5,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 5
+      }
+    },
+    "src/lib/market-stress.phase37.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/parallel-fetch.phase15.test.ts": {
+      "errors": 4,
+      "warnings": 1,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2,
+        "@typescript-eslint/no-explicit-any": 2,
+        "eslint-comments/no-unused-disable": 1
+      }
+    },
+    "src/lib/position-protection.phase57.test.ts": {
+      "errors": 8,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 8
+      }
+    },
+    "src/lib/position-protection.phase58.test.ts": {
+      "errors": 14,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 8,
+        "prefer-const": 2
+      }
+    },
+    "src/lib/position-protection/__tests__/alert-lifecycle.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/__tests__/convex-persistence.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/alert-lifecycle.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/position-protection/alert-observability.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/alert-rule-engine.phase93.test.ts": {
+      "errors": 8,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 8
+      }
+    },
+    "src/lib/position-protection/alert-rule-engine.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/position-protection/alert-runtime-bridge.ts": {
+      "errors": 10,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 9,
+        "prefer-const": 1
+      }
+    },
+    "src/lib/position-protection/continuous-protection-controller.ts": {
+      "errors": 17,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 16,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/decision-support.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/position-protection/fundamental-intelligence.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "prefer-const": 1,
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/position-protection/fundamental-regime.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/fundamental-transmission.ts": {
+      "errors": 11,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 11
+      }
+    },
+    "src/lib/position-protection/giveback-monitor.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "prefer-const": 1
+      }
+    },
+    "src/lib/position-protection/intelligence-calibration.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/investor-portfolio-summary.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/market-event-bridge.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/market-intelligence-analyzer.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/multi-dimensional-intelligence.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/lib/position-protection/multi-timeframe-engine.ts": {
+      "errors": 8,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 7,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/notification-engine.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/notification-preferences.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/persistence.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase100-runtime-instrumentation.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/phase101-verification.test.ts": {
+      "errors": 29,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 24,
+        "@typescript-eslint/no-explicit-any": 4,
+        "prefer-const": 1
+      }
+    },
+    "src/lib/position-protection/phase102-direct-provider-health.test.ts": {
+      "errors": 9,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 9
+      }
+    },
+    "src/lib/position-protection/phase103-runtime-integration.test.ts": {
+      "errors": 14,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 11,
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/lib/position-protection/phase104-failure-injection.test.ts": {
+      "errors": 14,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 10,
+        "@typescript-eslint/no-explicit-any": 4
+      }
+    },
+    "src/lib/position-protection/phase105-production-readiness.test.ts": {
+      "errors": 18,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 15,
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/lib/position-protection/phase106-runtime-verification.test.ts": {
+      "errors": 8,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 8
+      }
+    },
+    "src/lib/position-protection/phase107-trader-workspace.test.ts": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 5
+      }
+    },
+    "src/lib/position-protection/phase109-decision-support.test.ts": {
+      "errors": 11,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 7
+      }
+    },
+    "src/lib/position-protection/phase109-trader-workflow-validation.test.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/lib/position-protection/phase110-fundamental-regime.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/phase111-fundamental-transmission.test.ts": {
+      "errors": 16,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 16
+      }
+    },
+    "src/lib/position-protection/phase112-live-fundamental-wiring.test.ts": {
+      "errors": 16,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 15
+      }
+    },
+    "src/lib/position-protection/phase113-macro-crossasset-wiring.test.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 7
+      }
+    },
+    "src/lib/position-protection/phase114-macro-numeric-news-relevance.test.ts": {
+      "errors": 13,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 7,
+        "@typescript-eslint/no-explicit-any": 6
+      }
+    },
+    "src/lib/position-protection/phase115-structured-inflation-central-bank.test.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2,
+        "@typescript-eslint/no-explicit-any": 2
+      }
+    },
+    "src/lib/position-protection/phase117-live-economic-data-wiring.test.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/position-protection/phase118-complete-fundamental-intelligence.test.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/position-protection/phase120-data-completeness.test.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/lib/position-protection/phase139-investor-intelligence.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/phase141-investor-decision-synthesis.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase142-investor-decision-resilience.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase62-validation.test.ts": {
+      "errors": 17,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 16,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/phase63-validation.test.ts": {
+      "errors": 30,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 20,
+        "@typescript-eslint/no-explicit-any": 8,
+        "prefer-const": 2
+      }
+    },
+    "src/lib/position-protection/phase64-validation.test.ts": {
+      "errors": 24,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 13,
+        "prefer-const": 3,
+        "@typescript-eslint/no-explicit-any": 8
+      }
+    },
+    "src/lib/position-protection/phase65-production-validation.test.ts": {
+      "errors": 29,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 11,
+        "prefer-const": 15,
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/lib/position-protection/phase66-production-validation.test.ts": {
+      "errors": 11,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 6,
+        "prefer-const": 1,
+        "@typescript-eslint/no-explicit-any": 4
+      }
+    },
+    "src/lib/position-protection/phase66-scenarios.ts": {
+      "errors": 15,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 15
+      }
+    },
+    "src/lib/position-protection/phase67-production-validation.test.ts": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 6
+      }
+    },
+    "src/lib/position-protection/phase68-calibration-validation.test.ts": {
+      "errors": 35,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2,
+        "@typescript-eslint/no-explicit-any": 33
+      }
+    },
+    "src/lib/position-protection/phase69-runtime-hardening.ts": {
+      "errors": 11,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 11
+      }
+    },
+    "src/lib/position-protection/phase69-runtime-validation.test.ts": {
+      "errors": 21,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 16,
+        "@typescript-eslint/no-explicit-any": 5
+      }
+    },
+    "src/lib/position-protection/phase70-production-hardening.test.ts": {
+      "errors": 42,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 41,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/phase71-runtime-validation.test.ts": {
+      "errors": 28,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 28
+      }
+    },
+    "src/lib/position-protection/phase72-runtime-proof.test.ts": {
+      "errors": 22,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 21,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/phase73-runtime-closure.test.ts": {
+      "errors": 22,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 21,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/phase74-browser-convex-runtime.test.ts": {
+      "errors": 40,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 22,
+        "@typescript-eslint/no-explicit-any": 17,
+        "@typescript-eslint/no-require-imports": 1
+      }
+    },
+    "src/lib/position-protection/phase75-production-activation.test.ts": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 6
+      }
+    },
+    "src/lib/position-protection/phase79-product-intelligence.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase80-mtf-ohlcv.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/phase81-runtime-validation.test.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/lib/position-protection/phase83-trader-intelligence.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase85-news-fundamental.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase86-dashboard-intelligence.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase86-dashboard-intelligence.test.tsx": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase87-runtime-activation.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/phase88-user-feed.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/phase89-historical-timeline.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "prefer-const": 1
+      }
+    },
+    "src/lib/position-protection/phase90-persistent-history.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/phase91-persistent-history-rehydration.test.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/position-protection/phase92-portfolio-intelligence.test.ts": {
+      "errors": 9,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 9
+      }
+    },
+    "src/lib/position-protection/phase93-alert-rules.test.ts": {
+      "errors": 5,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2,
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/lib/position-protection/phase94-notifications.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/phase95-runtime-alert-bridge.test.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3,
+        "@typescript-eslint/no-explicit-any": 4
+      }
+    },
+    "src/lib/position-protection/phase96-portfolio-alert-runtime.test.ts": {
+      "errors": 7,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 3
+      }
+    },
+    "src/lib/position-protection/phase97-alert-lifecycle.test.ts": {
+      "errors": 8,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3,
+        "@typescript-eslint/no-explicit-any": 5
+      }
+    },
+    "src/lib/position-protection/phase98-notification-preferences.test.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/lib/position-protection/phase99-runtime-health.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/portfolio-intelligence.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/position-protection/position-protection-provider.tsx": {
+      "errors": 0,
+      "warnings": 1,
+      "rules": {
+        "react-refresh/only-export-components": 1
+      }
+    },
+    "src/lib/position-protection/protection-engine.ts": {
+      "errors": 6,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 5,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/position-protection/realtime-monitor.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 2,
+        "prefer-const": 1
+      }
+    },
+    "src/lib/position-protection/thesis-health.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/trader-intelligence.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-expressions": 2,
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/position-protection/use-macro-context-data.ts": {
+      "errors": 0,
+      "warnings": 3,
+      "rules": {
+        "react-hooks/exhaustive-deps": 3
+      }
+    },
+    "src/lib/position-protection/use-ohlcv-data.ts": {
+      "errors": 5,
+      "warnings": 4,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1,
+        "@typescript-eslint/no-explicit-any": 4,
+        "react-hooks/exhaustive-deps": 4
+      }
+    },
+    "src/lib/position-protection/use-position-intelligence.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "react-hooks/set-state-in-effect": 1
+      }
+    },
+    "src/lib/position-protection/use-position-protection.ts": {
+      "errors": 14,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 10,
+        "react-hooks/refs": 2,
+        "react-hooks/set-state-in-effect": 1,
+        "react-hooks/purity": 1
+      }
+    },
+    "src/lib/position-protection/user-intelligence-feed.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/production.phase12.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "no-useless-escape": 1
+      }
+    },
+    "src/lib/professional-thesis.phase28.test.ts": {
+      "errors": 3,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3
+      }
+    },
+    "src/lib/professional-thesis.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/provider-orchestration.phase40.test.ts": {
+      "errors": 24,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 20
+      }
+    },
+    "src/lib/recommendation-engine.phase49.test.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/recommendation-engine.ts": {
+      "errors": 4,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4
+      }
+    },
+    "src/lib/runtime-resilience.phase38.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/runtime.phase14.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/trading-style.phase6.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/ui-integration.phase43.test.ts": {
+      "errors": 5,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 1
+      }
+    },
+    "src/lib/ui-render.phase13.test.tsx": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-explicit-any": 1,
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/lib/universal-engine.phase45.test.ts": {
+      "errors": 24,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "@typescript-eslint/no-explicit-any": 20
+      }
+    },
+    "src/lib/universal-intelligence.phase44.test.ts": {
+      "errors": 18,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 4,
+        "no-useless-escape": 2,
+        "@typescript-eslint/no-explicit-any": 12
+      }
+    },
+    "src/lib/universal-ui.phase47.test.ts": {
+      "errors": 2,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 2
+      }
+    },
+    "src/lib/validation.phase9.test.ts": {
+      "errors": 1,
+      "warnings": 0,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 1
+      }
+    },
+    "src/pages/Dashboard.tsx": {
+      "errors": 21,
+      "warnings": 2,
+      "rules": {
+        "@typescript-eslint/no-unused-vars": 3,
+        "@typescript-eslint/no-explicit-any": 11,
+        "no-empty": 2,
+        "react-hooks/exhaustive-deps": 2,
+        "react-hooks/refs": 4,
+        "react-hooks/set-state-in-effect": 1
+      }
+    }
+  },
+  "notes": [
+    "Counts are parsed from the ESLint text output of the referenced main-branch CI run.",
+    "The totals field preserves ESLint's authoritative terminal summary (1,503 errors and 28 warnings).",
+    "React Hooks compiler diagnostics are grouped under their specific react-hooks rule based on the diagnostic message.",
+    "Generated Convex files are included because the existing repository lint command includes them.",
+    "This is a dated baseline, not a waiver or a claim that lint is clean."
+  ]
+}
