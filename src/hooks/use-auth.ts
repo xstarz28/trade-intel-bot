@@ -22,7 +22,12 @@ export type AuthPhase = "initializing" | "authenticated" | "unauthenticated";
 
 export function useAuth() {
   const { isLoading: isAuthLoading, isAuthenticated } = useConvexAuth();
-  const user = useQuery(api.users.currentUser);
+
+  // Do not issue a protected user query for signed-out visitors. This avoids
+  // unnecessary backend work and prevents an unavailable Convex deployment
+  // from crashing the public /auth page before a user attempts to sign in.
+  const user = useQuery(api.users.currentUser, isAuthenticated ? {} : "skip");
+
   const { signIn, signOut } = useAuthActions();
 
   const [phase, setPhase] = useState<AuthPhase>("initializing");
