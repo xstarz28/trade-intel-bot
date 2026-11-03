@@ -18,6 +18,7 @@ This is an incremental extraction, not a rewrite. Convex remains untouched until
 - `convex.json` points the Convex function directory at `src/convex/`.
 - `src/main.tsx` wraps the application in `AppAuthProvider` from `src/lib/convex-provider.tsx`.
 - `src/lib/convex-provider.tsx` constructs the real Convex client from `VITE_CONVEX_URL`, selects real Convex or a mock mode, and implements a local mock client.
+- `src/lib/auth-provider-mode.ts` hardcodes the active production Convex origin (`https://hushed-seal-237.convex.cloud`), so the deployment identity is coupled to frontend source code as well as environment configuration.
 - `src/hooks/use-auth.ts` uses `useConvexAuth`, `useQuery`, and `useAuthActions`; it directly depends on Convex Auth semantics.
 - `src/convex/auth.ts` configures Google and anonymous providers through `@convex-dev/auth`.
 - `src/convex/http.ts` registers Convex Auth HTTP routes.
@@ -28,6 +29,8 @@ This is an incremental extraction, not a rewrite. Convex remains untouched until
 ### 2. Existing mock mode is not a production backend
 
 The mock client in `src/lib/convex-provider.tsx` stores a limited subset of data in browser `localStorage`. It returns hard-coded/default values for several query paths and has a small set of mock mutations/actions.
+
+The mock sign-in implementation also manufactures a local user object for both the `google` and `anonymous` labels; it does not perform Google OAuth or verify a provider identity. The mode resolver selects mock mode only when no Convex client exists in development; production without a valid Convex client is explicitly misconfigured.
 
 It is useful as a development fallback, but it is not a substitute for:
 - durable shared persistence across devices;
@@ -66,6 +69,14 @@ The schema contains user ownership references and indexes. A replacement must pr
 - `src/convex/notifications.ts` provides user-scoped reads/writes, deduplication, read/dismiss behavior, and bounded retention.
 - The inspected market-data action in `src/convex/marketData.ts` contains provider selection, caching, request coalescing, timeout/backoff, request budgeting, and market-data normalization. This logic must be preserved or extracted—not replaced with a simplistic price-fetch endpoint.
 - `src/convex/crons.ts` currently intentionally registers no market-wide discovery cron. The migration must not reintroduce automatic market-wide scanning.
+- `src/convex/marketRadarScheduler.ts` and `src/convex/marketRadarInternal.ts` still contain legacy scanner/checkpoint logic. Their presence in source is not evidence that the cron is active; keep them out of the new runtime path unless a user-requested feature explicitly requires them.
+- Other inspected server modules include `src/convex/alertRules.ts`, `src/convex/positionProtection.ts`, `src/convex/runtimeHealth.ts`, `src/convex/alphaVantage.ts`, `src/convex/tradingEconomics.ts`, `src/convex/okx.ts`, and `src/convex/secEdgar.ts`. These cover persistence and external data actions and need operation-by-operation extraction.
+
+## Self-hosted foundation started on this branch
+
+The isolated `backend/` directory now contains an initial TypeScript/Hono service, a PostgreSQL connection pool, liveness/readiness endpoints, graceful shutdown, Docker Compose with a persistent PostgreSQL volume, a container build, and four health-endpoint tests. A dedicated GitHub Actions workflow runs backend tests and a TypeScript build.
+
+This first slice deliberately exposes health endpoints only. It does not yet implement domain routes, authentication, SQL migrations, data export/import, or frontend integration. It has not been declared production-ready and must pass CI before it is considered validated. No frontend, existing Convex function, production environment variable, or deployed service was changed.
 
 ## Proposed self-hosted target
 
