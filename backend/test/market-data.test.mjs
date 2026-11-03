@@ -65,6 +65,17 @@ describe("self-hosted market analysis engine", () => {
     assert.ok(result.technical.smc);
     assert.ok(result.technical.mtf);
     assert.equal(result.technical.dataPoints, 210);
+    // The self-hosted endpoint must return the existing forward decision
+    // engine output, not stop at a snapshot of current market conditions.
+    assert.ok(result.analysis);
+    assert.ok(["LONG", "SHORT", "NO_TRADE"].includes(result.analysis.recommendation));
+    assert.ok(result.analysis.forwardForecast);
+    if (result.analysis.recommendation === "NO_TRADE") {
+      assert.equal(result.analysis.tradePlan, undefined);
+    } else {
+      assert.ok(result.analysis.tradePlan);
+      assert.ok(Number.isFinite(result.analysis.tradePlan.riskReward));
+    }
   });
 
   it("uses exact Yahoo Finance mappings for equities and preserves delayed freshness", async () => {
