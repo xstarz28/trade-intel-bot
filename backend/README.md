@@ -1,97 +1,97 @@
-# Trade Intel self-hosted backend
+# Trade Intel self-hosted application
 
-This backend uses Node.js built-in modules and SQLite. It does not call Convex, a managed database, or another paid backend service.
+This deployment runs the Vite frontend, Node.js API, and SQLite database on infrastructure we control. It does not require Convex, Vercel, a managed database, or a paid backend SDK.
 
-## Implemented foundation
+## Implemented self-hosted runtime
 
-- Node.js HTTP server with liveness and database-readiness endpoints;
-- built-in SQLite persistence using `node:sqlite`, WAL mode, foreign-key enforcement, and a bounded busy timeout;
-- checksummed, transactional SQL migrations;
-- core Trade Intel persistence tables for users, sessions, analyses, fundamentals, SEC filings, journal, monitored positions, alert history, stream cursors, historical intelligence, alert rules, notifications, preferences, and runtime health;
-- opaque random session tokens stored only as SHA-256 hashes;
-- HTTP-only session cookies, origin checks for authentication mutations, anonymous sign-in, sign-out, and session inspection;
-- Google OAuth authorization-code flow with state, nonce, PKCE, and server-side RS256 ID-token signature/claim validation;
-- user-scoped analysis history endpoints with schema validation and bounded 100-record retention;
-- user-scoped journal create/list/get/update/delete endpoints with the existing lifecycle transition rules;
-- user-scoped monitored-position upsert/list/get/delete, bounded position-alert history and acknowledgement, and stream-cursor persistence;
-- custom alert-rule CRUD, bounded rule-alert history, deduplicated notifications with read/dismiss lifecycle, unread counts, and per-user notification preferences;
-- authenticated on-demand OHLCV retrieval for mapped instruments through public OKX Spot and Yahoo Finance sources, reusing the existing technical-indicator, SMC, MTF, freshness, and cross-asset calculation modules via a build-time bundle;
-- Docker Compose with a persistent named SQLite data volume;
-- automated tests using Node's built-in test runner.
+- Node.js HTTP server serves both the built frontend and API from one origin;
+- Caddy reverse proxy provides automatic HTTPS and serves as the only public network entry point;
+- built-in SQLite persistence with WAL mode, foreign keys, and checksummed transactional migrations;
+- SQL tables for users/sessions, analyses, fundamentals, SEC filings, journal, positions, alerts, stream cursors, historical intelligence, notifications, preferences, and runtime health;
+- anonymous sessions, HTTP-only cookies, logout, origin validation, and Google OAuth with PKCE/state/nonce plus server-side Google JWKS signature and claim verification;
+- user-scoped analysis history and journal CRUD/lifecycle routes;
+- monitored-position persistence, bounded position-alert history/acknowledgement, stream cursors, custom alert rules/history, deduplicated notifications, read/dismiss lifecycle, and notification preferences;
+- authenticated on-demand OHLCV retrieval for mapped instruments through public OKX Spot and Yahoo Finance sources, reusing the existing technical-indicator, SMC, MTF, freshness, and cross-asset modules;
+- consistent SQLite snapshot backup command.
 
-## Market-data scope and limits
+## Important migration status
 
-The first independent market-data endpoint is `POST /api/v1/market-data/analyze`. It reuses the repository's shared calculation modules instead of reimplementing indicators. It uses public OKX Spot candles/ticker for spot crypto and exact Yahoo Finance ticker mappings for supported stocks, forex, commodities, and indices. MTF reads are budgeted; missing or unmapped sources remain explicitly unavailable. It does not silently replace an unsupported derivative with spot data. This lane is not yet feature-parity with the Convex action: perpetual/futures contracts, the full Twelve Data credential path, and other provider-specific intelligence actions still need extraction.
+This backend is an active migration target, not yet a complete Convex replacement. The frontend source still contains Convex hooks and has not been switched to this API. Historical intelligence/runtime-health routes, fundamental/SEC observation repositories, derivative-specific market-data paths, full provider parity, Convex data export/import, and end-to-end frontend parity tests remain outstanding. Do not disable the existing production deployment or delete Convex data before those gates pass.
 
-## Still not a complete Convex replacement
-
-The frontend still uses Convex. Historical intelligence, runtime-health routes, fundamental/SEC observation repositories, and the remaining derivative-specific market-data paths are not yet wired. Position protection, custom alert rules/history, notifications/preferences, analysis history, and journal routes are wired. Existing Convex data export/import, Google OAuth credential cutover, frontend adapter replacement, end-to-end parity tests, and production deployment remain outstanding. Do not switch the production frontend yet.
+The market-data lane currently supports public OKX Spot candles/ticker for spot crypto and exact Yahoo Finance mappings for supported stocks, forex, commodities, and indices. It does not silently replace unsupported derivative contracts or unmapped symbols with a proxy. Perpetual/futures data, full Twelve Data credential support, and other provider-specific actions remain to be extracted.
 
 ## Requirements
 
-- Node.js 22.13+ (uses the built-in `node:sqlite` module);
-- Docker Engine + Docker Compose for containerized local operation (optional).
+- Docker Engine + Docker Compose;
+- a host that can remain online and accept inbound TCP ports 80 and 443 (UDP 443 is optional for HTTP/3);
+- control of DNS records for the chosen domain.
 
-## Run without Docker
+No managed cloud database or application-hosting subscription is required. Public availability still requires a machine, electricity, network connectivity, and DNS.
+
+## Deploy on a host
+
+1. Copy `backend/.env.example` to `backend/.env`.
+2. Confirm the domain spelling and set `DOMAIN`, `APP_ORIGIN`, and `PUBLIC_BASE_URL` to the exact registered hostname. The current requested target is `xstarzganaliys.com`.
+3. Point the domain's A record to the host's public IPv4 address. If using IPv6, add the correct AAAA record. Do not change mail-related MX/TXT records.
+4. Allow inbound TCP 80 and 443 (and optionally UDP 443) through the host firewall/router.
+5. From `backend/`, run:
+
+```sh
+docker compose up --build -d
+```
+
+The Node service listens only inside the Docker network. Caddy obtains and renews the HTTPS certificate and forwards requests to the application. The same hostname serves both the frontend and `/api/v1/*`; no separate API subdomain or cross-origin cookie configuration is needed.
+
+Google OAuth remains disabled until `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured and the exact callback URL `https://xstarzganaliys.com/api/v1/auth/google/callback` is registered in the Google OAuth client. Credentials must be supplied through the host's environment file, never committed to Git.
+
+## Local development
+
+Requirements: Node.js 22.13+.
 
 From the repository root:
 
 ```sh
+npm install --legacy-peer-deps
+npm run build
+npm run backend:build
 node backend/server.mjs
 ```
 
-The service binds to `127.0.0.1:8787` by default and stores its database at `backend/data/trade-intel.sqlite`.
+Set `APP_ORIGIN=http://localhost:8787` and `PUBLIC_BASE_URL=http://localhost:8787` when testing same-origin auth locally. The service serves the frontend from `dist/` and listens on `127.0.0.1:8787` by default.
 
-Build the shared market-data engine, run tests, and syntax-check the backend:
+Run automated checks:
 
 ```sh
-npm run backend:build
+npx tsc -p backend/tsconfig.market.json --noEmit
 node --test backend/test/*.test.mjs
 npm --prefix backend run check
 ```
 
-## Run with Docker Compose
+## Backup
 
-From this directory:
+Create a consistent SQLite snapshot inside the running container:
 
 ```sh
-cp .env.example .env
-docker compose up --build -d
+docker compose exec -T api node backend/backup.mjs /tmp/trade-intel-backup.sqlite
+mkdir -p backups
+docker cp "$(docker compose ps -q api):/tmp/trade-intel-backup.sqlite" ./backups/trade-intel-$(date +%F-%H%M%S).sqlite
 ```
 
-Set `APP_ORIGIN` to the exact frontend origin. For the eventual public domain this will be `https://xstarzganaliys.com`. Set `PUBLIC_BASE_URL` to the public API origin, planned as `https://api.xstarzganaliys.com`.
+Store backups outside the host and periodically test restoring one. The live database is stored in the persistent `trade_intel_data` Docker volume.
 
-Google OAuth remains disabled until `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured and the exact callback URL `/api/v1/auth/google/callback` is registered in the Google OAuth client. No credentials belong in this repository.
+## API endpoints currently implemented
 
-The database file is stored in the persistent `trade_intel_data` volume. The published port is bound to localhost by default. Do not expose the service publicly until rate limiting, reverse-proxy TLS, backup/restore, and full feature routes are implemented.
+- `GET /health/live`, `GET /health/ready`
+- `GET /api/v1/auth/session`, `POST /api/v1/auth/anonymous`, `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/google` and `GET /api/v1/auth/google/callback`
+- `GET/POST/DELETE /api/v1/analyses`
+- `GET/POST /api/v1/journal`, `GET/PATCH/DELETE /api/v1/journal/{id}`, `PATCH /api/v1/journal/{id}/transition`
+- `GET/POST /api/v1/positions`, `GET/DELETE /api/v1/positions/{positionId}`
+- `GET/POST /api/v1/positions/{positionId}/alerts`, `POST /api/v1/alerts/{alertId}/acknowledge`
+- `GET/PUT /api/v1/stream-cursors`
+- `GET/POST /api/v1/alert-rules`, `PATCH/DELETE /api/v1/alert-rules/{ruleId}`
+- `GET/POST/DELETE /api/v1/alert-rules/history`
+- `GET/POST /api/v1/notifications`, unread/read/dismiss endpoints, and `GET/PUT/DELETE /api/v1/notification-preferences`
+- `POST /api/v1/market-data/analyze`
 
-Endpoints:
-- liveness: http://127.0.0.1:8787/health/live
-- readiness: http://127.0.0.1:8787/health/ready
-- session: GET http://127.0.0.1:8787/api/v1/auth/session
-- anonymous sign-in: POST http://127.0.0.1:8787/api/v1/auth/anonymous
-- sign-out: POST http://127.0.0.1:8787/api/v1/auth/logout
-- Google sign-in start: GET http://127.0.0.1:8787/api/v1/auth/google
-- analysis history: GET/POST/DELETE http://127.0.0.1:8787/api/v1/analyses
-- journal: GET/POST http://127.0.0.1:8787/api/v1/journal
-- journal entry: GET/PATCH/DELETE http://127.0.0.1:8787/api/v1/journal/{id}
-- journal lifecycle: PATCH http://127.0.0.1:8787/api/v1/journal/{id}/transition
-- monitored positions: GET/POST http://127.0.0.1:8787/api/v1/positions
-- position detail: GET/DELETE http://127.0.0.1:8787/api/v1/positions/{positionId}
-- position alerts: GET/POST http://127.0.0.1:8787/api/v1/positions/{positionId}/alerts
-- acknowledge alert: POST http://127.0.0.1:8787/api/v1/alerts/{alertId}/acknowledge
-- stream cursors: GET/PUT http://127.0.0.1:8787/api/v1/stream-cursors
-- alert rules: GET/POST http://127.0.0.1:8787/api/v1/alert-rules; PATCH/DELETE /{ruleId}
-- rule alert history: GET/POST/DELETE http://127.0.0.1:8787/api/v1/alert-rules/history
-- notifications: GET/POST http://127.0.0.1:8787/api/v1/notifications; GET /unread and /unread-count
-- notification lifecycle: POST /{notificationId}/read, /{notificationId}/dismiss, /read-all; DELETE /{notificationId}
-- notification preferences: GET/PUT/DELETE http://127.0.0.1:8787/api/v1/notification-preferences
-- on-demand market analysis: POST http://127.0.0.1:8787/api/v1/market-data/analyze
-
-## Storage decision
-
-SQLite is intentional for the first single-node, on-demand workload. It removes the need to operate a separate database server and keeps application data in a portable file with standard backup tooling. If measured concurrent-write or multi-node requirements outgrow SQLite, PostgreSQL can be self-hosted later behind the same repository boundary.
-
-## Production safety
-
-The API currently implements health and authentication endpoints only. It is not yet a public production backend. Do not use it as a replacement for Convex until all domain routes, authorization checks, backup/restore rehearsal, data export/import, parity tests, and frontend integration have passed.
+The production image builds the frontend and shared market-data engine at image-build time. The runtime image does not install the frontend's npm dependency tree.
