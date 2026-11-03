@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { createAuthHandler } from "./auth.mjs";
 
 function sendJson(response, status, payload) {
   const body = JSON.stringify(payload);
@@ -11,12 +12,37 @@ function sendJson(response, status, payload) {
   response.end(body);
 }
 
-export function createAppServer({ database }) {
-  return createServer((request, response) => {
-    const method = request.method ?? "GET";
-    const pathname = new URL(request.url ?? "/", "http://localhost").pathname;
+export function createAppServer({ database, env = process.env, fetchImpl = fetch }) {
+  const authHandler = createAuthHandler({ database, env, fetchImpl });
+  const configuredOrigin = env.APP_ORIGIN?.trim();
+  const allowedOrigin = configuredOrigin || (
+    env.NODE_ENV === "production" ? "" : "http://localhost:5173"
+  );
 
-    if (method === "GET" && pathname === "/health/live") {
+  return createServer(async (request, response) => {
+    const origin = request.headers.origin;
+    if (origin && allowedOrigin && origin === allowedOrigin) {
+      response.setHeader("access-control-allow-origin", allowedOrigin);
+      response.setHeader("access-control-allow-credentials", "true");
+      response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+      response.setHeader("access-control-allow-headers", "content-type");
+      response.setHeader("vary", "Origin");
+    }
+
+    if (request.method === "OPTIONS") {
+      if (!origin || !allowedOrigin || origin !== allowedOrigin) {
+        sendJson(response, 403, { error: "origin_not_allowed" });
+        return;
+      }
+      response.writeHead(204, { "cache-control": "no-store" });
+      response.end();
+      return;
+    }
+
+    const method = request.method ?? "GET";
+    const url = new URL(request.url ?? "/", "http://localhost");
+
+    if (method === "GET" && url.pathname === "/health/live") {
       sendJson(response, 200, {
         status: "ok",
         service: "trade-intel-backend",
@@ -24,7 +50,7 @@ export function createAppServer({ database }) {
       return;
     }
 
-    if (method === "GET" && pathname === "/health/ready") {
+    if (method === "GET" && url.pathname === "/health/ready") {
       if (!database) {
         sendJson(response, 503, {
           status: "not_ready",
@@ -48,6 +74,21 @@ export function createAppServer({ database }) {
       return;
     }
 
-    sendJson(response, 404, { error: "not_found" });
+    if (!database) {
+      sendJson(response, 503, { error: "database_not_configured" });
+      return;
+    }
+
+    try {
+      if (await authHandler(request, response, url)) return;
+      sendJson(response, 404, { error: "not_found" });
+    } catch (error) {
+      console.error("[backend] Unhandled request failure:", error);
+      if (!response.headersSent) {
+        sendJson(response, 500, { error: "internal_server_error" });
+      } else {
+        response.destroy();
+      }
+    }
   });
 }
