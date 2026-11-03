@@ -32,7 +32,6 @@ export function selectBackgroundScanBatch(cursor: number, universeSize: number):
   };
 }
 
-
 export const RADAR_RANKING_REFRESH_INTERVAL_MS = 30 * 60_000;
 
 /** Refresh full-universe ranking less often than the five-minute acquisition loop. */
