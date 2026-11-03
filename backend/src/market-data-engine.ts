@@ -1,4 +1,10 @@
 import { calculateTechnical } from "../../src/lib/data/technical";
+import {
+  findSecTickerRecord,
+  mapSecQuarterlyFundamentals,
+  type SecTickerRecord,
+  type SecSubmissions,
+} from "../../src/lib/data/sec-edgar";
 import { runAnalysis, type AnalysisInput } from "../../src/lib/analysis-engine";
 import type { MarketData } from "../../src/lib/data/market-types";
 import { computeSmcContext } from "../../src/lib/data/smc";
@@ -278,4 +284,70 @@ export async function analyzeMarket(request:MarketAnalysisRequest,fetchImpl:type
   }).finally(()=>inflight.delete(key));
   inflight.set(key,task);
   return task;
+}
+
+
+const SEC_TICKER_DIRECTORY = "https://www.sec.gov/files/company_tickers.json";
+const SEC_DATA_BASE = "https://data.sec.gov";
+const SEC_TICKER_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+let secTickerDirectoryCache: { value: Record<string, SecTickerRecord>; expiresAt: number } | undefined;
+
+/**
+ * Retrieve filing-matched, discrete quarterly/yearly fundamentals from SEC.
+ * SEC filingDate and acceptanceDateTime are kept distinct; neither is
+ * represented as an exact market-publication timestamp.
+ */
+export async function fetchSecFundamentalObservations(
+  tickerInput: string,
+  userAgentInput: string | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ success: boolean; status: string; ticker: string; cik?: string; observations: ReturnType<typeof mapSecQuarterlyFundamentals>; error?: string }> {
+  const ticker = tickerInput.trim().toUpperCase();
+  if (!/^[A-Z0-9.-]{1,15}$/.test(ticker)) {
+    return { success: false, status: "INVALID_TICKER", ticker, observations: [] };
+  }
+  const userAgent = userAgentInput?.trim();
+  if (!userAgent || userAgent.length > 250 || /[\\r\\n]/.test(userAgent) || !/\\([^)]*@[^)]+\\)/.test(userAgent)) {
+    return { success: false, status: "USER_AGENT_NOT_CONFIGURED", ticker, observations: [] };
+  }
+  const fetchJson = async <T>(url: string): Promise<T> => {
+    const response = await fetchImpl(url, {
+      headers: { "User-Agent": userAgent, Accept: "application/json" },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) throw new Error(`SEC EDGAR HTTP ${response.status} for ${new URL(url).pathname}`);
+    return await response.json() as T;
+  };
+  try {
+    let directory = secTickerDirectoryCache?.expiresAt && secTickerDirectoryCache.expiresAt > Date.now()
+      ? secTickerDirectoryCache.value
+      : undefined;
+    if (!directory) {
+      directory = await fetchJson<Record<string, SecTickerRecord>>(SEC_TICKER_DIRECTORY);
+      secTickerDirectoryCache = { value: directory, expiresAt: Date.now() + SEC_TICKER_CACHE_TTL_MS };
+    }
+    const company = findSecTickerRecord(ticker, directory);
+    if (!company) return { success: false, status: "TICKER_NOT_FOUND", ticker, observations: [] };
+    const cik = String(company.cik_str).padStart(10, "0");
+    const submissions = await fetchJson<SecSubmissions>(`${SEC_DATA_BASE}/submissions/CIK${cik}.json`);
+    const facts = await fetchJson<{
+      cik?: number;
+      entityName?: string;
+      facts?: { "us-gaap"?: Record<string, { units?: Record<string, Array<{
+        accn?: string; filed?: string; start?: string; end?: string; val?: number;
+        fy?: number; fp?: string; form?: string; frame?: string;
+      }>> }> };
+    }>(`${SEC_DATA_BASE}/api/xbrl/companyfacts/CIK${cik}.json`);
+    const observations = mapSecQuarterlyFundamentals(ticker, cik, facts, submissions);
+    return {
+      success: true,
+      status: observations.length ? "OBSERVATIONS_READY" : "NO_USABLE_FILING_FACTS",
+      ticker, cik, observations,
+    };
+  } catch (error) {
+    return {
+      success: false, status: "PROVIDER_ERROR", ticker, observations: [],
+      error: error instanceof Error ? error.message : "SEC EDGAR request failed",
+    };
+  }
 }
