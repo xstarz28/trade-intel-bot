@@ -6,6 +6,7 @@ import { createDomainHandler } from "./domain.mjs";
 import { createPositionHandler } from "./positions.mjs";
 import { createAlertHandler } from "./alerts.mjs";
 import { createMarketDataHandler } from "./market-data.mjs";
+import { createHistoryHandler } from "./history.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -83,6 +84,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
   const positionHandler = database ? createPositionHandler({ database, env }) : null;
   const alertHandler = database ? createAlertHandler({ database, env }) : null;
   const marketDataHandler = database ? createMarketDataHandler({ database, env }) : null;
+  const historyHandler = database ? createHistoryHandler({ database, env }) : null;
   const configuredOrigin = env.APP_ORIGIN?.trim();
   const allowedOrigin = configuredOrigin || (
     env.NODE_ENV === "production" ? "" : "http://localhost:5173"
@@ -159,6 +161,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
       if (positionHandler && await positionHandler(request, response, url)) return;
       if (alertHandler && await alertHandler(request, response, url)) return;
       if (marketDataHandler && await marketDataHandler(request, response, url)) return;
+      if (historyHandler && await historyHandler(request, response, url)) return;
       if (url.pathname.startsWith("/api/")) { sendJson(response, 404, { error: "not_found" }); return; }
       if (serveStatic(request,response,url.pathname,staticDirectory)) return;
       sendJson(response, 404, { error: "not_found" });
