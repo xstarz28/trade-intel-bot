@@ -160,7 +160,13 @@ export const runScheduledScan = internalAction({
     const now = Date.now();
     const claim = await ctx.runMutation(anyApi.marketRadarInternal.claimScan, { now }) as
       | { claimed: false }
-      | { claimed: true; cursor: number; previousResults: Array<[string, RadarOpportunity[]]>; lastScanAt: number };
+      | {
+          claimed: true;
+          cursor: number;
+          previousResults: Array<[string, RadarOpportunity[]]>;
+          lastScanAt: number;
+          candidateCacheVersion: number;
+        };
     if (!claim.claimed) return { skipped: true as const, reason: "previous scan still holds the lease" };
 
     // Advance past a fatal instrument visit so one unexpected failure cannot
@@ -172,15 +178,22 @@ export const runScheduledScan = internalAction({
       const universe = DEFAULT_UNIVERSE.filter((entry) => entry.assetClass !== "macro");
       if (universe.length === 0) throw new Error("market radar universe is empty");
 
-      // Three rotating passes cover H1/D1, H4/W1, and M5/H1. Two acquisitions
-      // per minute preserve the shared provider request budget.
+      // Three rotating passes cover H1/D1, H4/W1, and M5/H1. Each visit
+      // acquires two timeframes for one instrument.
       const batch = selectBackgroundScanBatch(claim.cursor, universe.length);
       failureCursor = batch.nextCursor;
       const entry = universe[batch.instrumentIndex]!;
       const instrumentType = toInstrumentType(entry.assetClass);
       const timeframes = batch.timeframes;
 
-      const existingSources = (await ctx.runQuery(anyApi.marketRadarInternal.listSources, {}) as LiveCandidateSource[])
+      // Backfill the compact candidate cache once from legacy full snapshots.
+      // After initialization, each visit reads only this instrument's source
+      // documents; the full-universe ranking reads compact candidate records.
+      const bootstrapCandidateCache = claim.candidateCacheVersion < 1;
+      const sourceQuery = bootstrapCandidateCache
+        ? ctx.runQuery(anyApi.marketRadarInternal.listAllSources, {})
+        : ctx.runQuery(anyApi.marketRadarInternal.listSourcesForInstrument, { instrument: entry.instrument });
+      const existingSources = (await sourceQuery as LiveCandidateSource[])
         .filter((source) => !!source && typeof source.instrument === "string" &&
           !!source.marketData && Array.isArray(source.marketData.candles));
       const sourceMap = new Map<string, LiveCandidateSource>(
@@ -410,12 +423,50 @@ export const runScheduledScan = internalAction({
         }
       }
 
-      const allLiveSources = Array.from(sourceMap.values());
       const universeByInstrument = new Map(universe.map((item) => [item.instrument, item]));
-      const radarSources: RadarCandidateSource[] = allLiveSources.flatMap((source) => {
-        if (!universeByInstrument.has(source.instrument)) return [];
-        return [toRadarCandidateSource(source, allLiveSources)];
-      });
+      const sourcesByInstrument = new Map<string, LiveCandidateSource[]>();
+      for (const source of sourceMap.values()) {
+        if (!universeByInstrument.has(source.instrument)) continue;
+        const group = sourcesByInstrument.get(source.instrument) ?? [];
+        group.push(source);
+        sourcesByInstrument.set(source.instrument, group);
+      }
+
+      const candidateUpdates: Array<{
+        key: string;
+        instrument: string;
+        timeframe: string;
+        assetClass: string;
+        payload: RadarCandidateSource;
+        updatedAt: number;
+      }> = [];
+      for (const [instrument, relatedSources] of sourcesByInstrument) {
+        for (const source of relatedSources) {
+          const timeframe = source.marketData?.timeframe?.trim().toUpperCase() ?? "UNKNOWN";
+          candidateUpdates.push({
+            key: sourceKey(source),
+            instrument,
+            timeframe,
+            assetClass: source.assetClass,
+            payload: toRadarCandidateSource(source, relatedSources),
+            updatedAt: now,
+          });
+        }
+      }
+
+      const cachedCandidates = bootstrapCandidateCache
+        ? []
+        : await ctx.runQuery(anyApi.marketRadarInternal.listRadarCandidates, {}) as RadarCandidateSource[];
+      const radarSourceMap = new Map<string, RadarCandidateSource>();
+      for (const candidate of cachedCandidates) {
+        const timeframe = candidate.snapshot?.availableTimeframes?.[0]?.trim().toUpperCase() ?? "UNKNOWN";
+        const key = `${candidate.universe.instrument.trim().toUpperCase()}|${timeframe}`;
+        radarSourceMap.set(key, candidate);
+      }
+      for (const update of candidateUpdates) radarSourceMap.set(update.key, update.payload);
+      const radarSources = Array.from(radarSourceMap.values()).filter((candidate) =>
+        universeByInstrument.has(candidate.universe.instrument),
+      );
 
       const previousEntries = Array.isArray(claim.previousResults)
         ? claim.previousResults as Array<[string, RadarOpportunity[]]>
@@ -447,6 +498,7 @@ export const runScheduledScan = internalAction({
 
       const saved = await ctx.runMutation(anyApi.marketRadarInternal.persistScan, {
         updates,
+        candidateUpdates,
         cursor: batch.nextCursor,
         results: JSON.parse(JSON.stringify(Array.from(scan.results.entries()))),
         diffs: JSON.parse(JSON.stringify(scan.diffs)),
