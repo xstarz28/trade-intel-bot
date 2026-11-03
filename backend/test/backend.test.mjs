@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -539,6 +539,38 @@ describe("self-hosted backend", () => {
         assert.equal(reset.status, 200);
         assert.equal((await reset.json()).preferences.minimumSeverity, "INFO");
       }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
+
+  it("serves the built SPA, immutable assets, and blocks path traversal", async () => {
+    const database = createTemporaryDatabase();
+    const directory = mkdtempSync(join(tmpdir(), "trade-intel-static-"));
+    temporaryDirectories.push(directory);
+    mkdirSync(join(directory, "assets"), { recursive: true });
+    writeFileSync(join(directory, "index.html"), "<main>Trade Intel SPA</main>");
+    writeFileSync(join(directory, "assets", "app.a1b2c3d4.js"), "console.log('app');");
+    try {
+      await withServer(database, async (baseUrl) => {
+        const route = await fetch(`${baseUrl}/dashboard`);
+        assert.equal(route.status, 200);
+        assert.match(route.headers.get("content-type"), /text\/html/);
+        assert.equal(route.headers.get("cache-control"), "no-cache");
+        assert.equal(await route.text(), "<main>Trade Intel SPA</main>");
+
+        const asset = await fetch(`${baseUrl}/assets/app.a1b2c3d4.js`);
+        assert.equal(asset.status, 200);
+        assert.match(asset.headers.get("content-type"), /javascript/);
+        assert.match(asset.headers.get("cache-control"), /immutable/);
+
+        const missing = await fetch(`${baseUrl}/assets/missing.js`);
+        assert.equal(missing.status, 404);
+
+        const traversal = await fetch(`${baseUrl}/..%2F..%2Fetc%2Fpasswd`);
+        assert.equal(traversal.status, 403);
+      }, { staticDirectory: directory });
     } finally {
       database.close();
     }
