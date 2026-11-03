@@ -252,11 +252,9 @@ describe("self-hosted backend", () => {
 
       assert.equal(userId, "guest-1");
       const user = database.raw.prepare("SELECT email, google_subject, is_anonymous FROM users WHERE id = ?").get(userId);
-      assert.deepEqual(user, {
-        email: "trader@example.test",
-        google_subject: "google-subject-1",
-        is_anonymous: 0,
-      });
+      assert.equal(user.email, "trader@example.test");
+      assert.equal(user.google_subject, "google-subject-1");
+      assert.equal(user.is_anonymous, 0);
       assert.equal(
         database.raw.prepare("SELECT user_id FROM analyses WHERE id = ?").get("analysis-guest-1").user_id,
         "guest-1",
