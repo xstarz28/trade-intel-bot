@@ -261,16 +261,19 @@ export function createDomainHandler({ database, env = process.env }) {
         const now = Date.now();
         database.raw.prepare(`
           UPDATE journal SET status = ?,
-            exit_price = CASE WHEN ? = 'CLOSED' THEN ? ELSE exit_price END,
-            pnl = CASE WHEN ? = 'CLOSED' THEN ? ELSE pnl END,
-            pnl_percent = CASE WHEN ? = 'CLOSED' THEN ? ELSE pnl_percent END,
-            outcome = CASE WHEN ? = 'CLOSED' THEN ? ELSE outcome END,
+            exit_price = CASE WHEN ? = 'CLOSED' AND ? = 1 THEN ? ELSE exit_price END,
+            pnl = CASE WHEN ? = 'CLOSED' AND ? = 1 THEN ? ELSE pnl END,
+            pnl_percent = CASE WHEN ? = 'CLOSED' AND ? = 1 THEN ? ELSE pnl_percent END,
+            outcome = CASE WHEN ? = 'CLOSED' AND ? = 1 THEN ? ELSE outcome END,
             closed_at = CASE WHEN ? = 'CLOSED' THEN ? ELSE closed_at END,
             updated_at = ?
           WHERE id = ? AND user_id = ?
         `).run(
-          next,next,num(input.exitPrice,"exitPrice",true),next,num(input.pnl,"pnl",true),
-          next,num(input.pnlPercent,"pnlPercent",true),next,str(input.outcome,"outcome",true),
+          next,
+          next,input.exitPrice === undefined ? 0 : 1,num(input.exitPrice,"exitPrice",true),
+          next,input.pnl === undefined ? 0 : 1,num(input.pnl,"pnl",true),
+          next,input.pnlPercent === undefined ? 0 : 1,num(input.pnlPercent,"pnlPercent",true),
+          next,input.outcome === undefined ? 0 : 1,str(input.outcome,"outcome",true),
           next,now,now,id,user.id,
         );
         const updated = database.raw.prepare("SELECT * FROM journal WHERE id = ? AND user_id = ?").get(id,user.id);
