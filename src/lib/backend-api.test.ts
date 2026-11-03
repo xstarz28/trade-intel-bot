@@ -37,14 +37,13 @@ describe("self-hosted backend API client", () => {
     };
     const fetcher = vi.fn().mockResolvedValue(response(201, { user }));
     await expect(createAnonymousBackendSession(fetcher)).resolves.toEqual({ user });
-    expect(fetcher).toHaveBeenCalledWith(
-      "/api/v1/auth/anonymous",
-      expect.objectContaining({
-        method: "POST",
-        credentials: "include",
-        headers: expect.objectContaining({ "content-type": "application/json" }),
-      }),
-    );
+    const [, init] = fetcher.mock.calls[0];
+    expect(fetcher.mock.calls[0][0]).toBe("/api/v1/auth/anonymous");
+    expect(init).toEqual(expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+    }));
+    expect(new Headers(init?.headers).get("content-type")).toBe("application/json");
   });
 
   it("lists and persists analyses through the authenticated API", async () => {
