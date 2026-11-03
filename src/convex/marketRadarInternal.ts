@@ -88,13 +88,16 @@ export const listSourcesForInstrument = internalQuery({
 
 export const listRadarCandidates = internalQuery({
   args: {},
-  handler: async (ctx): Promise<RadarCandidateSource[]> => {
+  handler: async (ctx): Promise<Array<{ key: string; payload: RadarCandidateSource }>> => {
     const rows = await ctx.db
       .query("marketRadarCandidates")
       .withIndex("by_updated_at")
       .order("desc")
       .take(SOURCE_LIMIT);
-    return rows.map((row) => row.payload as RadarCandidateSource);
+    return rows.map((row) => ({
+      key: row.key,
+      payload: row.payload as RadarCandidateSource,
+    }));
   },
 });
 
