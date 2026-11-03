@@ -40,6 +40,9 @@ jobs:
       - name: Install project build dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
 
+      - name: Build frontend for the self-hosted image
+        run: npm run build
+
       - name: Type-check shared market analysis engine
         run: npx tsc -p backend/tsconfig.market.json --noEmit
 
@@ -53,3 +56,6 @@ jobs:
       - name: Check backend JavaScript syntax
         working-directory: backend
         run: npm run check
+
+      - name: Build production self-hosted container
+        run: docker build --file backend/Dockerfile --tag trade-intel-self-hosted:test .
