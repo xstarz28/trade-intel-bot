@@ -13,12 +13,8 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import {
-  executeLiveRequest,
-} from "@/lib/data/universal/live/client";
-import {
-  checkCredentials,
-} from "@/lib/data/universal/live/credentials";
+import { executeLiveRequest } from "@/lib/data/universal/live/client";
+import { checkCredentials } from "@/lib/data/universal/live/credentials";
 
 
 import type { MarketSnapshot } from "@/lib/market-radar/types";
