@@ -90,7 +90,7 @@ function createRateLimiter(maximum,windowMs) {
   const buckets=new Map();
   return (request)=>{
     const forwarded=request.headers["x-forwarded-for"];
-    const address=(typeof forwarded==="string"?forwarded.split(",")[0].trim():"")||
+    const address=(typeof forwarded==="string"?forwarded.split(",").at(-1).trim():"")||
       request.socket.remoteAddress||"unknown";
     const now=Date.now();
     let bucket=buckets.get(address);
