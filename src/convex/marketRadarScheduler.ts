@@ -30,6 +30,7 @@ import { parseDeFiLlamaResult } from "../lib/data/crypto/defillama-adapter";
 const GLOBAL_SCOPE = "global";
 const SOURCE_LIMIT = 300;
 const CANDLES_TO_PERSIST = 40;
+const RADAR_RANKING_REFRESH_INTERVAL_MS = 30 * 60_000;
 
 function sourceKey(source: LiveCandidateSource): string {
   const timeframe = source.marketData?.timeframe?.trim().toUpperCase() ?? "UNKNOWN";
@@ -166,6 +167,8 @@ export const runScheduledScan = internalAction({
           previousResults: Array<[string, RadarOpportunity[]]>;
           lastScanAt: number;
           candidateCacheVersion: number;
+          lastRankedAt: number;
+          metrics: Record<string, number>;
         };
     if (!claim.claimed) return { skipped: true as const, reason: "previous scan still holds the lease" };
 
@@ -458,59 +461,77 @@ export const runScheduledScan = internalAction({
         }
       }
 
-      const cachedCandidates = bootstrapCandidateCache
-        ? []
-        : await ctx.runQuery(anyApi.marketRadarInternal.listRadarCandidates, {}) as Array<{
-            key: string;
-            payload: RadarCandidateSource;
-          }>;
-      const radarSourceMap = new Map<string, RadarCandidateSource>();
-      for (const candidate of cachedCandidates) {
-        radarSourceMap.set(candidate.key, candidate.payload);
-      }
-      for (const update of candidateUpdates) radarSourceMap.set(update.key, update.payload);
-      const radarSources = Array.from(radarSourceMap.values()).filter((candidate) =>
-        universeByInstrument.has(candidate.universe.instrument),
-      );
+      const shouldRefreshRanking = bootstrapCandidateCache ||
+        now - claim.lastRankedAt >= RADAR_RANKING_REFRESH_INTERVAL_MS;
+      let results = claim.previousResults;
+      let diffs: unknown[] = [];
+      let metrics: Record<string, number> = claim.metrics ?? {};
+      let lastRankedAt = claim.lastRankedAt;
+      let scanned = Number(metrics.totalScanned ?? 0);
 
-      const previousEntries = Array.isArray(claim.previousResults)
-        ? claim.previousResults as Array<[string, RadarOpportunity[]]>
-        : [];
-      const previous = new Map<string, RadarOpportunity>();
-      for (const [, opportunities] of previousEntries) {
-        for (const opportunity of opportunities) {
-          if (!previous.has(opportunity.instrument)) previous.set(opportunity.instrument, opportunity);
+      if (shouldRefreshRanking) {
+        // The global candidate set is compact, but still avoid rereading it on
+        // every five-minute acquisition visit. Ranking refreshes at a bounded
+        // cadence while source acquisition continues uninterrupted.
+        const cachedCandidates = bootstrapCandidateCache
+          ? []
+          : await ctx.runQuery(anyApi.marketRadarInternal.listRadarCandidates, {}) as Array<{
+              key: string;
+              payload: RadarCandidateSource;
+            }>;
+        const radarSourceMap = new Map<string, RadarCandidateSource>();
+        for (const candidate of cachedCandidates) {
+          radarSourceMap.set(candidate.key, candidate.payload);
         }
-      }
-      const previousState: RadarState = { previous, lastScanAt: claim.lastScanAt };
-      const scan = scanRadar(
-        radarSources,
-        { horizons: ALL_SCAN_HORIZONS, maxResults: 10 },
-        previousState,
-        now,
-      );
+        for (const update of candidateUpdates) radarSourceMap.set(update.key, update.payload);
+        const radarSources = Array.from(radarSourceMap.values()).filter((candidate) =>
+          universeByInstrument.has(candidate.universe.instrument),
+        );
 
-      const metrics = {
-        totalScanned: scan.totalScanned,
-        totalWithLiveData: scan.totalWithLiveData,
-        totalInsufficient: scan.totalInsufficient,
-        freshCount: scan.freshCount,
-        delayedCount: scan.delayedCount,
-        staleCount: scan.staleCount,
-        unavailableCount: scan.unavailableCount,
-        durationMs: scan.durationMs,
-      };
+        const previousEntries = Array.isArray(claim.previousResults)
+          ? claim.previousResults as Array<[string, RadarOpportunity[]]>
+          : [];
+        const previous = new Map<string, RadarOpportunity>();
+        for (const [, opportunities] of previousEntries) {
+          for (const opportunity of opportunities) {
+            if (!previous.has(opportunity.instrument)) previous.set(opportunity.instrument, opportunity);
+          }
+        }
+        const previousState: RadarState = { previous, lastScanAt: claim.lastScanAt };
+        const scan = scanRadar(
+          radarSources,
+          { horizons: ALL_SCAN_HORIZONS, maxResults: 10 },
+          previousState,
+          now,
+        );
+
+        results = Array.from(scan.results.entries());
+        diffs = scan.diffs;
+        metrics = {
+          totalScanned: scan.totalScanned,
+          totalWithLiveData: scan.totalWithLiveData,
+          totalInsufficient: scan.totalInsufficient,
+          freshCount: scan.freshCount,
+          delayedCount: scan.delayedCount,
+          staleCount: scan.staleCount,
+          unavailableCount: scan.unavailableCount,
+          durationMs: scan.durationMs,
+        };
+        lastRankedAt = now;
+        scanned = scan.totalScanned;
+      }
 
       const saved = await ctx.runMutation(anyApi.marketRadarInternal.persistScan, {
         updates,
         candidateUpdates,
         cursor: batch.nextCursor,
-        results: JSON.parse(JSON.stringify(Array.from(scan.results.entries()))),
-        diffs: JSON.parse(JSON.stringify(scan.diffs)),
+        results: JSON.parse(JSON.stringify(results)),
+        diffs: JSON.parse(JSON.stringify(diffs)),
         metrics,
         errors,
         lastScanAt: now,
-      }) as { savedSources: number; lastScanAt: number };
+        lastRankedAt,
+      }) as { savedSources: number; savedCandidates: number; lastScanAt: number };
 
       return {
         skipped: false as const,
@@ -518,7 +539,9 @@ export const runScheduledScan = internalAction({
         timeframes,
         acquired: updates.length,
         savedSources: saved.savedSources,
-        scanned: scan.totalScanned,
+        savedCandidates: saved.savedCandidates,
+        ranked: shouldRefreshRanking,
+        scanned,
         errors,
       };
     } catch (error) {
