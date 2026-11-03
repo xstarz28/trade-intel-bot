@@ -37,6 +37,8 @@ export const claimScan = internalMutation({
         previousResults: existing.results,
         lastScanAt: existing.lastScanAt,
         candidateCacheVersion: existing.candidateCacheVersion ?? 0,
+        lastRankedAt: existing.lastRankedAt ?? 0,
+        metrics: existing.metrics,
       };
     }
 
@@ -51,6 +53,7 @@ export const claimScan = internalMutation({
       lastScanAt: 0,
       updatedAt: now,
       candidateCacheVersion: 0,
+      lastRankedAt: 0,
     });
     return {
       claimed: true as const,
@@ -58,6 +61,8 @@ export const claimScan = internalMutation({
       previousResults: [],
       lastScanAt: 0,
       candidateCacheVersion: 0,
+      lastRankedAt: 0,
+      metrics: {},
     };
   },
 });
@@ -125,6 +130,7 @@ export const persistScan = internalMutation({
     metrics: v.any(),
     errors: v.array(v.string()),
     lastScanAt: v.number(),
+    lastRankedAt: v.number(),
   },
   handler: async (ctx, args) => {
     for (const update of args.updates) {
@@ -159,6 +165,7 @@ export const persistScan = internalMutation({
       lastScanAt: args.lastScanAt,
       updatedAt: args.lastScanAt,
       candidateCacheVersion: 1,
+      lastRankedAt: args.lastRankedAt,
     };
     if (state) await ctx.db.patch(state._id, patch);
     else await ctx.db.insert("marketRadarState", { scope: GLOBAL_SCOPE, ...patch });

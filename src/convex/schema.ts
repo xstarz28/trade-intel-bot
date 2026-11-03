@@ -360,6 +360,7 @@ const schema = defineSchema(
       lastScanAt: v.number(),
       updatedAt: v.number(),
       candidateCacheVersion: v.optional(v.number()),
+      lastRankedAt: v.optional(v.number()),
     }).index("by_scope", ["scope"]),
 
     marketRadarSources: defineTable({
