@@ -33,32 +33,7 @@ afterEach(() => {
     rmSync(directory, { recursive: true, force: true });
   }
 
-  it("serves SEC filing history and fails closed when the compliant User-Agent is missing", async () => {
-    const database = createTemporaryDatabase();
-    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
-    try {
-      await withServer(database, async (baseUrl) => {
-        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
-          method: "POST", headers: { Origin: env.APP_ORIGIN },
-        });
-        const cookie = signIn.headers.get("set-cookie").split(";")[0];
-        const history = await fetch(`${baseUrl}/api/v1/fundamentals/sec/AAPL`, {
-          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
-        });
-        assert.equal(history.status, 200);
-        assert.deepEqual((await history.json()).items, []);
 
-        const refresh = await fetch(`${baseUrl}/api/v1/fundamentals/sec/AAPL`, {
-          method: "POST",
-          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
-        });
-        assert.equal(refresh.status, 503);
-        assert.equal((await refresh.json()).requiredEnvVar, "SEC_USER_AGENT");
-      }, { env });
-    } finally {
-      database.close();
-    }
-  });
 
 });
 
@@ -741,6 +716,34 @@ describe("self-hosted backend", () => {
           headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
         });
         assert.equal((await history.json()).items.length, 1);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
+
+  it("serves SEC filing history and fails closed when the compliant User-Agent is missing", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const history = await fetch(`${baseUrl}/api/v1/fundamentals/sec/AAPL`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal(history.status, 200);
+        assert.deepEqual((await history.json()).items, []);
+
+        const refresh = await fetch(`${baseUrl}/api/v1/fundamentals/sec/AAPL`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal(refresh.status, 503);
+        assert.equal((await refresh.json()).requiredEnvVar, "SEC_USER_AGENT");
       }, { env });
     } finally {
       database.close();
