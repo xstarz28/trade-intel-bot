@@ -68,15 +68,15 @@ export function createMarketDataHandler({database,env=process.env}) {
       let fundamentalData;
       if(instrumentType==="stock"&&/^[A-Z0-9.-]{1,15}$/.test(instrument)) {
         const observations=database.raw.prepare(
-          "SELECT eps,revenue,fiscal_period_end,filing_date,first_observed_at FROM sec_edgar_observations WHERE ticker=? ORDER BY filing_date DESC,fiscal_period_end DESC LIMIT 12",
+          "SELECT eps,revenue,fiscal_period_end,filing_date,last_retrieved_at FROM sec_edgar_observations WHERE ticker=? ORDER BY filing_date DESC,fiscal_period_end DESC LIMIT 12",
         ).all(instrument);
         const latest=observations[0];
         if(latest&&(latest.eps!==null||latest.revenue!==null)) {
           fundamentalData={
-            provider:"sec-edgar",timestamp:latest.first_observed_at,
+            provider:"sec-edgar",timestamp:latest.last_retrieved_at,
             instrumentType:"stock",symbol:instrument,available:true,
             ...(latest.eps!==null?{earningsPerShare:latest.eps,dilutedEPS:latest.eps}:{}),
-            ...(latest.revenue!==null?{latestEarnings:{date:latest.fiscal_period_end,reportedDate:latest.filing_date,revenue:latest.revenue,...(latest.eps!==null?{eps:latest.eps}:{})}}:{}),
+            latestEarnings:{date:latest.fiscal_period_end,...(latest.revenue!==null?{revenue:latest.revenue}:{}),...(latest.eps!==null?{eps:latest.eps}:{})},
             pointInTimeHistory:{status:"PERSISTED",providerObservationCount:observations.length,newlyPersistedCount:0},
           };
         }
