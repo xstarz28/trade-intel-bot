@@ -597,4 +597,126 @@ describe("self-hosted backend", () => {
     }
   });
 
+
+  it("persists position-owned historical intelligence with deduplication and retention", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const positionId = "history-position-1";
+        const position = {
+          positionId, instrument: "BTC-USDT", side: "LONG", entryPrice: 65000,
+          horizon: "SWING", openedAt: Date.now(), currentSeverity: "WATCH",
+          lifecycleState: "WATCH", monitoringLifecycle: "MONITORING",
+          lastUpdateAt: Date.now(), lastAlertAt: 0, consecutiveSameSeverity: 0,
+        };
+        const savedPosition = await fetch(`${baseUrl}/api/v1/positions`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify(position),
+        });
+        assert.equal(savedPosition.status, 200);
+
+        const snapshot = {
+          positionId, instrument: "BTC-USDT", side: "LONG", timestamp: Date.now(),
+          thesisState: "VALID", evidenceQuality: "HIGH", marketRegime: "TRENDING",
+          h1Trend: "BULLISH", m15Trend: "BULLISH", m5Trend: "NEUTRAL",
+          mtfAlignment: "PARTIAL", momentum: "POSITIVE", volatility: "NORMAL",
+          structure: "HIGHER_HIGH", supportingCount: 4, conflictingCount: 1,
+          invalidationCondition: "H1 close below 64000", watchNext: "Retest 66000",
+          dataAvailability: "COMPLETE",
+        };
+        const savedSnapshot = await fetch(`${baseUrl}/api/v1/history/snapshots`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify(snapshot),
+        });
+        assert.equal(savedSnapshot.status, 201);
+
+        const event = {
+          timestamp: Date.now(), eventType: "THESIS_CONFIRMED",
+          description: "H1 structure confirmed higher high.",
+          previousState: "NEUTRAL", currentState: "BULLISH",
+          category: "STRUCTURE", strength: "HIGH",
+        };
+        const events = await fetch(`${baseUrl}/api/v1/history/events`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ positionId, instrument: "BTC-USDT", side: "LONG", events: [event] }),
+        });
+        assert.equal((await events.json()).inserted, 1);
+        const duplicateEvents = await fetch(`${baseUrl}/api/v1/history/events`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ positionId, instrument: "BTC-USDT", side: "LONG", events: [event] }),
+        });
+        assert.equal((await duplicateEvents.json()).inserted, 0);
+
+        const timeline = await fetch(`${baseUrl}/api/v1/history/timeline?positionId=${positionId}`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        const timelineData = await timeline.json();
+        assert.equal(timelineData.latestSnapshot.thesisState, "VALID");
+        assert.equal(timelineData.events.length, 1);
+
+        const deleted = await fetch(`${baseUrl}/api/v1/history/positions/${positionId}`, {
+          method: "DELETE", headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal((await deleted.json()).deleted, 2);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("deduplicates and bounds user-scoped runtime health snapshots", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const health = {
+          timestamp: Date.now(), overallStatus: "HEALTHY",
+          components: [{
+            component: "market-data", status: "HEALTHY", consecutiveFailures: 0,
+            message: "Provider responding.", freshness: "FRESH",
+          }],
+          intelligenceCycleStatus: "HEALTHY", alertPipelineStatus: "HEALTHY",
+          persistenceStatus: "HEALTHY", providerAvailability: { okx: "AVAILABLE" },
+          staleComponents: [], unavailableComponents: [],
+        };
+        const saved = await fetch(`${baseUrl}/api/v1/runtime-health`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify(health),
+        });
+        assert.equal(saved.status, 201);
+        const duplicate = await fetch(`${baseUrl}/api/v1/runtime-health`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify(health),
+        });
+        assert.equal((await duplicate.json()).deduplicated, true);
+
+        const latest = await fetch(`${baseUrl}/api/v1/runtime-health/latest`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal((await latest.json()).item.overallStatus, "HEALTHY");
+        const history = await fetch(`${baseUrl}/api/v1/runtime-health/history?limit=10`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal((await history.json()).items.length, 1);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
 });
