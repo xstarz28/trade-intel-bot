@@ -130,6 +130,7 @@ export const persistScan = internalMutation({
     metrics: v.any(),
     errors: v.array(v.string()),
     lastScanAt: v.number(),
+    lastRankedAt: v.number(),
   },
   handler: async (ctx, args) => {
     for (const update of args.updates) {
