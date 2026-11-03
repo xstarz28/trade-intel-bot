@@ -452,4 +452,96 @@ describe("self-hosted backend", () => {
     }
   });
 
+
+  it("persists custom alert rules, notifications, and notification preferences per user", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+
+        const rule = await fetch(`${baseUrl}/api/v1/alert-rules`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ruleId: "rule-btc-breakout", name: "BTC breakout confirmation",
+            enabled: true, scope: "INSTRUMENT", instrument: "BTC-USDT",
+            condition: "BREAKOUT_CONFIRMED", severity: "HIGH", cooldownMs: 60000,
+          }),
+        });
+        assert.equal(rule.status, 201);
+        assert.equal((await rule.json()).item.enabled, true);
+
+        const history = await fetch(`${baseUrl}/api/v1/alert-rules/history`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            alertId: "rule-alert-1", ruleId: "rule-btc-breakout",
+            ruleName: "BTC breakout confirmation", instrument: "BTC-USDT",
+            condition: "BREAKOUT_CONFIRMED", severity: "HIGH",
+            description: "Price confirmed above the range.", timestamp: Date.now(),
+          }),
+        });
+        assert.equal(history.status, 201);
+
+        const notificationBody = {
+          notificationId: "notification-1", alertIdentity: "rule-alert-1",
+          ruleId: "rule-btc-breakout", ruleName: "BTC breakout confirmation",
+          timestamp: Date.now(), instrument: "BTC-USDT", severity: "HIGH",
+          title: "BTC breakout confirmed", message: "The configured breakout condition fired.",
+          category: "STRUCTURE", impact: "HIGH", source: "custom-rule",
+          condition: "BREAKOUT_CONFIRMED",
+        };
+        const notification = await fetch(`${baseUrl}/api/v1/notifications`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify(notificationBody),
+        });
+        assert.equal(notification.status, 201);
+
+        const duplicate = await fetch(`${baseUrl}/api/v1/notifications`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify(notificationBody),
+        });
+        assert.equal(duplicate.status, 200);
+        assert.equal((await duplicate.json()).deduplicated, true);
+
+        const unread = await fetch(`${baseUrl}/api/v1/notifications/unread-count`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal((await unread.json()).count, 1);
+
+        const marked = await fetch(`${baseUrl}/api/v1/notifications/notification-1/read`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal(marked.status, 200);
+
+        const preferences = await fetch(`${baseUrl}/api/v1/notification-preferences`, {
+          method: "PUT",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            minimumSeverity: "MEDIUM", enabledCategories: ["STRUCTURE", "NEWS"],
+            enabledScopes: ["POSITION", "INSTRUMENT"], mutedRuleIds: [],
+            enabledInstruments: ["BTC-USDT"], mutedInstruments: [],
+            showReadNotifications: true, showDismissedNotifications: false,
+          }),
+        });
+        assert.equal(preferences.status, 200);
+        assert.equal((await preferences.json()).preferences.minimumSeverity, "MEDIUM");
+
+        const reset = await fetch(`${baseUrl}/api/v1/notification-preferences`, {
+          method: "DELETE", headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal(reset.status, 200);
+        assert.equal((await reset.json()).preferences.minimumSeverity, "INFO");
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
 });
