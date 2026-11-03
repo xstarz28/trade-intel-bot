@@ -8,15 +8,18 @@ This deployment runs the Vite frontend, Node.js API, and SQLite database on infr
 - Caddy reverse proxy provides automatic HTTPS and serves as the only public network entry point;
 - built-in SQLite persistence with WAL mode, foreign keys, and checksummed transactional migrations;
 - SQL tables for users/sessions, analyses, fundamentals, SEC filings, journal, positions, alerts, stream cursors, historical intelligence, notifications, preferences, and runtime health;
-- anonymous sessions, HTTP-only cookies, logout, origin validation, and Google OAuth with PKCE/state/nonce plus server-side Google JWKS signature and claim verification;
+- anonymous sessions, HTTP-only cookies, logout, origin validation, sign-in/market-analysis rate limits, and Google OAuth with PKCE/state/nonce plus server-side Google JWKS signature and claim verification;
 - user-scoped analysis history and journal CRUD/lifecycle routes;
+- position-owned historical snapshots/events with deterministic event deduplication and bounded retention;
+- user-scoped runtime-health snapshots with timestamp deduplication and bounded history;
+- in-memory rate limits for anonymous/Google sign-in attempts and per-user market-analysis requests;
 - monitored-position persistence, bounded position-alert history/acknowledgement, stream cursors, custom alert rules/history, deduplicated notifications, read/dismiss lifecycle, and notification preferences;
 - authenticated on-demand OHLCV retrieval for mapped instruments through public OKX Spot and Yahoo Finance sources, reusing the existing technical-indicator, SMC, MTF, freshness, and cross-asset modules;
 - consistent SQLite snapshot backup command.
 
 ## Important migration status
 
-This backend is an active migration target, not yet a complete Convex replacement. The frontend source still contains Convex hooks and has not been switched to this API. Historical intelligence/runtime-health routes, fundamental/SEC observation repositories, derivative-specific market-data paths, full provider parity, Convex data export/import, and end-to-end frontend parity tests remain outstanding. Do not disable the existing production deployment or delete Convex data before those gates pass.
+This backend is an active migration target, not yet a complete Convex replacement. The frontend source still contains Convex hooks and has not been switched to this API. Fundamental/SEC observation repositories, derivative-specific market-data paths, full provider parity, Convex data export/import, and end-to-end frontend parity tests remain outstanding. Do not disable the existing production deployment or delete Convex data before those gates pass.
 
 The market-data lane currently supports public OKX Spot candles/ticker for spot crypto and exact Yahoo Finance mappings for supported stocks, forex, commodities, and indices. It does not silently replace unsupported derivative contracts or unmapped symbols with a proxy. Perpetual/futures data, full Twelve Data credential support, and other provider-specific actions remain to be extracted.
 
@@ -93,5 +96,7 @@ Store backups outside the host and periodically test restoring one. The live dat
 - `GET/POST/DELETE /api/v1/alert-rules/history`
 - `GET/POST /api/v1/notifications`, unread/read/dismiss endpoints, and `GET/PUT/DELETE /api/v1/notification-preferences`
 - `POST /api/v1/market-data/analyze`
+- `POST /api/v1/history/snapshots`, `POST /api/v1/history/events`, `GET /api/v1/history/timeline`, `DELETE /api/v1/history/positions/{positionId}`, `POST /api/v1/history/prune`
+- `GET /api/v1/runtime-health/latest`, `GET /api/v1/runtime-health/history`, `POST /api/v1/runtime-health`
 
 The production image builds the frontend and shared market-data engine at image-build time. The runtime image does not install the frontend's npm dependency tree.
