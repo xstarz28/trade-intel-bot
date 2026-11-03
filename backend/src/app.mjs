@@ -74,8 +74,13 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
       return;
     }
 
-    if (!database) {
+    if (!database && url.pathname.startsWith("/api/v1/auth/")) {
       sendJson(response, 503, { error: "database_not_configured" });
+      return;
+    }
+
+    if (!database) {
+      sendJson(response, 404, { error: "not_found" });
       return;
     }
 
