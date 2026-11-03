@@ -3,6 +3,7 @@ import { createAuthHandler } from "./auth.mjs";
 import { createDomainHandler } from "./domain.mjs";
 import { createPositionHandler } from "./positions.mjs";
 import { createAlertHandler } from "./alerts.mjs";
+import { createMarketDataHandler } from "./market-data.mjs";
 
 function sendJson(response, status, payload) {
   const body = JSON.stringify(payload);
@@ -20,6 +21,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
   const domainHandler = database ? createDomainHandler({ database, env }) : null;
   const positionHandler = database ? createPositionHandler({ database, env }) : null;
   const alertHandler = database ? createAlertHandler({ database, env }) : null;
+  const marketDataHandler = database ? createMarketDataHandler({ database, env }) : null;
   const configuredOrigin = env.APP_ORIGIN?.trim();
   const allowedOrigin = configuredOrigin || (
     env.NODE_ENV === "production" ? "" : "http://localhost:5173"
@@ -95,6 +97,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
       if (domainHandler && await domainHandler(request, response, url)) return;
       if (positionHandler && await positionHandler(request, response, url)) return;
       if (alertHandler && await alertHandler(request, response, url)) return;
+      if (marketDataHandler && await marketDataHandler(request, response, url)) return;
       sendJson(response, 404, { error: "not_found" });
     } catch (error) {
       console.error("[backend] Unhandled request failure:", error);
