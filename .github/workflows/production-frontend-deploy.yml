@@ -20,8 +20,6 @@ jobs:
     environment: development
     env:
       VITE_CONVEX_URL: https://hushed-seal-237.convex.cloud
-      # Defaults off until the owner has manually deployed the Convex scheduler.
-      VITE_BACKGROUND_MARKET_RADAR_ENABLED: ${{ vars.VITE_BACKGROUND_MARKET_RADAR_ENABLED || 'false' }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
@@ -47,11 +45,6 @@ jobs:
           test -n "${VERCEL_TOKEN}" || { echo "::error::VERCEL_TOKEN is missing from the production environment"; exit 1; }
           test -n "${VERCEL_ORG_ID}" || { echo "::error::VERCEL_ORG_ID is missing from the production environment"; exit 1; }
           test -n "${VERCEL_PROJECT_ID}" || { echo "::error::VERCEL_PROJECT_ID is missing from the production environment"; exit 1; }
-          case "${VITE_BACKGROUND_MARKET_RADAR_ENABLED}" in
-            true|false) ;;
-            *) echo "::error::VITE_BACKGROUND_MARKET_RADAR_ENABLED must be true or false"; exit 1 ;;
-          esac
-          echo "Background market radar enabled in this frontend build: ${VITE_BACKGROUND_MARKET_RADAR_ENABLED}"
 
       - name: Build exact main revision
         env:
