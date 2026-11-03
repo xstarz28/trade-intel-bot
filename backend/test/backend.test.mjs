@@ -79,9 +79,12 @@ describe("self-hosted backend", () => {
       const rows = database.raw
         .prepare("SELECT version, checksum FROM schema_migrations ORDER BY version")
         .all();
-      assert.equal(rows.length, 1);
-      assert.equal(rows[0].version, "0001_app_metadata.sql");
-      assert.match(rows[0].checksum, /^[a-f0-9]{64}$/);
+      assert.equal(rows.length, 2);
+      assert.deepEqual(rows.map((row) => row.version), [
+        "0001_app_metadata.sql",
+        "0002_trade_intel_domain.sql",
+      ]);
+      for (const row of rows) assert.match(row.checksum, /^[a-f0-9]{64}$/);
       assert.equal(
         database.raw.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'app_metadata'").get().name,
         "app_metadata",
