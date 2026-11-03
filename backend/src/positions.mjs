@@ -192,6 +192,11 @@ export function createPositionHandler({ database, env = process.env }) {
             acknowledged=excluded.acknowledged
         `).run(id,user.id,value.alertId,value.positionId,value.instrument,value.severity,
           value.notificationPriority,value.reason,value.action,value.timestamp,value.acknowledged ? 1 : 0);
+        database.raw.prepare(`
+          DELETE FROM alert_history WHERE user_id = ? AND id NOT IN (
+            SELECT id FROM alert_history WHERE user_id = ? ORDER BY timestamp DESC LIMIT 500
+          )
+        `).run(user.id,user.id);
         const row = database.raw.prepare(
           "SELECT * FROM alert_history WHERE user_id = ? AND alert_id = ?",
         ).get(user.id,value.alertId);
