@@ -350,6 +350,23 @@ describe("self-hosted backend", () => {
         });
         assert.equal(invalidTransition.status, 409);
 
+        const recordedOutcome = await fetch(`${baseUrl}/api/v1/journal/${entry._id}`, {
+          method: "PATCH",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ pnl: 12.5 }),
+        });
+        assert.equal(recordedOutcome.status, 200);
+
+        const closed = await fetch(`${baseUrl}/api/v1/journal/${entry._id}/transition`, {
+          method: "PATCH",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ newStatus: "CLOSED" }),
+        });
+        assert.equal(closed.status, 200);
+        const closedEntry = (await closed.json()).item;
+        assert.equal(closedEntry.status, "CLOSED");
+        assert.equal(closedEntry.pnl, 12.5);
+
         const otherSignIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
           method: "POST", headers: { Origin: env.APP_ORIGIN },
         });
