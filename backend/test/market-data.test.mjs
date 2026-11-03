@@ -97,6 +97,26 @@ describe("self-hosted market analysis engine", () => {
     assert.ok(result.technical.smc);
   });
 
+  it("passes verified SEC-derived fundamentals into the shared forward decision engine", async () => {
+    const now = Date.now();
+    const fundamentalData = {
+      provider: "sec-edgar", timestamp: now, instrumentType: "stock", symbol: "AAPL",
+      available: true, earningsPerShare: 6.4, dilutedEPS: 6.4,
+      latestEarnings: { date: "2026-09-30", eps: 6.4 },
+      pointInTimeHistory: { status: "PERSISTED", providerObservationCount: 4, newlyPersistedCount: 0 },
+    };
+    const result = await analyzeMarket({
+      instrument: "AAPL", instrumentType: "stock", timeframe: "H1", fundamentalData,
+    }, async () => new Response(JSON.stringify(yahooPayload(now)), {
+      status: 200, headers: { "content-type": "application/json" },
+    }));
+
+    assert.equal(result.success, true);
+    assert.equal(result.analysis.fundamentalData.provider, "sec-edgar");
+    assert.equal(result.analysis.fundamentalData.earningsPerShare, 6.4);
+    assert.equal(result.analysis.fundamentalData.pointInTimeHistory.status, "PERSISTED");
+  });
+
   it("fails closed when no exact provider symbol exists", async () => {
     const result = await analyzeMarket({
       instrument: "UNLISTED-COMMODITY",
