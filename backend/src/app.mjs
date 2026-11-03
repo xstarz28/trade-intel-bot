@@ -1,6 +1,7 @@
 import { createServer } from "node:http";
 import { createAuthHandler } from "./auth.mjs";
 import { createDomainHandler } from "./domain.mjs";
+import { createPositionHandler } from "./positions.mjs";
 
 function sendJson(response, status, payload) {
   const body = JSON.stringify(payload);
@@ -16,6 +17,7 @@ function sendJson(response, status, payload) {
 export function createAppServer({ database, env = process.env, fetchImpl = fetch }) {
   const authHandler = createAuthHandler({ database, env, fetchImpl });
   const domainHandler = database ? createDomainHandler({ database, env }) : null;
+  const positionHandler = database ? createPositionHandler({ database, env }) : null;
   const configuredOrigin = env.APP_ORIGIN?.trim();
   const allowedOrigin = configuredOrigin || (
     env.NODE_ENV === "production" ? "" : "http://localhost:5173"
@@ -89,6 +91,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
     try {
       if (await authHandler(request, response, url)) return;
       if (domainHandler && await domainHandler(request, response, url)) return;
+      if (positionHandler && await positionHandler(request, response, url)) return;
       sendJson(response, 404, { error: "not_found" });
     } catch (error) {
       console.error("[backend] Unhandled request failure:", error);
