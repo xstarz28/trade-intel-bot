@@ -78,7 +78,7 @@ function redirect(response, target) {
   response.end();
 }
 
-function isAllowedOrigin(request, env) {
+export function isAllowedOrigin(request, env) {
   const origin = request.headers.origin;
   const configured = env.APP_ORIGIN?.trim();
   if (!origin) return env.NODE_ENV !== "production";
@@ -113,6 +113,13 @@ function sessionUser(database, request, production) {
     role: row.role,
     sessionId: row.session_id,
   };
+}
+
+export function getAuthenticatedUser(database, request, env = process.env) {
+  const user = sessionUser(database, request, env.NODE_ENV === "production");
+  if (!user) return null;
+  delete user.sessionId;
+  return user;
 }
 
 function issueSession(database, response, userId, production) {
