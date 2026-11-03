@@ -435,7 +435,8 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
           nonce: flow.nonce,
           fetchImpl,
         });
-        const currentUser = sessionUser(database, request, production);\n        const userId = upsertGoogleUser(database, profile, currentUser);
+        const currentUser = sessionUser(database, request, production);
+        const userId = upsertGoogleUser(database, profile, currentUser);
         issueSession(database, response, userId, production);
         redirect(response, new URL("/dashboard", appOrigin).toString());
       } catch (error) {
