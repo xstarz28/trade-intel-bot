@@ -78,6 +78,16 @@ jobs:
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
 
+      - name: Set the verified custom domain
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CUSTOM_DOMAIN: xstarzganaliys.com
+        run: |
+          set -euo pipefail
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/pages" \\
+            -f build_type=workflow \\
+            -f cname="${CUSTOM_DOMAIN}"
+
       - name: Deploy static frontend
         id: deployment
         uses: actions/deploy-pages@v4
