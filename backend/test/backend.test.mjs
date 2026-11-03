@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, it } from "node:test";
 import { createAppServer } from "../src/app.mjs";
 import { openDatabase } from "../src/database.mjs";
@@ -11,7 +12,7 @@ const temporaryDirectories = [];
 function createTemporaryDatabase() {
   const directory = mkdtempSync(join(tmpdir(), "trade-intel-backend-"));
   temporaryDirectories.push(directory);
-  return openDatabase(join(directory, "test.sqlite"), new URL("../migrations/", import.meta.url).pathname);
+  return openDatabase(join(directory, "test.sqlite"), fileURLToPath(new URL("../migrations/", import.meta.url)));
 }
 
 async function withServer(database, callback) {
