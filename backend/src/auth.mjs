@@ -86,6 +86,29 @@ export function isAllowedOrigin(request, env) {
   return origin === configured;
 }
 
+function createRateLimiter(maximum,windowMs) {
+  const buckets=new Map();
+  return (request)=>{
+    const forwarded=request.headers["x-forwarded-for"];
+    const address=(typeof forwarded==="string"?forwarded.split(",")[0].trim():"")||
+      request.socket.remoteAddress||"unknown";
+    const now=Date.now();
+    let bucket=buckets.get(address);
+    if(!bucket||now-bucket.startedAt>=windowMs) {
+      bucket={startedAt:now,count:0};
+      buckets.set(address,bucket);
+    }
+    if(bucket.count>=maximum) return false;
+    bucket.count+=1;
+    if(buckets.size>5000) {
+      for(const [key,value] of buckets) {
+        if(now-value.startedAt>=windowMs) buckets.delete(key);
+      }
+    }
+    return true;
+  };
+}
+
 function sessionUser(database, request, production) {
   const cookies = parseCookies(request.headers.cookie);
   const token = cookies.get(cookieName(SESSION_COOKIE, production));
@@ -238,6 +261,8 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
   const production = env.NODE_ENV === "production";
   const appOrigin = env.APP_ORIGIN?.trim() || "http://localhost:5173";
   const backendOrigin = env.PUBLIC_BASE_URL?.trim();
+  const allowAnonymousSignIn=createRateLimiter(10,10*60*1000);
+  const allowGoogleStart=createRateLimiter(20,10*60*1000);
 
   return async function handleAuthRequest(request, response, url) {
     const path = url.pathname;
@@ -262,6 +287,11 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
     }
 
     if (method === "POST" && path === "/api/v1/auth/anonymous") {
+      if(!allowAnonymousSignIn(request)) {
+        response.setHeader("retry-after","600");
+        sendJson(response,429,{error:"anonymous_sign_in_rate_limited"});
+        return true;
+      }
       const now = Date.now();
       const userId = randomUUID();
       database.raw.prepare(`
@@ -286,6 +316,11 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
     }
 
     if (method === "GET" && path === "/api/v1/auth/google") {
+      if(!allowGoogleStart(request)) {
+        response.setHeader("retry-after","600");
+        sendJson(response,429,{error:"google_sign_in_rate_limited"});
+        return true;
+      }
       const clientId = env.GOOGLE_CLIENT_ID?.trim();
       if (!clientId || !env.GOOGLE_CLIENT_SECRET?.trim() || !backendOrigin) {
         sendJson(response, 503, { error: "google_auth_not_configured" });
