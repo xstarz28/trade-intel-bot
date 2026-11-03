@@ -51,7 +51,6 @@ interface InstrumentInputProps {
   onAnalyze: (input: AnalysisInput) => void;
   isAnalyzing: boolean;
   availableInstruments?: AvailableInstrument[];
-  marketDiscoveryMessage?: string | null;
 }
 
 const STORAGE_KEY = "xstarzg-analysis-form";
@@ -94,7 +93,6 @@ export function InstrumentInput({
   onAnalyze,
   isAnalyzing,
   availableInstruments = [],
-  marketDiscoveryMessage,
 }: InstrumentInputProps) {
   const { t, locale } = useI18n();
   const [form, setForm] = useState<PersistedForm>(loadPersistedForm);
@@ -417,11 +415,7 @@ export function InstrumentInput({
             {form.instrumentType === "crypto" &&
               !manualSearch &&
               filteredInstruments.length === 0 &&
-              marketDiscoveryMessage && (
-                <p role="status" className="mt-2 text-[10px] font-mono text-amber-400/90">
-                  {marketDiscoveryMessage}
-                </p>
-              )}
+
 
             <button
               type="button"
