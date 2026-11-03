@@ -1,0 +1,92 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  BackendApiError,
+  createAnonymousBackendSession,
+  getBackendSession,
+  listBackendAnalyses,
+  logoutBackendSession,
+  saveBackendAnalysis,
+} from "./backend-api";
+
+afterEach(() => vi.restoreAllMocks());
+
+function response(status: number, payload: unknown): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+describe("self-hosted backend API client", () => {
+  it("reads the session with cookie credentials and no-store caching", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(200, { user: null }));
+    await expect(getBackendSession(fetcher)).resolves.toEqual({ user: null });
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/auth/session",
+      expect.objectContaining({ credentials: "include", cache: "no-store" }),
+    );
+  });
+
+  it("creates an anonymous session using the backend endpoint", async () => {
+    const user = {
+      id: "user-1",
+      name: "Guest Trader",
+      email: null,
+      isAnonymous: true,
+      role: "user",
+    };
+    const fetcher = vi.fn().mockResolvedValue(response(201, { user }));
+    await expect(createAnonymousBackendSession(fetcher)).resolves.toEqual({ user });
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/auth/anonymous",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({ "content-type": "application/json" }),
+      }),
+    );
+  });
+
+  it("lists and persists analyses through the authenticated API", async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(200, { items: [] }))
+      .mockResolvedValueOnce(response(201, { item: { _id: "analysis-1" } }));
+    await expect(listBackendAnalyses(fetcher)).resolves.toEqual({ items: [] });
+    await expect(
+      saveBackendAnalysis({
+        instrument: "BTC/USDT",
+        instrumentType: "crypto",
+        timeframe: "4h",
+        bias: "BULLISH",
+        confidence: 72,
+        technicalSummary: "Trend aligned",
+        fundamentalSummary: "No fundamental feed",
+        breakdown: { trend: 80, indicator: 70, fundamental: 50, sentiment: 50 },
+        keyLevels: { support: "64000", resistance: "68000", invalidation: "63000" },
+        riskNote: "Defined risk",
+        dataCompleteness: "PARTIAL",
+        dataFlags: [],
+      }, fetcher),
+    ).resolves.toEqual({ item: { _id: "analysis-1" } });
+    expect(fetcher.mock.calls[1][0]).toBe("/api/v1/analyses");
+    expect(fetcher.mock.calls[1][1]).toEqual(expect.objectContaining({ method: "POST" }));
+  });
+
+  it("logs out through the backend session endpoint", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(200, { success: true }));
+    await expect(logoutBackendSession(fetcher)).resolves.toEqual({ success: true });
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/auth/logout",
+      expect.objectContaining({ method: "POST", credentials: "include" }),
+    );
+  });
+
+  it("surfaces backend errors without converting them to mock success", async () => {
+    const fetcher = vi.fn().mockResolvedValue(response(401, { error: "authentication_required" }));
+    await expect(getBackendSession(fetcher)).rejects.toMatchObject({
+      name: "BackendApiError",
+      status: 401,
+      code: "authentication_required",
+    } satisfies Partial<BackendApiError>);
+  });
+});
