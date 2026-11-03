@@ -19,7 +19,7 @@ This deployment runs the Vite frontend, Node.js API, and SQLite database on infr
 
 ## Important migration status
 
-This backend is an active migration target, not yet a complete Convex replacement. The frontend source still contains Convex hooks and has not been switched to this API. Fundamental/SEC observation repositories, derivative-specific market-data paths, full provider parity, Convex data export/import, and end-to-end frontend parity tests remain outstanding. Do not disable the existing production deployment or delete Convex data before those gates pass.
+This backend is an active migration target, not yet a complete Convex replacement. The frontend source still contains Convex hooks and has not been switched to this API. An authenticated SEC EDGAR filing-history refresh/read API now persists filing-matched observations in SQLite; Alpha Vantage fundamentals/news, macro, COT, EIA, Treasury, economic-calendar, crypto-derivatives provider parity, Convex data export/import, and end-to-end frontend parity tests remain outstanding. Do not disable the existing production deployment or delete Convex data before those gates pass.
 
 The market-data lane currently supports public OKX Spot candles/ticker for spot crypto and exact Yahoo Finance mappings for supported stocks, forex, commodities, and indices. It does not silently replace unsupported derivative contracts or unmapped symbols with a proxy. Perpetual/futures data, full Twelve Data credential support, and other provider-specific actions remain to be extracted.
 
@@ -96,6 +96,7 @@ Store backups outside the host and periodically test restoring one. The live dat
 - `GET/POST/DELETE /api/v1/alert-rules/history`
 - `GET/POST /api/v1/notifications`, unread/read/dismiss endpoints, and `GET/PUT/DELETE /api/v1/notification-preferences`
 - `POST /api/v1/market-data/analyze`
+- `GET /api/v1/fundamentals/sec/{ticker}`, `POST /api/v1/fundamentals/sec/{ticker}` (SEC refresh requires a compliant `SEC_USER_AGENT`)
 - `POST /api/v1/history/snapshots`, `POST /api/v1/history/events`, `GET /api/v1/history/timeline`, `DELETE /api/v1/history/positions/{positionId}`, `POST /api/v1/history/prune`
 - `GET /api/v1/runtime-health/latest`, `GET /api/v1/runtime-health/history`, `POST /api/v1/runtime-health`
 
