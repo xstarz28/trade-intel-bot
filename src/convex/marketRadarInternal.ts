@@ -53,6 +53,7 @@ export const claimScan = internalMutation({
       lastScanAt: 0,
       updatedAt: now,
       candidateCacheVersion: 0,
+      lastRankedAt: 0,
     });
     return {
       claimed: true as const,
@@ -60,6 +61,8 @@ export const claimScan = internalMutation({
       previousResults: [],
       lastScanAt: 0,
       candidateCacheVersion: 0,
+      lastRankedAt: 0,
+      metrics: {},
     };
   },
 });
