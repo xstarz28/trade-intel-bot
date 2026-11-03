@@ -84,7 +84,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
   const domainHandler = database ? createDomainHandler({ database, env }) : null;
   const positionHandler = database ? createPositionHandler({ database, env }) : null;
   const alertHandler = database ? createAlertHandler({ database, env }) : null;
-  const marketDataHandler = database ? createMarketDataHandler({ database, env }) : null;
+  const marketDataHandler = database ? createMarketDataHandler({ database, env, fetchImpl }) : null;
   const fundamentalsHandler = database ? createFundamentalsHandler({ database, env }) : null;
   const historyHandler = database ? createHistoryHandler({ database, env }) : null;
   const configuredOrigin = env.APP_ORIGIN?.trim();
