@@ -15,6 +15,12 @@ function createTemporaryDatabase() {
   return openDatabase(join(directory, "test.sqlite"), fileURLToPath(new URL("../migrations/", import.meta.url)));
 }
 
+function yahooChartPayload(now) {
+  const timestamp=Array.from({length:220},(_,i)=>Math.floor((now-(220-i)*60*60*1000)/1000));
+  const open=timestamp.map((_,i)=>150+i*0.08);
+  return {chart:{result:[{timestamp,indicators:{quote:[{open,high:open.map(x=>x+0.4),low:open.map(x=>x-0.3),close:open.map(x=>x+0.1),volume:open.map(()=>100000)}]}}]}};
+}
+
 async function withServer(database, callback, options = {}) {
   const server = createAppServer({ database, ...options });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -237,6 +243,46 @@ describe("self-hosted backend", () => {
           APP_ORIGIN: "https://xstarzganaliys.com",
         },
       });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("uses persisted SEC observations in the authenticated self-hosted stock analysis route", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    const now = Date.now();
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        database.raw.prepare(`INSERT INTO sec_edgar_observations (
+          id,ticker,cik,accession_number,form,filing_date,acceptance_date_time,
+          fiscal_period_start,fiscal_period_end,fiscal_year,fiscal_period,eps,revenue,
+          eps_tag,revenue_tag,source_url,first_observed_at,last_retrieved_at
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(
+          "sec-observation-1","AAPL","0000320193","0000320193-26-000001","10-Q",
+          "2026-10-30",null,"2026-07-01","2026-09-30",2026,"Q3",6.4,100000000000,
+          "EarningsPerShareDiluted","RevenueFromContractWithCustomerExcludingAssessedTax",
+          "https://www.sec.gov/Archives/edgar/data/320193/000032019326000001/",now-1000,now,
+        );
+
+        const response = await fetch(`${baseUrl}/api/v1/market-data/analyze`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ instrument: "AAPL", instrumentType: "stock", timeframe: "H1" }),
+        });
+        assert.equal(response.status, 200);
+        const result = await response.json();
+        assert.equal(result.success, true);
+        assert.equal(result.analysis.fundamentalData.provider, "sec-edgar");
+        assert.equal(result.analysis.fundamentalData.earningsPerShare, 6.4);
+        assert.equal(result.analysis.fundamentalData.latestEarnings.date, "2026-09-30");
+      }, { env, fetchImpl: async () => new Response(JSON.stringify(yahooChartPayload(now)), {
+        status: 200, headers: { "content-type": "application/json" },
+      }) });
     } finally {
       database.close();
     }
