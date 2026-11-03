@@ -16,20 +16,15 @@ import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
-import { discoverCandidates, type CandidateInput } from "@/lib/recommendation-engine";
-import { MarketOpportunities } from "@/components/MarketOpportunities";
-import { buildCandidateFromSource, findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
-import { ALL_SCAN_HORIZONS, normalizeScanTimeframe, selectRotatingDiscoveryBatch, scanInstruments, type ScanResult } from "@/lib/liveScanner";
+import { findLiveSnapshotForInstrument, type LiveCandidateSource } from "@/lib/liveCandidateBuilder";
+import { normalizeScanTimeframe } from "@/lib/liveScanner";
 import { buildCryptoIntelligenceContext } from "@/lib/data/crypto/intelligence";
 import { buildEquityFundamentalEvidence } from "@/lib/data/universal/equity-evidence";
 import { parseCoinGlassResult } from "@/lib/data/crypto/coinglass-adapter";
 import { parseDeFiLlamaResult } from "@/lib/data/crypto/defillama-adapter";
-import { scanRadar, buildRadarState, type RadarScanResult, type RadarState } from "@/lib/market-radar/radar";
-import { toRadarCandidateSource } from "@/lib/market-radar/candidate-builder";
 import type { UniversalIntelligenceContext, ForexIntelligenceContext, EquityIntelligenceContext, CommodityIntelligenceContext, CrossAssetIntelligenceContext } from "@/lib/data/universal/types";
 import { LogOut, Zap, Loader2, CheckCircle2, Shield, Globe } from "lucide-react";
 import { getAllInstruments } from "@/lib/data/universal/instruments";
-import { cryptoMarketType, prioritizeCryptoDiscovery, type DiscoveredCryptoInstrument, type CryptoMarketType } from "@/lib/data/crypto-discovery-priority";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
@@ -98,90 +93,6 @@ function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   ]);
 }
 
-type DiscoveryRotationState = {
-  cryptoCursor: number;
-  crossAssetGroupCursor: number;
-  crossAssetCursors: { forex: number; equity: number; commodity: number };
-};
-
-const DISCOVERY_ROTATION_STORAGE_KEY = "trade-intel-discovery-rotation-v1";
-
-function readDiscoveryRotationState(): DiscoveryRotationState {
-  const fallback: DiscoveryRotationState = {
-    cryptoCursor: 0,
-    crossAssetGroupCursor: 0,
-    crossAssetCursors: { forex: 0, equity: 0, commodity: 0 },
-  };
-  if (typeof window === "undefined") return fallback;
-  try {
-    const raw = window.localStorage.getItem(DISCOVERY_ROTATION_STORAGE_KEY);
-    if (!raw) return fallback;
-    const parsed: unknown = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return fallback;
-    const value = parsed as Partial<DiscoveryRotationState>;
-    const cursor = (candidate: unknown) =>
-      typeof candidate === "number" && Number.isSafeInteger(candidate) && candidate >= 0
-        ? candidate
-        : 0;
-    return {
-      cryptoCursor: cursor(value.cryptoCursor),
-      crossAssetGroupCursor: cursor(value.crossAssetGroupCursor),
-      crossAssetCursors: {
-        forex: cursor(value.crossAssetCursors?.forex),
-        equity: cursor(value.crossAssetCursors?.equity),
-        commodity: cursor(value.crossAssetCursors?.commodity),
-      },
-    };
-  } catch {
-    return fallback;
-  }
-}
-
-function persistDiscoveryRotationState(state: DiscoveryRotationState): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(DISCOVERY_ROTATION_STORAGE_KEY, JSON.stringify(state));
-  } catch {
-    // Storage can be disabled or full; scanning must continue in memory.
-  }
-}
-
-function mergeLiveSourcesByTimeframe(
-  ...collections: Iterable<LiveCandidateSource>[]
-): LiveCandidateSource[] {
-  const byIdentity = new Map<string, LiveCandidateSource>();
-
-  for (const source of collections.flatMap((collection) => Array.from(collection))) {
-    const timeframe = (
-      source.marketData?.timeframe ??
-      source.analysisResult?.timeframe ??
-      "UNKNOWN"
-    ).trim().toUpperCase().replace(/\s+/g, "");
-    const key = `${source.instrument.trim().toUpperCase()}|${timeframe}`;
-    const previous = byIdentity.get(key);
-    if (!previous) {
-      byIdentity.set(key, source);
-      continue;
-    }
-
-    byIdentity.set(key, {
-      ...previous,
-      ...source,
-      analysisResult: source.analysisResult ?? previous.analysisResult,
-      universalIntelligence: source.universalIntelligence ?? previous.universalIntelligence,
-      cryptoIntelligenceContext: source.cryptoIntelligenceContext ?? previous.cryptoIntelligenceContext,
-      derivativesData: source.derivativesData ?? previous.derivativesData,
-      calendarData: source.calendarData ?? previous.calendarData,
-      treasuryData: source.treasuryData ?? previous.treasuryData,
-      cotData: source.cotData ?? previous.cotData,
-      eiaData: source.eiaData ?? previous.eiaData,
-      technicalData: source.technicalData ?? previous.technicalData,
-    });
-  }
-
-  return Array.from(byIdentity.values());
-}
-
 function getInitialSteps(t: ReturnType<typeof useI18n>["t"]): LoadingStep[] {
   return [
     { label: t.dashboard.detectingInstrument, status: "pending" },
@@ -230,36 +141,9 @@ export default function Dashboard() {
   // Phase 153 — retain the latest verified live market snapshot per instrument.
   // This is runtime-only state and is intentionally NOT reconstructed from history.
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  const [initialRotationState] = useState(readDiscoveryRotationState);
-  const discoveryCursorRef = useRef(initialRotationState.cryptoCursor);
-  const crossAssetDiscoveryCursorRef = useRef(initialRotationState.crossAssetCursors);
-  const crossAssetGroupRotationRef = useRef(initialRotationState.crossAssetGroupCursor);
-  const crossAssetScanLastAtRef = useRef(0);
-  const initialScanStartedRef = useRef(false);
-  const liveRecommendationSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  const [liveSourcesVersion, setLiveSourcesVersion] = useState(0);
-  const [discoveredCryptoInstruments, setDiscoveredCryptoInstruments] = useState<DiscoveredCryptoInstrument[]>([]);
-  const [marketDiscoveryMessage, setMarketDiscoveryMessage] = useState<string | null>(null);
-
-  // Phase 156 — provider-native universal discovery.
-  // Discovery metadata alone is NEVER considered live evidence.
-  const discoverOkxInstruments = useAction(api.okx.discoverOkxInstruments);
-  const acquireOkxNativeLiveDataBatch = useAction(api.okx.acquireOkxNativeLiveDataBatch);
-
-
-
-
   // Convex persistence
   const saveAnalysis = useMutation(api.analyses.save);
   const dbHistory = useQuery(api.analyses.list);
-  // Keep the frontend compatible with the current Convex production schema
-  // until the owner manually deploys the scheduler and enables this feature.
-  const backgroundMarketRadarEnabled = import.meta.env.VITE_BACKGROUND_MARKET_RADAR_ENABLED === "true";
-  const backgroundMarketRadar = useQuery(
-    api.marketRadarScheduler.getLatest,
-    backgroundMarketRadarEnabled ? {} : "skip",
-  );
-
   // Convex actions for server-side data fetching
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
   const fetchFxRate = useAction(api.marketData.fetchFxRate);
@@ -272,7 +156,6 @@ export default function Dashboard() {
   const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
   const fetchOkxOrderBook = useAction(api.okx.fetchOkxOrderBook);
   const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
-  const fetchOkxFuturesOpenInterest = useAction(api.okx.fetchOkxFuturesOpenInterest);
 
   const handleSignOut = async () => {
     await signOut();
@@ -404,11 +287,8 @@ export default function Dashboard() {
             input.instrumentType === "crypto"
               ? (
                   requestedNativeTimeframe
-                    ? liveRecommendationSourceRef.current.get(
-                        `${input.instrument}|${requestedNativeTimeframe}`,
-                      )
+                    ? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
                     : undefined
-                ) ?? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
               : undefined;
           // A fresh H1 quote is not a substitute for an M5 or H4 analysis.
           const nativeLive =
@@ -1065,35 +945,18 @@ export default function Dashboard() {
 
   // Phase 153 — live candidate sources come ONLY from verified runtime
   // provider-backed snapshots. Persisted history is never treated as LIVE.
-  const availableInstruments = useMemo(() => {
-    const registry = getAllInstruments().map((item) => ({
-      symbol: item.canonical,
-      type: (item.assetClass === "equity" ? "stock" : item.assetClass === "macro" ? "indices" : item.assetClass) as "forex" | "crypto" | "stock" | "commodity" | "indices",
-      label: item.name,
-      marketType: item.assetClass === "crypto"
-        ? item.subType === "crypto_perpetual" ? "perpetual" as const
-          : item.subType === "crypto_futures" ? "futures" as const : "spot" as const
-        : undefined,
-    }));
-    const discovered = discoveredCryptoInstruments.map((item) => ({
-      symbol: item.instId,
-      type: "crypto" as const,
-      marketType: cryptoMarketType(item.instId, item.instType),
-      label: cryptoMarketType(item.instId, item.instType) === "perpetual" ? "OKX perpetual swap"
-        : cryptoMarketType(item.instId, item.instType) === "futures" ? "OKX dated futures" : "OKX spot",
-    }));
-    const bySymbol = new Map<string, typeof registry[number]>();
-    for (const item of registry) bySymbol.set(item.symbol, item);
-    for (const item of discovered) if (!bySymbol.has(item.symbol)) bySymbol.set(item.symbol, item);
-    const popularOrder = new Map<string, number>([
-      ["EUR/USD", 0], ["BTC/USD", 1], ["BTC-USDT", 2], ["BTC-USDT-SWAP", 3],
-      ["ETH/USD", 4], ["ETH-USDT", 5], ["ETH-USDT-SWAP", 6], ["XAU/USD", 7], ["AAPL", 8],
-    ]);
-    return Array.from(bySymbol.values()).sort((a, b) =>
-      (popularOrder.get(a.symbol) ?? 10000) - (popularOrder.get(b.symbol) ?? 10000) ||
-      a.symbol.localeCompare(b.symbol)
-    );
-  }, [discoveredCryptoInstruments]);
+  // Instrument selection is catalog-driven and on demand: no market-wide discovery
+  // or background quote acquisition runs merely because the dashboard is open.
+  const availableInstruments = useMemo(() => getAllInstruments().map((item) => ({
+    symbol: item.canonical,
+    type: (item.assetClass === "equity" ? "stock" : item.assetClass === "macro" ? "indices" : item.assetClass) as "forex" | "crypto" | "stock" | "commodity" | "indices",
+    label: item.name,
+    marketType: item.assetClass === "crypto"
+      ? item.subType === "crypto_perpetual" ? "perpetual" as const
+        : item.subType === "crypto_futures" ? "futures" as const : "spot" as const
+      : undefined,
+  })), []);
+
 
   const liveSources: LiveCandidateSource[] = useMemo(
     () => mergeLiveSourcesByTimeframe(
@@ -1103,329 +966,7 @@ export default function Dashboard() {
     [currentResult, liveSourcesVersion],
   );
 
-  // Phase 50 — Live scan result from available sources
-  const [scanResult, setScanResult] = useState<ScanResult | null>(null);
-  const [isScanning, setIsScanning] = useState(false);
-  const scanInFlightRef = useRef(false);
 
-  const handleScanRefresh = useCallback(async () => {
-    if (scanInFlightRef.current) return;
-    scanInFlightRef.current = true;
-    setIsScanning(true);
-    try {
-      // Metadata discovery is separate from verified live candle acquisition.
-      // Failures here must not block independent FX/equity/commodity acquisition.
-      try {
-        const discovery = await discoverOkxInstruments();
-        const discovered = discovery.instruments ?? [];
-
-        if (discovery.success) {
-          setDiscoveredCryptoInstruments(
-            discovered.map((item) => ({ instId: item.instId, instType: item.instType })),
-          );
-
-          const types = new Set(discovered.map((item) => item.instType.toUpperCase()));
-          const missingTypes = [
-            ...(!types.has("SWAP") ? ["perpetual/swap"] : []),
-            ...(!types.has("FUTURES") ? ["dated futures"] : []),
-          ];
-          setMarketDiscoveryMessage(
-            discovered.length === 0
-              ? "OKX returned no active crypto instruments in the latest discovery. Refresh to retry."
-              : missingTypes.length > 0
-                ? `OKX returned no active ${missingTypes.join(" or ")} contracts in the latest discovery. Refresh to retry.`
-                : null,
-          );
-
-          if (discovered.length > 0) {
-            try {
-              const prioritized = prioritizeCryptoDiscovery(discovered);
-              const { batch, nextCursor } = selectRotatingDiscoveryBatch(
-                prioritized.length > 0 ? prioritized : discovered,
-                discoveryCursorRef.current,
-                8,
-              );
-              discoveryCursorRef.current = nextCursor;
-              persistDiscoveryRotationState({
-                cryptoCursor: nextCursor,
-                crossAssetGroupCursor: crossAssetGroupRotationRef.current,
-                crossAssetCursors: crossAssetDiscoveryCursorRef.current,
-              });
-
-              // Acquire distinct real candles for scalping, intraday, and swing.
-              const nativeInputs = batch.flatMap((item) =>
-                (["M5", "H1", "H4"] as const).map((timeframe) => ({
-                  instrument: item.instId,
-                  providerInstrumentId: item.instId,
-                  assetClass: "crypto" as const,
-                  timeframe,
-                })),
-              );
-              const acquired = await acquireOkxNativeLiveDataBatch({
-                instruments: nativeInputs,
-                concurrency: 5,
-              });
-              const { providerNativeAcquisitionToMarketData } =
-                await import("@/lib/market-radar/provider-registry");
-
-              for (const result of acquired) {
-                if (!result.success) continue;
-                const marketData = providerNativeAcquisitionToMarketData(result);
-                if (!marketData) continue;
-
-                const timeframe = (marketData.timeframe ?? result.timeframe ?? "H1")
-                  .trim().toUpperCase().replace(/\s+/g, "");
-                const source: LiveCandidateSource = {
-                  instrument: result.instrument,
-                  assetClass: result.assetClass,
-                  providerNative: {
-                    provider: result.provider,
-                    providerInstrumentId: result.providerInstrumentId ?? result.instrument,
-                  },
-                  marketData,
-                };
-                const key = `${result.instrument}|${timeframe}`;
-                const previousRecommendationSource = liveRecommendationSourceRef.current.get(key);
-                liveRecommendationSourceRef.current.set(key, {
-                  ...previousRecommendationSource,
-                  ...source,
-                  analysisResult: previousRecommendationSource?.analysisResult,
-                  cryptoIntelligenceContext: previousRecommendationSource?.cryptoIntelligenceContext,
-                  universalIntelligence: previousRecommendationSource?.universalIntelligence,
-                  derivativesData: previousRecommendationSource?.derivativesData,
-                  calendarData: previousRecommendationSource?.calendarData,
-                  treasuryData: previousRecommendationSource?.treasuryData,
-                  cotData: previousRecommendationSource?.cotData,
-                  eiaData: previousRecommendationSource?.eiaData,
-                });
-
-                // The exact-symbol lookup used during manual analysis defaults to H1.
-                if (timeframe === "H1" || !liveSourceRef.current.has(result.instrument)) {
-                  const existing = liveSourceRef.current.get(result.instrument);
-                  liveSourceRef.current.set(result.instrument, {
-                    ...existing,
-                    ...source,
-                    analysisResult: existing?.analysisResult,
-                    cryptoIntelligenceContext: existing?.cryptoIntelligenceContext,
-                    universalIntelligence: existing?.universalIntelligence,
-                    derivativesData: existing?.derivativesData,
-                    calendarData: existing?.calendarData,
-                    treasuryData: existing?.treasuryData,
-                    cotData: existing?.cotData,
-                    eiaData: existing?.eiaData,
-                  });
-                }
-              }
-
-              // Enrich dated futures with open interest from that exact OKX contract.
-              // Open interest is non-directional on its own and must never be borrowed
-              // from the same token's perpetual swap.
-              const datedFutures = batch.filter(
-                (item) => cryptoMarketType(item.instId, item.instType) === "futures",
-              );
-              const openInterestResults = await Promise.allSettled(
-                datedFutures.map((item) =>
-                  withActionTimeout(
-                    fetchOkxFuturesOpenInterest({ instrument: item.instId }),
-                    ACTION_TIMEOUTS_MS.derivatives,
-                    `OKX futures open interest ${item.instId}`,
-                  ),
-                ),
-              );
-              openInterestResults.forEach((settled, index) => {
-                if (settled.status !== "fulfilled" || !settled.value.success || !settled.value.data) return;
-                const item = datedFutures[index];
-                if (!item) return;
-                const derivativesData = settled.value.data;
-                for (const [key, source] of liveRecommendationSourceRef.current.entries()) {
-                  if (source.instrument.toUpperCase() === item.instId.toUpperCase()) {
-                    liveRecommendationSourceRef.current.set(key, { ...source, derivativesData });
-                  }
-                }
-                const existing = liveSourceRef.current.get(item.instId);
-                if (existing) {
-                  liveSourceRef.current.set(item.instId, { ...existing, derivativesData });
-                }
-              });
-            } catch {
-              setMarketDiscoveryMessage((current) =>
-                current ?? "OKX contracts were found, but live candles could not be loaded. Refresh to retry.",
-              );
-            }
-          }
-        } else {
-          setMarketDiscoveryMessage(
-            discovery.error ?? "OKX instrument discovery is unavailable. Refresh to retry.",
-          );
-        }
-      } catch {
-        setMarketDiscoveryMessage("OKX market discovery is temporarily unavailable. Refresh to retry.");
-      }
-
-      // One rotating non-crypto candidate per minute. The provider's production
-      // key is limited to about 8 credits/minute, while each manual analysis
-      // reserves primary + higher-timeframe candles. Crypto uses public OKX and
-      // can safely acquire M5/H1/H4 separately without spending those credits.
-      if (Date.now() - crossAssetScanLastAtRef.current >= 60_000) {
-        crossAssetScanLastAtRef.current = Date.now();
-        const catalog = getAllInstruments();
-        const groups = [
-          { key: "forex" as const, assetClass: "forex" as const, type: "forex" as const },
-          { key: "equity" as const, assetClass: "equity" as const, type: "stock" as const },
-          { key: "commodity" as const, assetClass: "commodity" as const, type: "commodity" as const },
-        ];
-        const selectedGroup = groups[crossAssetGroupRotationRef.current % groups.length];
-        crossAssetGroupRotationRef.current = (crossAssetGroupRotationRef.current + 1) % groups.length;
-        persistDiscoveryRotationState({
-          cryptoCursor: discoveryCursorRef.current,
-          crossAssetGroupCursor: crossAssetGroupRotationRef.current,
-          crossAssetCursors: crossAssetDiscoveryCursorRef.current,
-        });
-        const selected = groups.filter((group) => group.key === selectedGroup.key).map((group) => {
-          const rows = catalog.filter((item) =>
-            item.assetClass === group.assetClass && item.isActive &&
-            item.providerMappings.some((mapping) => mapping.provider === "twelve-data" && mapping.available)
-          );
-          if (rows.length === 0) return { ...group, item: undefined };
-          const cursor = crossAssetDiscoveryCursorRef.current[group.key] % rows.length;
-          let chosen: (typeof rows)[number] | undefined;
-          for (let offset = 0; offset < rows.length; offset++) {
-            const candidate = rows[(cursor + offset) % rows.length];
-            const existing = liveSourceRef.current.get(candidate.canonical);
-            if (!existing?.analysisResult && (
-              !existing?.marketData?.price?.timestamp ||
-              Date.now() - existing.marketData.price.timestamp > 4 * 60_000
-            )) {
-              chosen = candidate;
-              crossAssetDiscoveryCursorRef.current[group.key] = (cursor + offset + 1) % rows.length;
-              persistDiscoveryRotationState({
-                cryptoCursor: discoveryCursorRef.current,
-                crossAssetGroupCursor: crossAssetGroupRotationRef.current,
-                crossAssetCursors: crossAssetDiscoveryCursorRef.current,
-              });
-              break;
-            }
-          }
-          return { ...group, item: chosen };
-        }).filter((entry) => !!entry.item);
-
-        await Promise.allSettled(selected.map(async (entry) => {
-          const timeframe = "H1";
-            const result = await withActionTimeout(
-              fetchMarketData({
-                instrument: entry.item!.canonical,
-                instrumentType: entry.type,
-                timeframe,
-              }),
-              ACTION_TIMEOUTS_MS.market,
-              `Cross-asset ${timeframe} scan`,
-            );
-            if (!result?.success || !result.data) return;
-
-            const source: LiveCandidateSource = {
-              instrument: entry.item!.canonical,
-              assetClass: entry.assetClass,
-              marketData: result.data,
-              technicalData: result.technical,
-            };
-            const normalizedTimeframe = (result.data.timeframe ?? timeframe)
-              .trim().toUpperCase().replace(/\s+/g, "");
-            const key = `${entry.item!.canonical}|${normalizedTimeframe}`;
-            const previousSource = liveRecommendationSourceRef.current.get(key);
-            liveRecommendationSourceRef.current.set(key, {
-              ...previousSource,
-              ...source,
-              analysisResult: previousSource?.analysisResult,
-              cryptoIntelligenceContext: previousSource?.cryptoIntelligenceContext,
-              universalIntelligence: previousSource?.universalIntelligence,
-              derivativesData: previousSource?.derivativesData,
-              calendarData: previousSource?.calendarData,
-              treasuryData: previousSource?.treasuryData,
-              cotData: previousSource?.cotData,
-              eiaData: previousSource?.eiaData,
-            });
-
-            if (normalizedTimeframe === "H1") {
-              const existing = liveSourceRef.current.get(entry.item!.canonical);
-              liveSourceRef.current.set(entry.item!.canonical, {
-                ...existing,
-                ...source,
-                analysisResult: existing?.analysisResult,
-                cryptoIntelligenceContext: existing?.cryptoIntelligenceContext,
-                universalIntelligence: existing?.universalIntelligence,
-                derivativesData: existing?.derivativesData,
-                calendarData: existing?.calendarData,
-                treasuryData: existing?.treasuryData,
-                cotData: existing?.cotData,
-                eiaData: existing?.eiaData,
-              });
-            }
-        }));
-      }
-
-      const sources = mergeLiveSourcesByTimeframe(
-        liveSourceRef.current.values(),
-        liveRecommendationSourceRef.current.values(),
-      );
-      setLiveSourcesVersion((version) => version + 1);
-      setScanResult(
-        scanInstruments(sources, { horizons: ALL_SCAN_HORIZONS, maxResults: 100 }),
-      );
-    } catch {
-      setMarketDiscoveryMessage("Automatic market refresh failed; the next cycle will retry.");
-    } finally {
-      scanInFlightRef.current = false;
-      setIsScanning(false);
-    }
-  }, [discoverOkxInstruments, acquireOkxNativeLiveDataBatch, fetchOkxFuturesOpenInterest, fetchMarketData]);
-
-  useEffect(() => {
-    if (initialScanStartedRef.current) return;
-    initialScanStartedRef.current = true;
-    void handleScanRefresh();
-  }, [handleScanRefresh]);
-
-  // Keep future-opportunity discovery current while the dashboard is open.
-  // The rotating cross-asset cursor advances once per cycle; hidden tabs do not
-  // spend provider requests, and the in-flight guard prevents overlapping scans.
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void handleScanRefresh();
-    }, 60_000);
-    return () => window.clearInterval(intervalId);
-  }, [handleScanRefresh]);
-
-  // Phase 51 — Radar state for autonomous scanning
-  const [radarResult, setRadarResult] = useState<RadarScanResult | null>(null);
-  const radarStateRef = useRef<RadarState | null>(null);
-
-  // Auto-scan after live sources change. State updates belong in effects,
-  // never in render-time memoization.
-  useEffect(() => {
-    if (liveSources.length > 0) {
-      const config = { horizons: ALL_SCAN_HORIZONS, maxResults: 100 };
-      const result = scanInstruments(liveSources, config);
-      setScanResult(result);
-    }
-  }, [liveSources]);
-
-  // Phase 51 — Run radar scan from analysis history (no live provider calls needed)
-  useEffect(() => {
-    if (liveSources.length === 0) return;
-    // Map the verified runtime snapshots and all independently acquired context.
-    // Preserve distinct timeframe observations until the Radar selects the
-    // horizon-appropriate source. Deduplicating by instrument here silently
-    // discarded M1/M5/H1/D1 siblings before horizon selection could run.
-    const radarSources = liveSources.map((source) =>
-      toRadarCandidateSource(source, liveSources),
-    );
-
-    const radarConfig = { horizons: ["INTRADAY" as const, "SWING" as const, "1-3_YEARS" as const], maxResults: 10 };
-    const result = scanRadar(radarSources, radarConfig, radarStateRef.current ?? undefined);
-    radarStateRef.current = buildRadarState(result);
-    setRadarResult(result);
-  }, [liveSources]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -1576,7 +1117,6 @@ export default function Dashboard() {
               onAnalyze={handleAnalyze}
               isAnalyzing={isAnalyzing}
               availableInstruments={availableInstruments}
-              marketDiscoveryMessage={marketDiscoveryMessage}
             />
             <RiskSizingControl value={riskSizingInputs} onChange={setRiskSizingInputs} />
 
@@ -1588,28 +1128,7 @@ export default function Dashboard() {
               />
             </div>
 
-            {/* Phase 50 — Market Opportunities: live opportunity scanner */}
-            <div>
-              <MarketOpportunities
-                candidates={discoverCandidates().map((d) => ({
-                  instrument: d.instrument,
-                  assetClass: d.assetClass,
-                  currentPrice: 0,
-                  dataCompleteness: "MINIMAL",
-                  dataPoints: 0,
-                  hasLiveData: false,
-                  freshness: "UNAVAILABLE",
-                  providerCoverage: "PARTIAL",
-                } as CandidateInput))}
-                liveSources={liveSources}
-                backgroundSources={backgroundMarketRadar?.sources ?? []}
-                backgroundScanAt={backgroundMarketRadar?.lastScanAt}
-                isScanning={isScanning}
-                scanResult={scanResult ?? undefined}
-                radarResult={radarResult ?? undefined}
-                onRefresh={handleScanRefresh}
-              />
-            </div>
+
           </div>
 
           {/* Right — Results */}
