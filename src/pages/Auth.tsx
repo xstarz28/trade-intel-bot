@@ -12,7 +12,20 @@ export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectA
   const [params] = useSearchParams();
   const redirect = resolveAuthRedirect(params.get("returnTo"), redirectAfterAuth);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    switch (params.get("error")) {
+      case "account_link_conflict":
+        return "Google account ini sudah terhubung ke akun Trade Intel lain. Akun tamu dan datanya tetap aman; masuklah dengan akun Google yang sebelumnya digunakan.";
+      case "google_state_invalid":
+        return "Sesi keamanan Google sudah kedaluwarsa atau tidak valid. Silakan mulai login kembali.";
+      case "google_auth_not_configured":
+        return "Login Google belum dikonfigurasi pada server. Gunakan akses tamu sementara.";
+      case "google_auth_failed":
+        return "Login Google gagal diverifikasi. Silakan coba kembali.";
+      default:
+        return null;
+    }
+  });
 
   useEffect(() => {
     if (!authLoading && isAuthenticated) navigate(redirect, { replace: true });
