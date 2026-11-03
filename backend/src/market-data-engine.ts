@@ -7,6 +7,7 @@ import {
 } from "../../src/lib/data/sec-edgar";
 import { runAnalysis, type AnalysisInput } from "../../src/lib/analysis-engine";
 import type { MarketData } from "../../src/lib/data/market-types";
+import type { FundamentalData } from "../../src/lib/data/intelligence-types";
 import { computeSmcContext } from "../../src/lib/data/smc";
 import { buildChain, buildMtfContext, selectBudgetedMtfSlots } from "../../src/lib/data/mtf";
 import { resolveQuoteObservation } from "../../src/lib/data/quote-freshness";
@@ -36,6 +37,8 @@ export interface MarketAnalysisRequest {
   instrumentType: "forex" | "crypto" | "stock" | "commodity" | "indices";
   timeframe: string;
   tradingStyle?: string;
+  /** Point-in-time provider observations loaded by the authenticated API layer. */
+  fundamentalData?: FundamentalData;
 }
 
 export interface MarketAnalysisResult {
@@ -245,6 +248,7 @@ async function calculate(request:MarketAnalysisRequest,fetchImpl:typeof fetch):P
       tradingStyle:request.tradingStyle as AnalysisInput["tradingStyle"],
       marketData,
       technicalData:technical,
+      ...(request.fundamentalData?{fundamentalData:request.fundamentalData}:{}),
     });
 
     return {
