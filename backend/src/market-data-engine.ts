@@ -307,7 +307,7 @@ export async function fetchSecFundamentalObservations(
     return { success: false, status: "INVALID_TICKER", ticker, observations: [] };
   }
   const userAgent = userAgentInput?.trim();
-  if (!userAgent || userAgent.length > 250 || /[\\r\\n]/.test(userAgent) || !/\\([^)]*@[^)]+\\)/.test(userAgent)) {
+  if (!userAgent || userAgent.length > 250 || /[\r\n]/.test(userAgent) || !/\([^)]*@[^)]+\)/.test(userAgent)) {
     return { success: false, status: "USER_AGENT_NOT_CONFIGURED", ticker, observations: [] };
   }
   const fetchJson = async <T>(url: string): Promise<T> => {
