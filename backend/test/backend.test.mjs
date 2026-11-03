@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, it } from "node:test";
-import { createAppServer } from "../src/app.mjs";
+import { createAppServer } from "../src/app.mjs";\nimport { upsertGoogleUser } from "../src/auth.mjs";
 import { openDatabase } from "../src/database.mjs";
 
 const temporaryDirectories = [];
@@ -222,6 +222,77 @@ describe("self-hosted backend", () => {
         });
         assert.equal((await afterLogout.json()).user, null);
       }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("links a guest account to Google without changing its user ID or private data", () => {
+    const database = createTemporaryDatabase();
+    try {
+      const now = Date.now();
+      database.raw.prepare(
+        "INSERT INTO users (id, name, is_anonymous, role, created_at, updated_at) VALUES (?, ?, 1, 'user', ?, ?)",
+      ).run("guest-1", "Guest Trader", now, now);
+      database.raw.prepare(
+        "INSERT INTO analyses (id,user_id,instrument,instrument_type,timeframe,bias,confidence,technical_summary,fundamental_summary,breakdown,key_levels,risk_note,data_completeness,data_flags,timestamp,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+      ).run(
+        "analysis-guest-1","guest-1","BTC-USDT","crypto","H4","BULLISH",70,
+        "Trend aligned","No catalyst",JSON.stringify({trend:1,indicator:1,fundamental:0,sentiment:0}),
+        JSON.stringify({support:"1",resistance:"2",invalidation:"0"}),"Defined risk","partial","[]",now,now,
+      );
+
+      const userId = upsertGoogleUser(database, {
+        subject: "google-subject-1",
+        email: "trader@example.test",
+        name: "Trader",
+        image: null,
+      }, { id: "guest-1", isAnonymous: true });
+
+      assert.equal(userId, "guest-1");
+      const user = database.raw.prepare("SELECT email, google_subject, is_anonymous FROM users WHERE id = ?").get(userId);
+      assert.deepEqual(user, {
+        email: "trader@example.test",
+        google_subject: "google-subject-1",
+        is_anonymous: 0,
+      });
+      assert.equal(
+        database.raw.prepare("SELECT user_id FROM analyses WHERE id = ?").get("analysis-guest-1").user_id,
+        "guest-1",
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  it("does not switch away from a guest account when Google identity belongs to another account", () => {
+    const database = createTemporaryDatabase();
+    try {
+      const now = Date.now();
+      database.raw.prepare(
+        "INSERT INTO users (id, name, email, email_verified_at, is_anonymous, role, google_subject, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 'user', ?, ?, ?)",
+      ).run("google-user-1", "Existing", "trader@example.test", now, "google-subject-1", now, now);
+      database.raw.prepare(
+        "INSERT INTO users (id, name, is_anonymous, role, created_at, updated_at) VALUES (?, ?, 1, 'user', ?, ?)",
+      ).run("guest-2", "Guest Trader", now, now);
+
+      assert.throws(
+        () => upsertGoogleUser(database, {
+          subject: "google-subject-1",
+          email: "trader@example.test",
+          name: "Trader",
+          image: null,
+        }, { id: "guest-2", isAnonymous: true }),
+        (error) => error.code === "anonymous_account_link_conflict",
+      );
+      assert.equal(
+        database.raw.prepare("SELECT is_anonymous FROM users WHERE id = ?").get("guest-2").is_anonymous,
+        1,
+      );
+      assert.equal(
+        database.raw.prepare("SELECT id FROM users WHERE google_subject = ?").get("google-subject-1").id,
+        "google-user-1",
+      );
     } finally {
       database.close();
     }
