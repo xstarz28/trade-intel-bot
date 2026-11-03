@@ -24,7 +24,7 @@ async function readBody(request) {
   } catch { throw Object.assign(new Error("Invalid JSON object"),{status:400}); }
 }
 
-export function createMarketDataHandler({database,env=process.env}) {
+export function createMarketDataHandler({database,env=process.env,fetchImpl=fetch}) {
   const buckets=new Map();
   const allowAnalysis=(userId)=>{
     const now=Date.now();
@@ -87,7 +87,7 @@ export function createMarketDataHandler({database,env=process.env}) {
         timeframe:input.timeframe,
         tradingStyle:input.tradingStyle,
         ...(fundamentalData?{fundamentalData}:{}),
-      });
+      },fetchImpl);
       json(response,200,result);
     } catch(error) {
       const status=Number.isInteger(error?.status)?error.status:503;
