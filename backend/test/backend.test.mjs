@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, it } from "node:test";
-import { createAppServer } from "../src/app.mjs";\nimport { upsertGoogleUser } from "../src/auth.mjs";
+import { createAppServer } from "../src/app.mjs";
+import { upsertGoogleUser } from "../src/auth.mjs";
 import { openDatabase } from "../src/database.mjs";
 
 const temporaryDirectories = [];
