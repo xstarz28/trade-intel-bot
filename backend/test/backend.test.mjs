@@ -252,4 +252,116 @@ describe("self-hosted backend", () => {
     }
   });
 
+
+  it("persists analysis history per user and enforces the analysis contract", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const analysis = {
+          instrument: "BTC-USDT", instrumentType: "crypto", timeframe: "H4",
+          bias: "BULLISH", confidence: 72, recommendation: "LONG",
+          technicalSummary: "Higher-timeframe structure is constructive.",
+          fundamentalSummary: "No material negative catalyst identified.",
+          breakdown: { trend: 70, indicator: 68, fundamental: 60, sentiment: 55 },
+          keyLevels: { support: "65000", resistance: "70000", invalidation: "63000" },
+          riskNote: "Wait for confirmation.", dataCompleteness: "COMPLETE", dataFlags: [],
+          price: 67000, dataSource: "OKX",
+        };
+        const saved = await fetch(`${baseUrl}/api/v1/analyses`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify(analysis),
+        });
+        assert.equal(saved.status, 201);
+        const savedItem = (await saved.json()).item;
+        assert.equal(savedItem.instrument, "BTC-USDT");
+        assert.equal(savedItem.breakdown.trend, 70);
+
+        const history = await fetch(`${baseUrl}/api/v1/analyses`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal((await history.json()).items.length, 1);
+
+        const otherSignIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const otherCookie = otherSignIn.headers.get("set-cookie").split(";")[0];
+        const otherHistory = await fetch(`${baseUrl}/api/v1/analyses`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: otherCookie },
+        });
+        assert.equal((await otherHistory.json()).items.length, 0);
+
+        const invalid = await fetch(`${baseUrl}/api/v1/analyses`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ ...analysis, breakdown: { trend: "bad" } }),
+        });
+        assert.equal(invalid.status, 400);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("preserves journal ownership and validates lifecycle transitions", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const created = await fetch(`${baseUrl}/api/v1/journal`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            instrument: "ETH-USDT", instrumentType: "crypto", timeframe: "H1",
+            style: "SWING", status: "PLANNED",
+            analysisSnapshot: {
+              analysisId: "analysis-1", decision: "WAIT", bias: "BULLISH", confidence: 65,
+              technicalSummary: "Structure pending confirmation.",
+              fundamentalSummary: "No strong catalyst.", dataCompleteness: "PARTIAL",
+            },
+            entry: 3500, stopLoss: 3400, takeProfit: 3800, riskReward: 3,
+          }),
+        });
+        assert.equal(created.status, 201);
+        const entry = (await created.json()).item;
+        assert.equal(entry.status, "PLANNED");
+
+        const opened = await fetch(`${baseUrl}/api/v1/journal/${entry._id}/transition`, {
+          method: "PATCH",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ newStatus: "OPEN" }),
+        });
+        assert.equal(opened.status, 200);
+        assert.equal((await opened.json()).item.status, "OPEN");
+
+        const invalidTransition = await fetch(`${baseUrl}/api/v1/journal/${entry._id}/transition`, {
+          method: "PATCH",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ newStatus: "PLANNED" }),
+        });
+        assert.equal(invalidTransition.status, 409);
+
+        const otherSignIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const otherCookie = otherSignIn.headers.get("set-cookie").split(";")[0];
+        const crossUser = await fetch(`${baseUrl}/api/v1/journal/${entry._id}`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: otherCookie },
+        });
+        assert.equal(crossUser.status, 404);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
 });
