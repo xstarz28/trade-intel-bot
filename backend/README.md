@@ -11,12 +11,14 @@ This backend uses Node.js built-in modules and SQLite. It does not call Convex, 
 - opaque random session tokens stored only as SHA-256 hashes;
 - HTTP-only session cookies, origin checks for authentication mutations, anonymous sign-in, sign-out, and session inspection;
 - Google OAuth authorization-code flow with state, nonce, PKCE, and server-side RS256 ID-token signature/claim validation;
+- user-scoped analysis history endpoints with schema validation and bounded 100-record retention;
+- user-scoped journal create/list/get/update/delete endpoints with the existing lifecycle transition rules;
 - Docker Compose with a persistent named SQLite data volume;
 - automated tests using Node's built-in test runner.
 
 ## Still not a complete Convex replacement
 
-The frontend still uses Convex. Domain HTTP routes and repositories for analyses, journal, positions, alerts, notifications, and historical records are not yet wired. Existing Convex data export/import, Google OAuth credential cutover, end-to-end parity tests, and production deployment remain outstanding. Do not switch the production frontend yet.
+The frontend still uses Convex. Positions, alert history/rules, notifications/preferences, stream cursors, historical intelligence, runtime-health routes, and fundamental/SEC observation repositories are not yet wired. Existing Convex data export/import, Google OAuth credential cutover, frontend adapter replacement, end-to-end parity tests, and production deployment remain outstanding. Do not switch the production frontend yet.
 
 ## Requirements
 
@@ -62,6 +64,10 @@ Endpoints:
 - anonymous sign-in: POST http://127.0.0.1:8787/api/v1/auth/anonymous
 - sign-out: POST http://127.0.0.1:8787/api/v1/auth/logout
 - Google sign-in start: GET http://127.0.0.1:8787/api/v1/auth/google
+- analysis history: GET/POST/DELETE http://127.0.0.1:8787/api/v1/analyses
+- journal: GET/POST http://127.0.0.1:8787/api/v1/journal
+- journal entry: GET/PATCH/DELETE http://127.0.0.1:8787/api/v1/journal/{id}
+- journal lifecycle: PATCH http://127.0.0.1:8787/api/v1/journal/{id}/transition
 
 ## Storage decision
 
