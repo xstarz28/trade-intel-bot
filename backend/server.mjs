@@ -1,5 +1,5 @@
 import { mkdirSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAppServer } from "./src/app.mjs";
 import { openDatabase } from "./src/database.mjs";
@@ -7,12 +7,9 @@ import { openDatabase } from "./src/database.mjs";
 const root = dirname(fileURLToPath(import.meta.url));
 const host = process.env.HOST ?? "127.0.0.1";
 const port = Number.parseInt(process.env.PORT ?? "8787", 10);
-const databasePath = resolve(process.env.DB_PATH ?? joinPath(root, "data/trade-intel.sqlite"));
+const databasePath = resolve(process.env.DB_PATH ?? join(root, "data", "trade-intel.sqlite"));
 const migrationsDirectory = resolve(root, "migrations");
 
-function joinPath(base, relative) {
-  return new URL(relative, `file://${base.replace(/\\/g, "/")}/`).pathname;
-}
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
   throw new Error("PORT must be an integer between 1 and 65535.");
