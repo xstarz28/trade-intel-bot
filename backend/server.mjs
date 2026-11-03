@@ -9,6 +9,7 @@ const host = process.env.HOST ?? "127.0.0.1";
 const port = Number.parseInt(process.env.PORT ?? "8787", 10);
 const databasePath = resolve(process.env.DB_PATH ?? join(root, "data", "trade-intel.sqlite"));
 const migrationsDirectory = resolve(root, "migrations");
+const staticDirectory = resolve(process.env.STATIC_DIR ?? join(root, "..", "dist"));
 
 
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
@@ -17,10 +18,11 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 
 mkdirSync(dirname(databasePath), { recursive: true });
 const database = openDatabase(databasePath, migrationsDirectory);
-const server = createAppServer({ database });
+const server = createAppServer({ database, staticDirectory });
 
 server.listen(port, host, () => {
-  console.info(`Trade Intel backend listening on http://${host}:${port}`);
+  console.info(`Trade Intel self-hosted app listening on http://${host}:${port}`);
+  console.info(`Static frontend: ${staticDirectory}`);
   console.info(`SQLite database: ${databasePath}`);
 });
 
