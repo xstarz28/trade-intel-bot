@@ -1,4 +1,6 @@
 import { calculateTechnical } from "../../src/lib/data/technical";
+import { runAnalysis, type AnalysisInput } from "../../src/lib/analysis-engine";
+import type { MarketData } from "../../src/lib/data/market-types";
 import { computeSmcContext } from "../../src/lib/data/smc";
 import { buildChain, buildMtfContext, selectBudgetedMtfSlots } from "../../src/lib/data/mtf";
 import { resolveQuoteObservation } from "../../src/lib/data/quote-freshness";
@@ -52,6 +54,8 @@ export interface MarketAnalysisResult {
     dataFreshness: "realtime" | "delayed" | "stale" | "unavailable";
   };
   technical?: TechnicalData;
+  /** Authoritative future-facing decision, trade plan, risk gates and forecast. */
+  analysis?: ReturnType<typeof runAnalysis>;
 }
 
 const INDEX_SYMBOLS: Record<string, string> = {
@@ -208,17 +212,40 @@ async function calculate(request:MarketAnalysisRequest,fetchImpl:typeof fetch):P
       technical.crossAsset=crossAsset;
     }
 
+    const priceSnapshot = {
+      price,
+      timestamp:observation.priceTimestamp,
+      source:provider,
+      ...(observation.hasLiveQuote&&quote?.bid!==undefined?{bid:quote.bid}:{}),
+      ...(observation.hasLiveQuote&&quote?.ask!==undefined?{ask:quote.ask}:{}),
+    };
+    const marketData:MarketData = {
+      instrument:symbol,
+      instrumentType:request.instrumentType,
+      provider,
+      fetchTimestamp:now,
+      price:priceSnapshot,
+      candles,
+      timeframe:request.timeframe,
+      higherTimeframe:mtf.htfTimeframe,
+      dataFreshness:observation.dataFreshness,
+    };
+    // Reuse the existing decision engine verbatim. Do not invent fundamental
+    // observations here: absent provider evidence remains unavailable/partial.
+    const analysis = runAnalysis({
+      instrument:symbol,
+      instrumentType:request.instrumentType,
+      timeframe:request.timeframe as AnalysisInput["timeframe"],
+      tradingStyle:request.tradingStyle as AnalysisInput["tradingStyle"],
+      marketData,
+      technicalData:technical,
+    });
+
     return {
       success:true,
-      data:{
-        instrument:symbol,instrumentType:request.instrumentType,provider,fetchTimestamp:now,
-        price:{price,timestamp:observation.priceTimestamp,source:provider,
-          ...(observation.hasLiveQuote&&quote?.bid!==undefined?{bid:quote.bid}:{}),
-          ...(observation.hasLiveQuote&&quote?.ask!==undefined?{ask:quote.ask}:{})},
-        candles,timeframe:request.timeframe,higherTimeframe:mtf.htfTimeframe,
-        dataFreshness:observation.dataFreshness,
-      },
+      data:marketData,
       technical,
+      analysis,
     };
   } catch(error) {
     const code=(error as {code?:string})?.code;
