@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -115,6 +115,50 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.analysis.fundamentalData.provider, "sec-edgar");
     assert.equal(result.analysis.fundamentalData.earningsPerShare, 6.4);
     assert.equal(result.analysis.fundamentalData.pointInTimeHistory.status, "PERSISTED");
+  });
+
+  it("normalizes Alpha Vantage stock news, sentiment, macro and fundamentals without exposing the API key", async () => {
+    const apiKey = "test-secret-alpha-key";
+    const feed = Array.from({ length: 8 }, (_, index) => ({
+      title: "AAPL market update " + index,
+      url: "https://example.test/news/" + index,
+      source: "Test Wire",
+      time_published: "20261103090000",
+      overall_sentiment_score: "0.35",
+      overall_sentiment_label: "Somewhat-Bullish",
+      summary: "Technology earnings and growth outlook.",
+    }));
+    const fetchImpl = async (input) => {
+      const url = new URL(String(input));
+      const fn = url.searchParams.get("function");
+      const payload = fn === "NEWS_SENTIMENT"
+        ? { feed }
+        : fn === "OVERVIEW"
+          ? { Symbol: "AVTEST", Name: "Alpha Test Corp", PERatio: "18.5", EPS: "4.2", ProfitMargin: "0.22" }
+          : { quarterlyEarnings: [{ fiscalDateEnding: "2026-09-30", reportedDate: "2026-10-28", reportedEPS: "1.1", reportedRevenue: "1200000000" }] };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    };
+
+    const result = await fetchAlphaVantageIntelligence("AVTEST", apiKey, fetchImpl);
+    assert.equal(result.success, true);
+    assert.equal(result.dataAvailable.news, true);
+    assert.equal(result.dataAvailable.fundamentals, true);
+    assert.equal(result.sentiment.confidence, "high");
+    assert.equal(result.fundamentals.provider, "alpha-vantage");
+    assert.equal(result.fundamentals.peRatio, 18.5);
+    assert.equal(result.fundamentals.latestEarnings.eps, 1.1);
+    assert.equal(JSON.stringify(result).includes(apiKey), false);
+  });
+
+  it("fails closed when Alpha Vantage credentials are absent", async () => {
+    let called = false;
+    const result = await fetchAlphaVantageIntelligence("AVNOKEY", undefined, async () => {
+      called = true;
+      throw new Error("network must not be called");
+    });
+    assert.equal(result.success, false);
+    assert.equal(result.errorCode, "AUTH_ERROR");
+    assert.equal(called, false);
   });
 
   it("fails closed when no exact provider symbol exists", async () => {
