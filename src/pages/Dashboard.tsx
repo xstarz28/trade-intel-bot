@@ -156,6 +156,7 @@ export default function Dashboard() {
   const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
   const fetchOkxOrderBook = useAction(api.okx.fetchOkxOrderBook);
   const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
+  const fetchOkxFuturesOpenInterest = useAction(api.okx.fetchOkxFuturesOpenInterest);
 
   const handleSignOut = async () => {
     await signOut();
@@ -284,11 +285,8 @@ export default function Dashboard() {
           // merely because its provider is preferred.
           const requestedNativeTimeframe = normalizeScanTimeframe(input.timeframe);
           const cachedNativeLive =
-            input.instrumentType === "crypto"
-              ? (
-                  requestedNativeTimeframe
-                    ? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
-                    : undefined
+            input.instrumentType === "crypto" && requestedNativeTimeframe
+              ? findLiveSnapshotForInstrument(liveSourceRef.current, input.instrument)
               : undefined;
           // A fresh H1 quote is not a substitute for an M5 or H4 analysis.
           const nativeLive =
@@ -957,14 +955,6 @@ export default function Dashboard() {
       : undefined,
   })), []);
 
-
-  const liveSources: LiveCandidateSource[] = useMemo(
-    () => mergeLiveSourcesByTimeframe(
-      liveSourceRef.current.values(),
-      liveRecommendationSourceRef.current.values(),
-    ),
-    [currentResult, liveSourcesVersion],
-  );
 
 
 
