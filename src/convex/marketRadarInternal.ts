@@ -37,6 +37,8 @@ export const claimScan = internalMutation({
         previousResults: existing.results,
         lastScanAt: existing.lastScanAt,
         candidateCacheVersion: existing.candidateCacheVersion ?? 0,
+        lastRankedAt: existing.lastRankedAt ?? 0,
+        metrics: existing.metrics,
       };
     }
 
