@@ -62,7 +62,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
     }
     try {
       const input=await readBody(request);
-      const {analyzeMarket}=await import("../dist/market-data-engine.mjs");
+      const {analyzeMarket,fetchAlphaVantageIntelligence}=await import("../dist/market-data-engine.mjs");
       const instrument=typeof input.instrument==="string"?input.instrument.trim().toUpperCase():"";
       const instrumentType=input.instrumentType;
       let fundamentalData;
@@ -81,12 +81,22 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
           };
         }
       }
+      let sentimentData;
+      let macroData;
+      if(instrumentType==="stock"&&env.ALPHA_VANTAGE_API_KEY?.trim()) {
+        const intelligence=await fetchAlphaVantageIntelligence(instrument,env.ALPHA_VANTAGE_API_KEY,fetchImpl);
+        if(intelligence.fundamentals?.available) fundamentalData=intelligence.fundamentals;
+        if(intelligence.sentiment?.confidence!=="unavailable") sentimentData=intelligence.sentiment;
+        if(intelligence.macro?.confidence!=="unavailable") macroData=intelligence.macro;
+      }
       const result=await analyzeMarket({
         instrument,
         instrumentType,
         timeframe:input.timeframe,
         tradingStyle:input.tradingStyle,
         ...(fundamentalData?{fundamentalData}:{}),
+        ...(sentimentData?{sentimentData}:{}),
+        ...(macroData?{macroData}:{}),
       },fetchImpl);
       json(response,200,result);
     } catch(error) {
