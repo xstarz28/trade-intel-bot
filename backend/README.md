@@ -14,12 +14,13 @@ This backend uses Node.js built-in modules and SQLite. It does not call Convex, 
 - user-scoped analysis history endpoints with schema validation and bounded 100-record retention;
 - user-scoped journal create/list/get/update/delete endpoints with the existing lifecycle transition rules;
 - user-scoped monitored-position upsert/list/get/delete, bounded position-alert history and acknowledgement, and stream-cursor persistence;
+- custom alert-rule CRUD, bounded rule-alert history, deduplicated notifications with read/dismiss lifecycle, unread counts, and per-user notification preferences;
 - Docker Compose with a persistent named SQLite data volume;
 - automated tests using Node's built-in test runner.
 
 ## Still not a complete Convex replacement
 
-The frontend still uses Convex. Custom alert rules, rule-alert history, notifications/preferences, historical intelligence, runtime-health routes, and fundamental/SEC observation repositories are not yet wired. Monitored positions, position-alert history, and stream cursors are wired. Existing Convex data export/import, Google OAuth credential cutover, frontend adapter replacement, end-to-end parity tests, and production deployment remain outstanding. Do not switch the production frontend yet.
+The frontend still uses Convex. Historical intelligence, runtime-health routes, and fundamental/SEC observation repositories are not yet wired. Position protection, custom alert rules/history, notifications/preferences, analysis history, and journal routes are wired. Existing Convex data export/import, Google OAuth credential cutover, frontend adapter replacement, end-to-end parity tests, and production deployment remain outstanding. Do not switch the production frontend yet.
 
 ## Requirements
 
@@ -74,6 +75,11 @@ Endpoints:
 - position alerts: GET/POST http://127.0.0.1:8787/api/v1/positions/{positionId}/alerts
 - acknowledge alert: POST http://127.0.0.1:8787/api/v1/alerts/{alertId}/acknowledge
 - stream cursors: GET/PUT http://127.0.0.1:8787/api/v1/stream-cursors
+- alert rules: GET/POST http://127.0.0.1:8787/api/v1/alert-rules; PATCH/DELETE /{ruleId}
+- rule alert history: GET/POST/DELETE http://127.0.0.1:8787/api/v1/alert-rules/history
+- notifications: GET/POST http://127.0.0.1:8787/api/v1/notifications; GET /unread and /unread-count
+- notification lifecycle: POST /{notificationId}/read, /{notificationId}/dismiss, /read-all; DELETE /{notificationId}
+- notification preferences: GET/PUT/DELETE http://127.0.0.1:8787/api/v1/notification-preferences
 
 ## Storage decision
 
