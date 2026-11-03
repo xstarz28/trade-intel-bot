@@ -412,11 +412,6 @@ export function InstrumentInput({
               </SelectContent>
               </Select>
             )}
-            {form.instrumentType === "crypto" &&
-              !manualSearch &&
-              filteredInstruments.length === 0 &&
-
-
             <button
               type="button"
               data-testid="manual-search-toggle"
