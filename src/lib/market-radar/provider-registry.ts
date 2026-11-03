@@ -15,17 +15,13 @@
 import type { AssetClass } from "@/lib/data/universal/types";
 import {
   executeLiveRequest,
-  type LiveRequestParams,
-  type LiveRequestResult,
-  type Transport,
 } from "@/lib/data/universal/live/client";
 import {
   checkCredentials,
-  type EnvReader,
 } from "@/lib/data/universal/live/credentials";
-import { type LiveStatus, isLiveStatus } from "@/lib/data/universal/live/types";
-import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
-import type { MarketSnapshot, FreshnessLevel } from "@/lib/market-radar/types";
+
+
+import type { MarketSnapshot } from "@/lib/market-radar/types";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 import { assessFreshness } from "@/lib/market-radar/freshness";
 
@@ -296,7 +292,6 @@ function buildCoinGlassAdapter(): ProviderAdapter {
       if (!symbol) return null;
       try {
         const baseUrl = "https://open-api-v3.coinglass.com/api";
-        const headers = { accept: "application/json", cg_api_key: apiKey };
         const [oiRes, fundingRes] = await Promise.allSettled([
           defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`),
           defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`),
