@@ -7,7 +7,16 @@ import {
 } from "../../src/lib/data/sec-edgar";
 import { runAnalysis, type AnalysisInput } from "../../src/lib/analysis-engine";
 import type { MarketData } from "../../src/lib/data/market-types";
-import type { FundamentalData } from "../../src/lib/data/intelligence-types";
+import type { FundamentalData, SentimentData, MacroData } from "../../src/lib/data/intelligence-types";
+import {
+  normalizeNewsArticles,
+  aggregateSentiment,
+  normalizeFundamentals,
+  buildMacroContext,
+  type RawOverview,
+  type RawEarnings,
+  type RawNewsFeed,
+} from "../../src/lib/data/alpha-vantage/normalize";
 import { computeSmcContext } from "../../src/lib/data/smc";
 import { buildChain, buildMtfContext, selectBudgetedMtfSlots } from "../../src/lib/data/mtf";
 import { resolveQuoteObservation } from "../../src/lib/data/quote-freshness";
@@ -39,6 +48,8 @@ export interface MarketAnalysisRequest {
   tradingStyle?: string;
   /** Point-in-time provider observations loaded by the authenticated API layer. */
   fundamentalData?: FundamentalData;
+  sentimentData?: SentimentData;
+  macroData?: MacroData;
 }
 
 export interface MarketAnalysisResult {
@@ -79,6 +90,75 @@ const INDEX_SYMBOLS: Record<string, string> = {
 const TIMEFRAMES = new Set(["M1","M5","M15","H1","H4","D1","W1"]);
 const cache = new Map<string,{value:MarketAnalysisResult;expiresAt:number}>();
 const inflight = new Map<string,Promise<MarketAnalysisResult>>();
+
+const alphaVantageCache = new Map<string,{value:AlphaVantageIntelligenceResult;expiresAt:number}>();
+const alphaVantageInflight = new Map<string,Promise<AlphaVantageIntelligenceResult>>();
+
+export interface AlphaVantageIntelligenceResult {
+  success:boolean;
+  sentiment?:SentimentData;
+  fundamentals?:FundamentalData;
+  macro?:MacroData;
+  dataAvailable:{news:boolean;fundamentals:boolean;macro:boolean};
+  error?:string;
+  errorCode?:"API_UNAVAILABLE"|"RATE_LIMIT"|"AUTH_ERROR"|"NO_DATA";
+}
+
+/** Fetch stock news/sentiment and company fundamentals using the existing shared normalizers. */
+export async function fetchAlphaVantageIntelligence(
+  symbolInput:string,
+  apiKey:string|undefined,
+  fetchImpl:typeof fetch=fetch,
+):Promise<AlphaVantageIntelligenceResult> {
+  const symbol=symbolInput.trim().toUpperCase();
+  if(!/^[A-Z0-9.-]{1,15}$/.test(symbol)) return {success:false,dataAvailable:{news:false,fundamentals:false,macro:false},error:"A valid stock ticker is required.",errorCode:"NO_DATA"};
+  if(!apiKey?.trim()) return {success:false,dataAvailable:{news:false,fundamentals:false,macro:false},error:"Alpha Vantage API key is not configured.",errorCode:"AUTH_ERROR"};
+  const cached=alphaVantageCache.get(symbol);
+  if(cached&&cached.expiresAt>Date.now()) return cached.value;
+  const pending=alphaVantageInflight.get(symbol);
+  if(pending) return pending;
+  const task=(async()=>{
+    const request=async(params:Record<string,string>)=>{
+      const url=new URL("https://www.alphavantage.co/query");
+      url.search=new URLSearchParams({...params,apikey:apiKey}).toString();
+      const response=await fetchImpl(url,{headers:{accept:"application/json"},signal:AbortSignal.timeout(10_000)});
+      if(!response.ok) throw new Error("Alpha Vantage HTTP "+response.status);
+      const payload=await response.json() as Record<string,unknown>;
+      const providerMessage=[payload.Note,payload.Information,payload["Error Message"]].find(x=>typeof x==="string");
+      if(providerMessage) throw new Error(String(providerMessage));
+      return payload;
+    };
+    const [newsResult,overviewResult,earningsResult]=await Promise.allSettled([
+      request({function:"NEWS_SENTIMENT",tickers:symbol,sort:"LATEST",limit:"50"}),
+      request({function:"OVERVIEW",symbol}),
+      request({function:"EARNINGS",symbol}),
+    ]);
+    const errors=[newsResult,overviewResult,earningsResult]
+      .filter((x):x is PromiseRejectedResult=>x.status==="rejected")
+      .map(x=>x.reason instanceof Error?x.reason.message:String(x.reason));
+    const newsPayload=newsResult.status==="fulfilled"?newsResult.value:undefined;
+    const overview=overviewResult.status==="fulfilled"?overviewResult.value as RawOverview:undefined;
+    const earnings=earningsResult.status==="fulfilled"?earningsResult.value as RawEarnings:undefined;
+    const feed=Array.isArray(newsPayload?.feed)?newsPayload.feed as RawNewsFeed["feed"]:undefined;
+    const articles=normalizeNewsArticles(feed,symbol);
+    const sentiment=aggregateSentiment(articles,"alpha-vantage");
+    const macro=buildMacroContext(articles,"stock");
+    const fundamentals=normalizeFundamentals(overview??null,earnings??null,"stock",symbol);
+    const dataAvailable={news:articles.length>0,fundamentals:fundamentals.available,macro:macro.confidence!=="unavailable"};
+    const result:AlphaVantageIntelligenceResult={
+      success:Object.values(dataAvailable).some(Boolean),sentiment,fundamentals,macro,dataAvailable,
+      ...(errors.length?{
+        error:errors.join("; "),
+        errorCode:errors.some(x=>/rate limit|call frequency/i.test(x))?"RATE_LIMIT":"API_UNAVAILABLE",
+      }:{}),
+    };
+    alphaVantageCache.set(symbol,{value:result,expiresAt:Date.now()+(result.success?5*60_000:30_000)});
+    return result;
+  })().finally(()=>alphaVantageInflight.delete(symbol));
+  alphaVantageInflight.set(symbol,task);
+  return task;
+}
+
 
 function ttl(timeframe:string):number {
   switch(timeframe) {
@@ -249,6 +329,8 @@ async function calculate(request:MarketAnalysisRequest,fetchImpl:typeof fetch):P
       marketData,
       technicalData:technical,
       ...(request.fundamentalData?{fundamentalData:request.fundamentalData}:{}),
+      ...(request.sentimentData?{sentimentData:request.sentimentData}:{}),
+      ...(request.macroData?{macroData:request.macroData}:{}),
     });
 
     return {
@@ -277,7 +359,7 @@ export async function analyzeMarket(request:MarketAnalysisRequest,fetchImpl:type
     !["forex","crypto","stock","commodity","indices"].includes(normalized.instrumentType)) {
     return {success:false,error:"Instrument, asset class, or timeframe is invalid.",errorCode:"INVALID_INPUT"};
   }
-  const key=[normalized.instrumentType,normalized.instrument,normalized.timeframe,normalized.tradingStyle??"",normalized.fundamentalData?.provider??"",normalized.fundamentalData?.timestamp??""].join("|");
+  const key=[normalized.instrumentType,normalized.instrument,normalized.timeframe,normalized.tradingStyle??"",normalized.fundamentalData?.provider??"",normalized.fundamentalData?.timestamp??"",normalized.sentimentData?.timestamp??"",normalized.macroData?.timestamp??""].join("|");
   const cached=cache.get(key);
   if(cached&&cached.expiresAt>Date.now()) return cached.value;
   const pending=inflight.get(key);
