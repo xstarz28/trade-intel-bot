@@ -165,6 +165,7 @@ export const persistScan = internalMutation({
       lastScanAt: args.lastScanAt,
       updatedAt: args.lastScanAt,
       candidateCacheVersion: 1,
+      lastRankedAt: args.lastRankedAt,
     };
     if (state) await ctx.db.patch(state._id, patch);
     else await ctx.db.insert("marketRadarState", { scope: GLOBAL_SCOPE, ...patch });
