@@ -76,7 +76,7 @@ export const listAllSources = internalQuery({
 
 export const listSourcesForInstrument = internalQuery({
   args: { instrument: v.string() },
-  handler: async (ctx): Promise<LiveCandidateSource[]> => {
+  handler: async (ctx, { instrument }): Promise<LiveCandidateSource[]> => {
     const rows = await ctx.db
       .query("marketRadarSources")
       .withIndex("by_instrument", (q) => q.eq("instrument", instrument))
