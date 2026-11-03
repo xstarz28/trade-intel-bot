@@ -576,4 +576,25 @@ describe("self-hosted backend", () => {
     }
   });
 
+
+  it("rate-limits repeated anonymous account creation from one client", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const statuses = [];
+        for (let index = 0; index < 11; index += 1) {
+          const response = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+            method: "POST", headers: { Origin: env.APP_ORIGIN },
+          });
+          statuses.push(response.status);
+        }
+        assert.deepEqual(statuses.slice(0, 10), Array(10).fill(201));
+        assert.equal(statuses[10], 429);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
 });
