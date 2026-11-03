@@ -448,7 +448,11 @@ export const runScheduledScan = internalAction({
             instrument,
             timeframe,
             assetClass: source.assetClass,
-            payload: toRadarCandidateSource(source, relatedSources),
+            // Convex values cannot contain undefined; persist the same
+            // JSON-safe shape used by the full source snapshot writer.
+            payload: JSON.parse(JSON.stringify(
+              toRadarCandidateSource(source, relatedSources),
+            )) as RadarCandidateSource,
             updatedAt: now,
           });
         }
