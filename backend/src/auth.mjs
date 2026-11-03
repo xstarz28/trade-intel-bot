@@ -228,7 +228,7 @@ export async function verifyGoogleIdToken(idToken, { clientId, nonce, fetchImpl 
   };
 }
 
-function upsertGoogleUser(database, profile) {
+export function upsertGoogleUser(database, profile, currentUser = null) {
   const now = Date.now();
   const existing = database.raw.prepare(
     "SELECT id, google_subject FROM users WHERE google_subject = ? OR email = ? COLLATE NOCASE LIMIT 1",
@@ -236,6 +236,26 @@ function upsertGoogleUser(database, profile) {
 
   if (existing?.google_subject && existing.google_subject !== profile.subject) {
     throw new Error("This email is already linked to a different Google account.");
+  }
+
+  // Preserve a guest's existing data by upgrading that same account when the
+  // Google identity is not already attached to another account.
+  if (currentUser?.isAnonymous) {
+    if (existing && existing.id !== currentUser.id) {
+      const error = new Error("This Google account already has a separate Trade Intel account.");
+      error.code = "anonymous_account_link_conflict";
+      throw error;
+    }
+    const result = database.raw.prepare(`
+      UPDATE users
+      SET name = ?, image = ?, email = ?, email_verified_at = ?, is_anonymous = 0,
+          google_subject = ?, updated_at = ?
+      WHERE id = ? AND is_anonymous = 1
+    `).run(profile.name, profile.image, profile.email, now, profile.subject, now, currentUser.id);
+    if (result.changes !== 1) {
+      throw new Error("The anonymous account could not be linked safely.");
+    }
+    return currentUser.id;
   }
 
   if (existing) {
@@ -415,12 +435,15 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
           nonce: flow.nonce,
           fetchImpl,
         });
-        const userId = upsertGoogleUser(database, profile);
+        const currentUser = sessionUser(database, request, production);\n        const userId = upsertGoogleUser(database, profile, currentUser);
         issueSession(database, response, userId, production);
         redirect(response, new URL("/dashboard", appOrigin).toString());
       } catch (error) {
         console.error("[auth] Google sign-in failed:", error);
-        redirect(response, new URL("/auth?error=google_auth_failed", appOrigin).toString());
+        const errorCode = error?.code === "anonymous_account_link_conflict"
+          ? "account_link_conflict"
+          : "google_auth_failed";
+        redirect(response, new URL(`/auth?error=${errorCode}`, appOrigin).toString());
       }
       return true;
     }
