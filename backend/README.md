@@ -15,12 +15,17 @@ This backend uses Node.js built-in modules and SQLite. It does not call Convex, 
 - user-scoped journal create/list/get/update/delete endpoints with the existing lifecycle transition rules;
 - user-scoped monitored-position upsert/list/get/delete, bounded position-alert history and acknowledgement, and stream-cursor persistence;
 - custom alert-rule CRUD, bounded rule-alert history, deduplicated notifications with read/dismiss lifecycle, unread counts, and per-user notification preferences;
+- authenticated on-demand OHLCV retrieval for mapped instruments through public OKX Spot and Yahoo Finance sources, reusing the existing technical-indicator, SMC, MTF, freshness, and cross-asset calculation modules via a build-time bundle;
 - Docker Compose with a persistent named SQLite data volume;
 - automated tests using Node's built-in test runner.
 
+## Market-data scope and limits
+
+The first independent market-data endpoint is `POST /api/v1/market-data/analyze`. It reuses the repository's shared calculation modules instead of reimplementing indicators. It uses public OKX Spot candles/ticker for spot crypto and exact Yahoo Finance ticker mappings for supported stocks, forex, commodities, and indices. MTF reads are budgeted; missing or unmapped sources remain explicitly unavailable. It does not silently replace an unsupported derivative with spot data. This lane is not yet feature-parity with the Convex action: perpetual/futures contracts, the full Twelve Data credential path, and other provider-specific intelligence actions still need extraction.
+
 ## Still not a complete Convex replacement
 
-The frontend still uses Convex. Historical intelligence, runtime-health routes, and fundamental/SEC observation repositories are not yet wired. Position protection, custom alert rules/history, notifications/preferences, analysis history, and journal routes are wired. Existing Convex data export/import, Google OAuth credential cutover, frontend adapter replacement, end-to-end parity tests, and production deployment remain outstanding. Do not switch the production frontend yet.
+The frontend still uses Convex. Historical intelligence, runtime-health routes, fundamental/SEC observation repositories, and the remaining derivative-specific market-data paths are not yet wired. Position protection, custom alert rules/history, notifications/preferences, analysis history, and journal routes are wired. Existing Convex data export/import, Google OAuth credential cutover, frontend adapter replacement, end-to-end parity tests, and production deployment remain outstanding. Do not switch the production frontend yet.
 
 ## Requirements
 
@@ -37,9 +42,10 @@ node backend/server.mjs
 
 The service binds to `127.0.0.1:8787` by default and stores its database at `backend/data/trade-intel.sqlite`.
 
-Run tests and syntax checks:
+Build the shared market-data engine, run tests, and syntax-check the backend:
 
 ```sh
+npm run backend:build
 node --test backend/test/*.test.mjs
 npm --prefix backend run check
 ```
@@ -80,6 +86,7 @@ Endpoints:
 - notifications: GET/POST http://127.0.0.1:8787/api/v1/notifications; GET /unread and /unread-count
 - notification lifecycle: POST /{notificationId}/read, /{notificationId}/dismiss, /read-all; DELETE /{notificationId}
 - notification preferences: GET/PUT/DELETE http://127.0.0.1:8787/api/v1/notification-preferences
+- on-demand market analysis: POST http://127.0.0.1:8787/api/v1/market-data/analyze
 
 ## Storage decision
 
