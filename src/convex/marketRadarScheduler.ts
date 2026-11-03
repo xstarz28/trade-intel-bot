@@ -10,7 +10,10 @@ import { anyApi } from "convex/server";
 import { internalAction, query } from "./_generated/server";
 import { DEFAULT_UNIVERSE } from "../lib/market-radar/universe";
 import { ALL_SCAN_HORIZONS } from "../lib/liveScanner";
-import { selectBackgroundScanBatch } from "../lib/market-radar/background-schedule";
+import {
+  selectBackgroundScanBatch,
+  shouldRefreshRadarRanking,
+} from "../lib/market-radar/background-schedule";
 import {
   scanRadar,
   type RadarState,
@@ -30,7 +33,6 @@ import { parseDeFiLlamaResult } from "../lib/data/crypto/defillama-adapter";
 const GLOBAL_SCOPE = "global";
 const SOURCE_LIMIT = 300;
 const CANDLES_TO_PERSIST = 40;
-const RADAR_RANKING_REFRESH_INTERVAL_MS = 30 * 60_000;
 
 function sourceKey(source: LiveCandidateSource): string {
   const timeframe = source.marketData?.timeframe?.trim().toUpperCase() ?? "UNKNOWN";
@@ -148,6 +150,7 @@ export const getLatest = query({
 
     return {
       lastScanAt: state.lastScanAt,
+      lastRankedAt: state.lastRankedAt ?? 0,
       metrics: state.metrics,
       errors: state.errors,
       sources: rows.map((row) => row.payload as LiveCandidateSource),
@@ -461,8 +464,11 @@ export const runScheduledScan = internalAction({
         }
       }
 
-      const shouldRefreshRanking = bootstrapCandidateCache ||
-        now - claim.lastRankedAt >= RADAR_RANKING_REFRESH_INTERVAL_MS;
+      const shouldRefreshRanking = shouldRefreshRadarRanking(
+        now,
+        claim.lastRankedAt,
+        claim.candidateCacheVersion,
+      );
       let results = claim.previousResults;
       let diffs: unknown[] = [];
       let metrics: Record<string, number> = claim.metrics ?? {};
