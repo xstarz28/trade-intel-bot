@@ -74,23 +74,23 @@ The schema contains user ownership references and indexes. A replacement must pr
 
 ## Self-hosted foundation started on this branch
 
-The isolated `backend/` directory now contains an initial TypeScript/Hono service, a PostgreSQL connection pool, liveness/readiness endpoints, graceful shutdown, Docker Compose with a persistent PostgreSQL volume, a container build, and four health-endpoint tests. A dedicated GitHub Actions workflow runs backend tests and a TypeScript build.
+The isolated `backend/` directory now contains a dependency-free Node.js HTTP service using the built-in `node:sqlite` module, liveness/readiness endpoints, WAL-backed persistent storage, checksummed transactional SQL migrations, graceful shutdown, Docker Compose with a persistent SQLite volume, and five automated tests. A dedicated GitHub Actions run on PR #252 passed all five tests and JavaScript syntax checks on Node 22.23.4.
 
-This first slice deliberately exposes health endpoints only. It does not yet implement domain routes, authentication, SQL migrations, data export/import, or frontend integration. It has not been declared production-ready and must pass CI before it is considered validated. No frontend, existing Convex function, production environment variable, or deployed service was changed.
+This first slice deliberately exposes health endpoints and a generic metadata table only. It does not yet implement domain routes, authentication, authorization, the full application schema, data export/import, or frontend integration. It has not been declared production-ready. No frontend, existing Convex function, production environment variable, or deployed service was changed.
 
 ## Proposed self-hosted target
 
 Use open-source components that can run on a machine we control:
 
-- **Application/API:** TypeScript service using the existing Node/TypeScript ecosystem; Hono is already present in the dependency graph and can be evaluated for the API boundary.
-- **Database:** PostgreSQL, self-hosted. No managed database subscription is required.
-- **Migrations:** versioned SQL migrations committed to this repository.
+- **Application/API:** Node.js HTTP service using built-in runtime modules; no third-party runtime package is required for the initial API surface.
+- **Database:** SQLite via Node's built-in `node:sqlite` module for the current single-node, on-demand workload. This avoids a separate database server and managed database subscription.
+- **Migrations:** versioned, checksummed SQL migrations committed to this repository and applied transactionally. Keep the storage boundary replaceable; PostgreSQL can be self-hosted later if measured concurrency or multi-node requirements justify it.
 - **Authentication:** server-verified sessions with secure, HTTP-only cookies; Google OAuth can remain an optional identity provider, while local development must have an explicit safe development-auth mode. Never trust a client-supplied user ID.
 - **Background work:** explicit on-demand jobs first; a local process scheduler/worker only for user-configured monitoring. No global instrument scanner.
 - **Market data:** preserve existing provider adapters and source/freshness provenance. Keep large historical OHLCV data separate from transactional user records where appropriate.
 - **Deployment:** a documented self-hosted process/container with persistent database volume and backup/restore commands. No platform-specific lock-in.
 
-PostgreSQL, Node, and Hono are software components, not a promise of free public hosting. A publicly reachable, always-on service still needs a machine and network. The application itself should not require a paid SaaS backend.
+Node.js and SQLite are software components, not a promise of free public hosting. A publicly reachable, always-on service still needs a machine and network. The application itself should not require a paid SaaS backend. Node currently emits an experimental-feature warning for `node:sqlite`; CI has verified the implementation on Node 22.23.4, and this runtime caveat must remain visible until Node marks the API stable.
 
 ## Migration sequence and safety gates
 
