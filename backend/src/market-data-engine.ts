@@ -277,7 +277,7 @@ export async function analyzeMarket(request:MarketAnalysisRequest,fetchImpl:type
     !["forex","crypto","stock","commodity","indices"].includes(normalized.instrumentType)) {
     return {success:false,error:"Instrument, asset class, or timeframe is invalid.",errorCode:"INVALID_INPUT"};
   }
-  const key=[normalized.instrumentType,normalized.instrument,normalized.timeframe,normalized.tradingStyle??""].join("|");
+  const key=[normalized.instrumentType,normalized.instrument,normalized.timeframe,normalized.tradingStyle??"",normalized.fundamentalData?.provider??"",normalized.fundamentalData?.timestamp??""].join("|");
   const cached=cache.get(key);
   if(cached&&cached.expiresAt>Date.now()) return cached.value;
   const pending=inflight.get(key);
