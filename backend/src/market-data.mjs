@@ -70,6 +70,11 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
         const observations=database.raw.prepare(
           "SELECT eps,revenue,fiscal_period_end,filing_date,last_retrieved_at FROM sec_edgar_observations WHERE ticker=? ORDER BY filing_date DESC,fiscal_period_end DESC LIMIT 12",
         ).all(instrument);
+        // Keep the analysis payload bounded while reporting the true persisted
+        // history size rather than the size of this latest-observation window.
+        const observationCount=database.raw.prepare(
+          "SELECT COUNT(*) AS count FROM sec_edgar_observations WHERE ticker=?",
+        ).get(instrument).count;
         const latest=observations[0];
         if(latest&&(latest.eps!==null||latest.revenue!==null)) {
           fundamentalData={
@@ -77,7 +82,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
             instrumentType:"stock",symbol:instrument,available:true,
             ...(latest.eps!==null?{earningsPerShare:latest.eps,dilutedEPS:latest.eps}:{}),
             latestEarnings:{date:latest.fiscal_period_end,...(latest.revenue!==null?{revenue:latest.revenue}:{}),...(latest.eps!==null?{eps:latest.eps}:{})},
-            pointInTimeHistory:{status:"PERSISTED",providerObservationCount:observations.length,newlyPersistedCount:0},
+            pointInTimeHistory:{status:"PERSISTED",providerObservationCount:observationCount,newlyPersistedCount:0},
           };
         }
       }
