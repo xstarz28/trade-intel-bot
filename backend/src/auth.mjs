@@ -1,10 +1,8 @@
 import {
   createHash,
-  createPrivateKey,
   createPublicKey,
   randomBytes,
   randomUUID,
-  timingSafeEqual,
   verify as verifySignature,
 } from "node:crypto";
 
@@ -38,7 +36,7 @@ function parseCookies(header = "") {
 }
 
 function cookieName(name, production) {
-  if (!production) return name.replace("__Host-", "xstarz_");
+  if (!production) return name.replace("__Host-", "");
   return name;
 }
 
@@ -240,8 +238,12 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
 
     if (!path.startsWith("/api/v1/auth/")) return false;
 
-    if (!isAllowedOrigin(request, env)) {
+    if (request.headers.origin && !isAllowedOrigin(request, env)) {
       sendJson(response, 403, { error: "origin_not_allowed" });
+      return true;
+    }
+    if (method === "POST" && !request.headers.origin && production) {
+      sendJson(response, 403, { error: "origin_required" });
       return true;
     }
 
