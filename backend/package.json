@@ -6,6 +6,6 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test test/*.test.mjs",
-    "check": "node --check server.mjs && node --check src/app.mjs && node --check src/database.mjs && node --check test/backend.test.mjs"
+    "check": "node --check server.mjs && node --check src/app.mjs && node --check src/auth.mjs && node --check src/database.mjs && node --check test/backend.test.mjs"
   }
 }
