@@ -759,7 +759,7 @@ describe("Phase 46 — forward forecast contract", () => {
                   dataPoints: 160,
                 },
               },
-            } as any,
+            } as unknown as NonNullable<NonNullable<AnalysisResult["technicalData"]>["mtf"]>["timeframes"][number]["smc"],
           }],
         },
       } as unknown as AnalysisResult["technicalData"],
