@@ -74,9 +74,9 @@ The schema contains user ownership references and indexes. A replacement must pr
 
 ## Self-hosted foundation started on this branch
 
-The isolated `backend/` directory now contains a dependency-free Node.js HTTP service using the built-in `node:sqlite` module, liveness/readiness endpoints, WAL-backed persistent storage, checksummed transactional SQL migrations, graceful shutdown, Docker Compose with a persistent SQLite volume, and five automated tests. A dedicated GitHub Actions run on PR #252 passed all five tests and JavaScript syntax checks on Node 22.23.4.
+The isolated `backend/` directory now contains a dependency-free Node.js HTTP service using the built-in `node:sqlite` module, liveness/readiness endpoints, WAL-backed persistent storage, checksummed transactional SQL migrations, graceful shutdown, Docker Compose with a persistent SQLite volume, and eight automated tests. Migration `0002_trade_intel_domain.sql` now creates users/sessions/OAuth-flow storage plus the core Trade Intel tables: analyses, fundamentals, SEC filings, journal, monitored positions, alert history, stream cursors, historical snapshots/events, alert rules, rule-alert history, notifications/preferences, and runtime-health snapshots. GitHub Actions run `41577219111` passed all eight tests and syntax checks on Node 22.23.4.
 
-This first slice deliberately exposes health endpoints and a generic metadata table only. It does not yet implement domain routes, authentication, authorization, the full application schema, data export/import, or frontend integration. It has not been declared production-ready. No frontend, existing Convex function, production environment variable, or deployed service was changed.
+This slice still exposes health endpoints only; the new domain tables are not yet wired to HTTP routes. Secure authentication/session handlers, per-user repository methods, data export/import, and frontend integration remain unimplemented. It has not been declared production-ready. No frontend, existing Convex function, production environment variable, or deployed service was changed.
 
 ## Proposed self-hosted target
 
