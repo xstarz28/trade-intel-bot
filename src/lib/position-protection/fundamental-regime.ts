@@ -9,7 +9,7 @@
 
 import type { PositionSide } from "./types";
 import type { MacroContext, CrossAssetContext, RiskRegime } from "./multi-dimensional-intelligence";
-import type { NewsItem, NewsRelevance, NewsCategory } from "./news-intelligence";
+import type { NewsItem, NewsRelevance } from "./news-intelligence";
 import type { FundamentalDataPoint, EconomicEvent } from "./fundamental-intelligence";
 import type { TreasuryData } from "../../lib/data/treasury";
 

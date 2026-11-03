@@ -13,19 +13,9 @@
  */
 
 import type { AssetClass } from "@/lib/data/universal/types";
-import {
-  executeLiveRequest,
-  type LiveRequestParams,
-  type LiveRequestResult,
-  type Transport,
-} from "@/lib/data/universal/live/client";
-import {
-  checkCredentials,
-  type EnvReader,
-} from "@/lib/data/universal/live/credentials";
-import { type LiveStatus, isLiveStatus } from "@/lib/data/universal/live/types";
-import type { RadarCandidateSource } from "@/lib/market-radar/candidate-builder";
-import type { MarketSnapshot, FreshnessLevel } from "@/lib/market-radar/types";
+import { executeLiveRequest, type Transport } from "@/lib/data/universal/live/client";
+import { checkCredentials, type EnvReader } from "@/lib/data/universal/live/credentials";
+import type { MarketSnapshot } from "@/lib/market-radar/types";
 import type { OhlcvCandle } from "@/lib/data/market-types";
 import { assessFreshness } from "@/lib/market-radar/freshness";
 
@@ -149,13 +139,13 @@ function buildAdapter(
           health.status = health.consecutiveFailures >= 3 ? "DEGRADED" : "HEALTHY";
         }
         return result;
-      } catch (err: any) {
+      } catch (err: unknown) {
         const latency = Date.now() - t0;
         health.totalFailures++;
         health.lastFailureAt = Date.now();
         health.consecutiveFailures++;
         health.avgLatencyMs = (health.avgLatencyMs * (health.totalRequests - 1) + latency) / health.totalRequests;
-        const msg = err?.message ?? String(err);
+        const msg = err instanceof Error ? err.message : String(err);
         if (msg.includes("429")) {
           health.status = "RATE_LIMITED";
           health.cooldownUntil = Date.now() + 60_000;
@@ -296,7 +286,6 @@ function buildCoinGlassAdapter(): ProviderAdapter {
       if (!symbol) return null;
       try {
         const baseUrl = "https://open-api-v3.coinglass.com/api";
-        const headers = { accept: "application/json", cg_api_key: apiKey };
         const [oiRes, fundingRes] = await Promise.allSettled([
           defaultTransport(`${baseUrl}/futures/openInterest?symbol=${symbol}`),
           defaultTransport(`${baseUrl}/futures/fundingRate/v2/history?symbol=${symbol}&limit=1`),
@@ -662,7 +651,7 @@ export async function acquireLiveData(
       error: "provider returned null",
       latencyMs: Date.now() - startTime,
     };
-  } catch (err: any) {
+  } catch (err: unknown) {
     return {
       instrument,
       assetClass,
@@ -670,7 +659,7 @@ export async function acquireLiveData(
       snapshot: null,
       provider: adapter.id,
       success: false,
-      error: err?.message ?? "provider error",
+      error: err instanceof Error ? err.message : String(err),
       latencyMs: Date.now() - startTime,
     };
   }
