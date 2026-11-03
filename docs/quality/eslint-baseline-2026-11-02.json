@@ -1655,11 +1655,11 @@
   },
   "notes": [
     "Counts are parsed from the ESLint text output of the referenced main-branch CI run.",
-    "The totals field preserves ESLint's authoritative terminal summary (1,503 errors and 28 warnings).",
+    "The totals field preserves ESLint's authoritative terminal summary (1,400 errors and 28 warnings).",
     "React Hooks compiler diagnostics are grouped under their specific react-hooks rule based on the diagnostic message.",
     "Generated Convex files are included because the existing repository lint command includes them.",
     "This is a dated baseline, not a waiver or a claim that lint is clean.",
-    "Refreshed after PR #236 (29 prefer-const fixes) and PR #238 (9 regex, 3 own-property, and 3 empty-catch fixes); the latest main CI ratchet reports 1,459 errors and 28 warnings with zero regressions."
+    "Refreshed after PRs #241 and #242 using main CI run #41399012659; the per-file/per-rule ratchet reports 1,400 errors and 28 warnings with zero regressions."
   ],
-  "parsedDiagnostics": 1487
+  "parsedDiagnostics": 1428
 }
