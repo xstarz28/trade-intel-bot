@@ -15,8 +15,8 @@ function createTemporaryDatabase() {
   return openDatabase(join(directory, "test.sqlite"), fileURLToPath(new URL("../migrations/", import.meta.url)));
 }
 
-async function withServer(database, callback) {
-  const server = createAppServer({ database });
+async function withServer(database, callback, options = {}) {
+  const server = createAppServer({ database, ...options });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
   const address = server.address();
   try {
@@ -167,6 +167,86 @@ describe("self-hosted backend", () => {
           "INSERT INTO notification_preferences (id, user_id, enabled_categories, updated_at) VALUES (?, ?, ?, ?)",
         ).run("pref-2", "user-2", "not-json", 1),
       );
+    } finally {
+      database.close();
+    }
+  });
+
+
+  it("creates a durable anonymous session, resolves it, and revokes it on logout", async () => {
+    const database = createTemporaryDatabase();
+    const env = {
+      NODE_ENV: "development",
+      APP_ORIGIN: "http://localhost:5173",
+    };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN },
+        });
+        assert.equal(signIn.status, 201);
+        const signedIn = await signIn.json();
+        assert.equal(signedIn.user.isAnonymous, true);
+        assert.equal(signedIn.user.role, "user");
+
+        const setCookie = signIn.headers.get("set-cookie");
+        assert.ok(setCookie);
+        const cookiePair = setCookie.split(";")[0];
+
+        const session = await fetch(`${baseUrl}/api/v1/auth/session`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookiePair },
+        });
+        assert.equal(session.status, 200);
+        const current = await session.json();
+        assert.equal(current.user.id, signedIn.user.id);
+        assert.equal(current.user.isAnonymous, true);
+
+        const logout = await fetch(`${baseUrl}/api/v1/auth/logout`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookiePair },
+        });
+        assert.equal(logout.status, 200);
+
+        const afterLogout = await fetch(`${baseUrl}/api/v1/auth/session`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookiePair },
+        });
+        assert.equal((await afterLogout.json()).user, null);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects cross-origin authentication mutations", async () => {
+    const database = createTemporaryDatabase();
+    try {
+      await withServer(database, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST",
+          headers: { Origin: "https://attacker.invalid" },
+        });
+        assert.equal(response.status, 403);
+        assert.deepEqual(await response.json(), { error: "origin_not_allowed" });
+      }, {
+        env: {
+          NODE_ENV: "production",
+          APP_ORIGIN: "https://xstarzganaliys.com",
+        },
+      });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("does not pretend Google OAuth is configured when credentials are absent", async () => {
+    const database = createTemporaryDatabase();
+    try {
+      await withServer(database, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/v1/auth/google`);
+        assert.equal(response.status, 503);
+        assert.deepEqual(await response.json(), { error: "google_auth_not_configured" });
+      });
     } finally {
       database.close();
     }
