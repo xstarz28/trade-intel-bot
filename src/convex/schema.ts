@@ -359,6 +359,7 @@ const schema = defineSchema(
       errors: v.array(v.string()),
       lastScanAt: v.number(),
       updatedAt: v.number(),
+      candidateCacheVersion: v.optional(v.number()),
     }).index("by_scope", ["scope"]),
 
     marketRadarSources: defineTable({
@@ -370,6 +371,21 @@ const schema = defineSchema(
       updatedAt: v.number(),
     })
       .index("by_key", ["key"])
+      .index("by_instrument", ["instrument"])
+      .index("by_updated_at", ["updatedAt"]),
+
+    // Small derived radar inputs are stored separately from full candle and
+    // analysis snapshots so scheduled ranking does not reread large payloads.
+    marketRadarCandidates: defineTable({
+      key: v.string(),
+      instrument: v.string(),
+      timeframe: v.string(),
+      assetClass: v.string(),
+      payload: v.any(),
+      updatedAt: v.number(),
+    })
+      .index("by_key", ["key"])
+      .index("by_instrument", ["instrument"])
       .index("by_updated_at", ["updatedAt"]),
 
     // Phase 99 — Runtime health snapshots
