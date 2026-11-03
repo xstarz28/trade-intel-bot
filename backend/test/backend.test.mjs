@@ -98,4 +98,75 @@ describe("self-hosted backend", () => {
       assert.deepEqual(await response.json(), { error: "not_found" });
     });
   });
+
+  it("creates the complete user and Trade Intel persistence schema", () => {
+    const database = createTemporaryDatabase();
+    try {
+      const tables = database.raw
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+        .all()
+        .map((row) => row.name);
+      for (const table of [
+        "users",
+        "auth_sessions",
+        "oauth_flows",
+        "analyses",
+        "fundamental_observations",
+        "sec_edgar_observations",
+        "journal",
+        "monitored_positions",
+        "alert_history",
+        "stream_cursors",
+        "historical_snapshots",
+        "alert_rules",
+        "rule_alert_history",
+        "notifications",
+        "notification_preferences",
+        "historical_events",
+        "runtime_health_snapshots",
+      ]) {
+        assert.ok(tables.includes(table), `missing table: ${table}`);
+      }
+    } finally {
+      database.close();
+    }
+  });
+
+  it("enforces user ownership and cascades user deletion to private records", () => {
+    const database = createTemporaryDatabase();
+    try {
+      database.raw.prepare(
+        "INSERT INTO users (id, email, created_at, updated_at) VALUES (?, ?, ?, ?)",
+      ).run("user-1", "analyst@example.test", 1, 1);
+      database.raw.prepare(
+        "INSERT INTO notification_preferences (id, user_id, updated_at) VALUES (?, ?, ?)",
+      ).run("pref-1", "user-1", 1);
+
+      database.raw.prepare("DELETE FROM users WHERE id = ?").run("user-1");
+
+      assert.equal(
+        database.raw.prepare("SELECT COUNT(*) AS count FROM notification_preferences").get().count,
+        0,
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects malformed JSON in structured persistence columns", () => {
+    const database = createTemporaryDatabase();
+    try {
+      database.raw.prepare(
+        "INSERT INTO users (id, created_at, updated_at) VALUES (?, ?, ?)",
+      ).run("user-2", 1, 1);
+      assert.throws(() =>
+        database.raw.prepare(
+          "INSERT INTO notification_preferences (id, user_id, enabled_categories, updated_at) VALUES (?, ?, ?, ?)",
+        ).run("pref-2", "user-2", "not-json", 1),
+      );
+    } finally {
+      database.close();
+    }
+  });
+
 });
