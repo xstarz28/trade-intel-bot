@@ -456,12 +456,13 @@ export const runScheduledScan = internalAction({
 
       const cachedCandidates = bootstrapCandidateCache
         ? []
-        : await ctx.runQuery(anyApi.marketRadarInternal.listRadarCandidates, {}) as RadarCandidateSource[];
+        : await ctx.runQuery(anyApi.marketRadarInternal.listRadarCandidates, {}) as Array<{
+            key: string;
+            payload: RadarCandidateSource;
+          }>;
       const radarSourceMap = new Map<string, RadarCandidateSource>();
       for (const candidate of cachedCandidates) {
-        const timeframe = candidate.snapshot?.availableTimeframes?.[0]?.trim().toUpperCase() ?? "UNKNOWN";
-        const key = `${candidate.universe.instrument.trim().toUpperCase()}|${timeframe}`;
-        radarSourceMap.set(key, candidate);
+        radarSourceMap.set(candidate.key, candidate.payload);
       }
       for (const update of candidateUpdates) radarSourceMap.set(update.key, update.payload);
       const radarSources = Array.from(radarSourceMap.values()).filter((candidate) =>
