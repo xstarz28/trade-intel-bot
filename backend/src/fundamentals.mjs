@@ -38,7 +38,7 @@ export function createFundamentalsHandler({database,env=process.env}) {
     return true;
   };
   return async(request,response,url)=>{
-    const match=url.pathname.match(/^\\/api\\/v1\\/fundamentals\\/sec(?:\\/([A-Za-z0-9.-]{1,15}))?$/);
+    const match=url.pathname.match(/^\/api\/v1\/fundamentals\/sec(?:\/([A-Za-z0-9.-]{1,15}))?$/);
     if(!match)return false;
     const method=request.method??"GET";
     if(!["GET","POST"].includes(method)){json(response,405,{error:"method_not_allowed"});return true;}
