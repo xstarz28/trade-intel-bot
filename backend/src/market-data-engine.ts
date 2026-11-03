@@ -103,6 +103,7 @@ async function fetchCandles(
   timeframe:string,
   count:number,
   okx:OkxSpotMarketAdapter,
+  fetchImpl:typeof fetch,
 ):Promise<OhlcvCandle[]> {
   if(request.instrumentType==="crypto") {
     if(/-SWAP$|-[0-9]{6}$/.test(request.instrument.toUpperCase())) {
@@ -114,17 +115,17 @@ async function fetchCandles(
   if(!symbol) {
     throw Object.assign(new Error("No exact Yahoo Finance ticker mapping exists for this instrument. No correlated proxy or substitute instrument was used."),{code:"UNSUPPORTED"});
   }
-  return fetchYahooFinanceCandles(symbol,timeframe,count);
+  return fetchYahooFinanceCandles(symbol,timeframe,count,fetchImpl);
 }
 
-async function calculate(request:MarketAnalysisRequest):Promise<MarketAnalysisResult> {
+async function calculate(request:MarketAnalysisRequest,fetchImpl:typeof fetch):Promise<MarketAnalysisResult> {
   const symbol=request.instrument.trim().toUpperCase();
   const now=Date.now();
-  const okx=new OkxSpotMarketAdapter();
+  const okx=new OkxSpotMarketAdapter(fetchImpl);
   const provider=request.instrumentType==="crypto"?OKX_SPOT_MARKET_PROVIDER:"yahoo-finance-public";
 
   try {
-    const candles=await fetchCandles(request,request.timeframe,210,okx);
+    const candles=await fetchCandles(request,request.timeframe,210,okx,fetchImpl);
     if(candles.length<20) {
       return {success:false,error:`Only ${candles.length} verified candles returned; at least 20 are required for independent structure analysis.`,errorCode:"API_UNAVAILABLE"};
     }
@@ -155,7 +156,7 @@ async function calculate(request:MarketAnalysisRequest):Promise<MarketAnalysisRe
       if(!preferred.some(p=>p.timeframe===slot.timeframe)) {
         throw new Error("Timeframe not fetched under the bounded on-demand data budget.");
       }
-      return fetchCandles(request,slot.timeframe,slot.role==="trigger"?100:120,okx);
+      return fetchCandles(request,slot.timeframe,slot.role==="trigger"?100:120,okx,fetchImpl);
     }));
     const mtfInputs=slots.map((slot,index)=>{
       const result=mtfResults[index];
@@ -185,7 +186,7 @@ async function calculate(request:MarketAnalysisRequest):Promise<MarketAnalysisRe
       };
       for(const candidate of candidates) {
         try {
-          const comparatorCandles=await fetchYahooFinanceCandles(candidate.symbol,request.timeframe,120);
+          const comparatorCandles=await fetchYahooFinanceCandles(candidate.symbol,request.timeframe,120,fetchImpl);
           const aligned=alignCrossAssetCloses(candles,comparatorCandles,request.timeframe);
           const stats=pearsonCorrelation(aligned.primary,aligned.comparator);
           if(!stats) { failures.push(candidate.label+": insufficient timestamp-aligned observations or zero variance");continue; }
@@ -229,7 +230,7 @@ async function calculate(request:MarketAnalysisRequest):Promise<MarketAnalysisRe
   }
 }
 
-export async function analyzeMarket(request:MarketAnalysisRequest):Promise<MarketAnalysisResult> {
+export async function analyzeMarket(request:MarketAnalysisRequest,fetchImpl:typeof fetch=fetch):Promise<MarketAnalysisResult> {
   const normalized:MarketAnalysisRequest={
     ...request,
     instrument:request.instrument.trim().toUpperCase(),
@@ -244,7 +245,7 @@ export async function analyzeMarket(request:MarketAnalysisRequest):Promise<Marke
   if(cached&&cached.expiresAt>Date.now()) return cached.value;
   const pending=inflight.get(key);
   if(pending) return pending;
-  const task=calculate(normalized).then(result=>{
+  const task=calculate(normalized,fetchImpl).then(result=>{
     if(result.success) cache.set(key,{value:result,expiresAt:Date.now()+ttl(normalized.timeframe)});
     return result;
   }).finally(()=>inflight.delete(key));
