@@ -27,7 +27,6 @@ describe("persistent background scanner rotation", () => {
     expect(BACKGROUND_SCAN_TIMEFRAME_PASSES).toHaveLength(3);
   });
 
-
   it("refreshes the global ranking on bootstrap and at the bounded interval", () => {
     expect(shouldRefreshRadarRanking(1_000, 0, 0)).toBe(true);
     expect(shouldRefreshRadarRanking(1_000, 1_000, 1)).toBe(false);
