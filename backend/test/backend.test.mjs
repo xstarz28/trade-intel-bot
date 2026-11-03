@@ -375,4 +375,81 @@ describe("self-hosted backend", () => {
     }
   });
 
+
+  it("persists monitored positions, alerts, and stream cursors per user", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const position = {
+          positionId: "position-btc-1", instrument: "BTC-USDT", side: "LONG",
+          entryPrice: 65000, stopLoss: 63000, takeProfit: 70000, leverage: 2,
+          horizon: "SWING", openedAt: Date.now(), peakPrice: 67000, peakProfit: 0.03,
+          currentSeverity: "WATCH", lifecycleState: "WATCH",
+          monitoringLifecycle: "MONITORING", lastUpdateAt: Date.now(),
+          lastAlertAt: 0, consecutiveSameSeverity: 1,
+        };
+        const saved = await fetch(`${baseUrl}/api/v1/positions`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify(position),
+        });
+        assert.equal(saved.status, 200);
+        assert.equal((await saved.json()).item.positionId, position.positionId);
+
+        const active = await fetch(`${baseUrl}/api/v1/positions`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal((await active.json()).items.length, 1);
+
+        const alert = await fetch(`${baseUrl}/api/v1/positions/${position.positionId}/alerts`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            alertId: "alert-btc-1", instrument: "BTC-USDT", severity: "HIGH_RISK",
+            notificationPriority: "URGENT", reason: "Structure invalidation approaching.",
+            action: "Review stop placement.", timestamp: Date.now(),
+          }),
+        });
+        assert.equal(alert.status, 201);
+        assert.equal((await alert.json()).item.acknowledged, false);
+
+        const acknowledge = await fetch(`${baseUrl}/api/v1/alerts/alert-btc-1/acknowledge`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal(acknowledge.status, 200);
+
+        const cursor = await fetch(`${baseUrl}/api/v1/stream-cursors`, {
+          method: "PUT",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            provider: "okx", instrument: "BTC-USDT", lastEventId: "event-1",
+            lastTimestamp: Date.now(), lastSequence: 7,
+          }),
+        });
+        assert.equal(cursor.status, 200);
+
+        const loadedCursor = await fetch(`${baseUrl}/api/v1/stream-cursors?provider=okx&instrument=BTC-USDT`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
+        });
+        assert.equal((await loadedCursor.json()).item.lastSequence, 7);
+
+        const otherSignIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const otherCookie = otherSignIn.headers.get("set-cookie").split(";")[0];
+        const isolated = await fetch(`${baseUrl}/api/v1/positions/${position.positionId}`, {
+          headers: { Origin: env.APP_ORIGIN, Cookie: otherCookie },
+        });
+        assert.equal(isolated.status, 404);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
 });
