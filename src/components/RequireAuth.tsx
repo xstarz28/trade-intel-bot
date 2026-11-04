@@ -2,17 +2,10 @@ import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Navigate, useLocation } from "react-router";
+import { Button } from "@/components/ui/button";
 
-/**
- * Blocks the children until the auth phase is definitively resolved.
- *
- * While phase === "initializing" → renders a stable loading screen
- * (no white flash, no intermediate redirect).
- * Once phase is "authenticated"   → renders children.
- * Once phase is "unauthenticated" → redirects to /auth.
- */
 export function RequireAuth({ children }: { children: ReactNode }) {
-  const { phase } = useAuth();
+  const { phase, refresh, error } = useAuth();
   const location = useLocation();
 
   if (phase === "initializing") {
@@ -20,9 +13,22 @@ export function RequireAuth({ children }: { children: ReactNode }) {
       <main className="flex min-h-screen items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="size-6 animate-spin text-muted-foreground" />
-          <p className="text-xs text-muted-foreground font-mono">
-            restoring session...
+          <p className="text-xs text-muted-foreground font-mono">restoring backend session...</p>
+        </div>
+      </main>
+    );
+  }
+
+  if (phase === "error") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-background p-6">
+        <div className="max-w-md text-center">
+          <p className="text-sm font-semibold">Authentication service is temporarily unavailable.</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Your account has not been signed out. The self-hosted session could not be checked.
           </p>
+          {error && <p className="mt-2 text-xs text-muted-foreground">{error.message}</p>}
+          <Button className="mt-4" onClick={() => void refresh()}>Retry session check</Button>
         </div>
       </main>
     );
@@ -30,12 +36,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (phase === "unauthenticated") {
     const returnTo = `${location.pathname}${location.search}`;
-    return (
-      <Navigate
-        to={`/auth?returnTo=${encodeURIComponent(returnTo)}`}
-        replace
-      />
-    );
+    return <Navigate to={`/auth?returnTo=${encodeURIComponent(returnTo)}`} replace />;
   }
 
   return children;
