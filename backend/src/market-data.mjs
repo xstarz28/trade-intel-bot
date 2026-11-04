@@ -39,6 +39,7 @@ async function refreshSecObservationsIfStale(database,ticker,userAgent,fetchImpl
   const pending=secRefreshInflight.get(ticker);
   if(pending) return pending;
   secRefreshAttempts.set(ticker,now);
+  if(secRefreshAttempts.size>5000) for(const [key,attemptedAt] of secRefreshAttempts) if(now-attemptedAt>=SEC_RETRY_INTERVAL_MS) secRefreshAttempts.delete(key);
   const task=(async()=>{
     const {fetchSecFundamentalObservations}=await import("../dist/market-data-engine.mjs");
     const result=await fetchSecFundamentalObservations(ticker,userAgent,fetchImpl);
