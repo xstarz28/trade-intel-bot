@@ -16,13 +16,12 @@ This is an incremental extraction, not a rewrite. Convex remains untouched until
 
 - `package.json` includes `convex` and `@convex-dev/auth`.
 - `convex.json` points the Convex function directory at `src/convex/`.
-- `src/main.tsx` wraps the application in `AppAuthProvider` from `src/lib/convex-provider.tsx`.
-- `src/lib/convex-provider.tsx` constructs the real Convex client from `VITE_CONVEX_URL`, selects real Convex or a mock mode, and implements a local mock client.
-- `src/lib/auth-provider-mode.ts` hardcodes the active production Convex origin (`https://hushed-seal-237.convex.cloud`), so the deployment identity is coupled to frontend source code as well as environment configuration.
-- `src/hooks/use-auth.ts` uses `useConvexAuth`, `useQuery`, and `useAuthActions`; it directly depends on Convex Auth semantics.
-- `src/convex/auth.ts` configures Google and anonymous providers through `@convex-dev/auth`.
-- `src/convex/http.ts` registers Convex Auth HTTP routes.
-- `src/convex/users.ts` resolves the authenticated user using `getAuthUserId`.
+- `src/main.tsx` now keeps `/auth`, landing, and pricing routes outside the legacy `AppAuthProvider`; only the still-Convex-backed Dashboard and Journal shell are wrapped by it.
+- `src/hooks/use-auth.ts` now derives authentication exclusively from `useBackendSession` and the self-hosted `/api/v1/auth/*` API. It no longer imports `convex/react`, `@convex-dev/auth`, or generated Convex auth references.
+- `src/components/RequireAuth.tsx` now restores and gates browser sessions through the self-hosted backend; backend outages are surfaced as retryable errors rather than being treated as signed-out users.
+- `src/pages/Auth.tsx` now starts Google OAuth at the self-hosted backend and creates guest accounts through the backend API.
+- `backend/src/auth.mjs` owns random opaque session tokens, SHA-256 token-hash persistence, HttpOnly/SameSite cookies, origin validation, Google OAuth state/nonce/PKCE, and Google ID-token signature/claim verification.
+- `src/lib/convex-provider.tsx` and legacy `src/convex/auth.ts` remain for the data surfaces that still call Convex; they are not the source of truth for the new browser login state. They must be removed after feature-data migration, not reintroduced into `/auth`.
 
 **Implication:** changing a database URL or adding a second database will not remove the dependency. The frontend auth provider, query/mutation/action call sites, server functions, generated references, and identity model must be migrated as one controlled boundary.
 
@@ -71,6 +70,12 @@ The schema contains user ownership references and indexes. A replacement must pr
 - `src/convex/crons.ts` currently intentionally registers no market-wide discovery cron. The migration must not reintroduce automatic market-wide scanning.
 - `src/convex/marketRadarScheduler.ts` and `src/convex/marketRadarInternal.ts` still contain legacy scanner/checkpoint logic. Their presence in source is not evidence that the cron is active; keep them out of the new runtime path unless a user-requested feature explicitly requires them.
 - Other inspected server modules include `src/convex/alertRules.ts`, `src/convex/positionProtection.ts`, `src/convex/runtimeHealth.ts`, `src/convex/alphaVantage.ts`, `src/convex/tradingEconomics.ts`, `src/convex/okx.ts`, and `src/convex/secEdgar.ts`. These cover persistence and external data actions and need operation-by-operation extraction.
+
+## Browser authentication migration completed on this branch
+
+The public login route and route guard now use the self-hosted backend session exclusively. Google sign-in redirects to the backend-owned OAuth flow; guest sign-in creates a durable backend user and HttpOnly session cookie. The session token is stored only as a SHA-256 hash in SQLite. Production cookies are host-only `__Host-` cookies with `Secure`, `HttpOnly`, `Path=/`, and `SameSite=Lax`. Backend session-check failures are distinct from an absent session and do not silently log the user out.
+
+The auth page is deliberately mounted outside `AppAuthProvider`, so disabling or removing Convex does not prevent a user from opening the login page, restoring the backend session, or completing backend OAuth. This is an important first independence boundary, **not yet full application independence**: Dashboard analysis/provider actions and position-protection/notification surfaces still have Convex call sites. The protected data surfaces continue to use the legacy provider until their API parity and account ownership are migrated. Do not claim the full application can run with Convex disabled until those remaining data call sites have been replaced and tested.
 
 ## Self-hosted foundation started on this branch
 
