@@ -3,6 +3,7 @@ import type { EiaData } from "@/lib/data/eia";
 import type { TreasuryData } from "@/lib/data/treasury";
 import type { MarketData, TechnicalData } from "@/lib/data/market-types";
 import type { AnalysisResult } from "@/types/analysis";
+import type { FxRateSnapshot } from "@/lib/risk";
 /**
  * Typed client for the self-hosted Trade Intel API.
  *
@@ -798,6 +799,19 @@ export interface BackendProviderResult<T> {
   success: boolean;
   data?: T;
   error?: string;
+}
+
+/** Fetches a dated Frankfurter reference rate through the authenticated backend. */
+export function fetchBackendFxRate(from: string, to: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{
+    success: boolean;
+    direct?: FxRateSnapshot | null;
+    inverse?: FxRateSnapshot | null;
+    error?: string;
+  }>("/api/v1/intelligence/fx-rate", {
+    method: "POST",
+    body: JSON.stringify({ from, to }),
+  }, fetchImpl);
 }
 
 /** Fetches verified CFTC positioning through the self-hosted backend. */
