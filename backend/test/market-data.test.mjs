@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -184,5 +184,55 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.success, false);
     assert.equal(result.errorCode, "RATE_LIMIT");
     assert.equal(result.data, undefined);
+  });
+
+  it("builds COT positioning only from the exact mapped futures contract and consecutive reports", async () => {
+    let requestedUrl = "";
+    const rows = [
+      {
+        report_date_as_yyyy_mm_dd: "2026-10-20T00:00:00.000",
+        noncomm_positions_long_all: "140000",
+        noncomm_positions_short_all: "95000",
+        comm_positions_long_all: "80000",
+        comm_positions_short_all: "120000",
+        open_interest_all: "490000",
+      },
+      {
+        report_date_as_yyyy_mm_dd: "2026-10-27T00:00:00.000",
+        noncomm_positions_long_all: "150000",
+        noncomm_positions_short_all: "90000",
+        comm_positions_long_all: "82000",
+        comm_positions_short_all: "118000",
+        open_interest_all: "500000",
+      },
+    ];
+    const result = await fetchCotPositioning("EUR/USD", async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify(rows), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    assert.equal(result.success, true);
+    assert.match(requestedUrl, /publicreporting\\.cftc\\.gov\\/resource\\/6dca-aqww\\.json/);
+    assert.match(decodeURIComponent(requestedUrl), /EURO FX - CHICAGO MERCANTILE EXCHANGE/);
+    assert.equal(result.data.latest.reportDate, "2026-10-27");
+    assert.equal(result.data.previous.reportDate, "2026-10-20");
+    assert.equal(result.data.netNonCommercial, 60_000);
+    assert.equal(result.data.changeFromPreviousReport, 15_000);
+    assert.equal(result.data.source, "CFTC Commitments of Traders (publicreporting.cftc.gov)");
+  });
+
+  it("keeps COT unavailable for instruments without an explicitly verified CFTC mapping", async () => {
+    let providerCalled = false;
+    const result = await fetchCotPositioning("BTC/USD", async () => {
+      providerCalled = true;
+      throw new Error("Unmapped instruments must not reach the provider.");
+    });
+
+    assert.equal(result.success, false);
+    assert.match(result.error, /No verified CFTC futures contract mapping/);
+    assert.equal(providerCalled, false);
   });
 });
