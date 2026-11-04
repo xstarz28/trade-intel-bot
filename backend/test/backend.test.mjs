@@ -297,6 +297,51 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("exports only the authenticated user's portable data without session secrets", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN },
+        });
+        assert.equal(signIn.status, 201);
+        const { user } = await signIn.json();
+        const cookiePair = signIn.headers.get("set-cookie").split(";")[0];
+        const now = Date.now();
+
+        database.raw.prepare(
+          "INSERT INTO notification_preferences (id,user_id,updated_at) VALUES (?,?,?)",
+        ).run("pref-export-1", user.id, now);
+        database.raw.prepare(
+          "INSERT INTO notification_preferences (id,user_id,updated_at) VALUES (?,?,?)",
+        ).run("pref-export-2", "another-user", now);
+
+        const response = await fetch(`${baseUrl}/api/v1/account/export`, {
+          headers: { Cookie: cookiePair },
+        });
+        assert.equal(response.status, 200);
+        assert.match(response.headers.get("content-disposition"), /trade-intel-account-export/);
+        const exported = await response.json();
+        assert.equal(exported.format, "trade-intel-account-export");
+        assert.equal(exported.version, 1);
+        assert.equal(exported.account.id, user.id);
+        assert.equal(exported.account.isAnonymous, true);
+        assert.equal(exported.counts.notification_preferences, 1);
+        assert.equal(exported.data.notification_preferences[0].id, "pref-export-1");
+        assert.equal("auth_sessions" in exported.data, false);
+        assert.equal("oauth_flows" in exported.data, false);
+        assert.equal(JSON.stringify(exported).includes(cookiePair), false);
+
+        const unauthorized = await fetch(`${baseUrl}/api/v1/account/export`);
+        assert.equal(unauthorized.status, 401);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
   it("rejects cross-origin authentication mutations", async () => {
     const database = createTemporaryDatabase();
     try {
