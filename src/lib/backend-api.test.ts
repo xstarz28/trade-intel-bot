@@ -374,4 +374,27 @@ describe("self-hosted backend API client", () => {
     expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
   });
 
+
+  it("runs market analysis through the authenticated self-hosted decision engine", async () => {
+    const result = {
+      id: "analysis-1", instrument: "BTC-USDT", instrumentType: "crypto",
+      timeframe: "4H", tradingStyle: "SWING", bias: "BULLISH", confidence: 78,
+      recommendation: "LONG",
+    };
+    const fetcher = vi.fn().mockResolvedValueOnce(response(200, result));
+    const { analyzeBackendMarket } = await import("./backend-api");
+    await expect(analyzeBackendMarket({
+      instrument: "BTC-USDT", instrumentType: "crypto",
+      timeframe: "4H", tradingStyle: "SWING",
+    }, fetcher)).resolves.toEqual(result);
+    expect(fetcher).toHaveBeenCalledWith("/api/v1/market-data/analyze", expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+      body: JSON.stringify({
+        instrument: "BTC-USDT", instrumentType: "crypto",
+        timeframe: "4H", tradingStyle: "SWING",
+      }),
+    }));
+  });
+
 });
