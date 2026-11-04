@@ -254,8 +254,8 @@ export default function Dashboard() {
           ];
           if (input.instrumentType === "crypto") {
             fetchPromises.push(
-              withActionTimeout<any>(
-                Promise.resolve().then(async (): Promise<any> => {
+              withActionTimeout<unknown>(
+                Promise.resolve().then(async (): Promise<unknown> => {
                   if (/-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())) {
                     return fetchOkxFuturesOpenInterest({ instrument: input.instrument });
                   }
