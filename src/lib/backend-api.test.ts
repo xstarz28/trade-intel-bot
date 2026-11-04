@@ -214,6 +214,7 @@ describe("self-hosted backend API client", () => {
     await expect(deleteBackendPosition("pos-1", fetcher)).resolves.toEqual({ success: true });
     await expect(listBackendPositionAlerts("pos-1", 25, fetcher)).resolves.toEqual({ items: [alert] });
     const { _id: alertRecordId, ...alertInput } = alert;
+    expect(alertRecordId).toBe("alert-db-1");
     await expect(saveBackendPositionAlert("pos-1", alertInput, fetcher))
       .resolves.toEqual({ item: alert });
     await expect(acknowledgeBackendAlert("alert-1", fetcher)).resolves.toEqual({ success: true });
