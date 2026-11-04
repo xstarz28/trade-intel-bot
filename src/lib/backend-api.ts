@@ -6,7 +6,7 @@ import type { AnalysisResult } from "@/types/analysis";
 import type { FxRateSnapshot } from "@/lib/risk";
 import type { OkxSpecData } from "@/lib/risk/okx-spec";
 import type { ExecutionData } from "@/lib/execution-quality";
-import type { CryptoDerivativesData } from "@/lib/data/crypto/derivatives-types";
+import type { CryptoDerivativesData } from "@/lib/data/derivatives-types";
 /**
  * Typed client for the self-hosted Trade Intel API.
  *
