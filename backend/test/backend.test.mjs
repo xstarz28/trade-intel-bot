@@ -251,6 +251,57 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("issues production sessions with host-only secure cookies and stores only token hashes", async () => {
+    const database = createTemporaryDatabase();
+    const env = {
+      NODE_ENV: "production",
+      APP_ORIGIN: "https://xstarzganaliys.com",
+    };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN },
+        });
+        assert.equal(response.status, 201);
+        const cookie = response.headers.get("set-cookie");
+        assert.ok(cookie);
+        assert.match(cookie, /^__Host-xstarz_session=/);
+        assert.match(cookie, /; Path=\//);
+        assert.match(cookie, /; HttpOnly/);
+        assert.match(cookie, /; SameSite=Lax/);
+        assert.match(cookie, /; Secure/);
+        assert.doesNotMatch(cookie, /; Domain=/i);
+
+        const token = cookie.split(";")[0].split("=").slice(1).join("=");
+        const stored = database.raw.prepare("SELECT token_hash FROM auth_sessions").get();
+        assert.match(stored.token_hash, /^[a-f0-9]{64}$/);
+        assert.notEqual(stored.token_hash, token);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects production authentication mutations without an Origin header", async () => {
+    const database = createTemporaryDatabase();
+    const env = {
+      NODE_ENV: "production",
+      APP_ORIGIN: "https://xstarzganaliys.com",
+    };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST",
+        });
+        assert.equal(response.status, 403);
+        assert.deepEqual(await response.json(), { error: "origin_required" });
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
   it("links a guest account to Google without changing its user ID or private data", () => {
     const database = createTemporaryDatabase();
     try {
