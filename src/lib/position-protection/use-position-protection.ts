@@ -16,8 +16,16 @@
  */
 
 import { useMemo, useCallback, useRef, useEffect, useState } from "react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { useBackendSession } from "@/hooks/use-backend-session";
+import {
+  BackendApiError,
+  listBackendPositions,
+  saveBackendPosition,
+  deleteBackendPosition,
+  saveBackendPositionAlert,
+  acknowledgeBackendAlert,
+  type BackendPosition,
+} from "@/lib/backend-api";
 import type {
   StreamOrchestratorState,
 } from "../market-stream/stream-orchestrator";
@@ -115,17 +123,15 @@ export interface UsePositionProtectionResult {
 // ═══════════════════════════════════════════════════════════════
 
 export function usePositionProtection(): UsePositionProtectionResult {
-  // ─── Convex Queries ────────────────────────────────────
-  const convexPositions = useQuery(
-    api.positionProtection.listActivePositions,
-  );
-  const isConvexAvailable = convexPositions !== undefined;
-
-  // ─── Convex Mutations ──────────────────────────────────
-  const savePositionMutation = useMutation(api.positionProtection.savePosition);
-  const deletePositionMutation = useMutation(api.positionProtection.deletePosition);
-  const saveAlertMutation = useMutation(api.positionProtection.saveAlert);
-  const acknowledgeAlertMutation = useMutation(api.positionProtection.acknowledgeAlert);
+  // ─── Self-hosted backend session and persistence ───────
+  const { state: backendState } = useBackendSession();
+  const backendUserId = backendState.status === "authenticated" ? backendState.user.id : null;
+  const [loadedBackendUserId, setLoadedBackendUserId] = useState<string | null>(null);
+  const [backendPositions, setBackendPositions] = useState<BackendPosition[]>([]);
+  const backendPositionsForUser = loadedBackendUserId === backendUserId && backendUserId
+    ? backendPositions
+    : undefined;
+  const isBackendAvailable = backendPositionsForUser !== undefined;
 
   // ─── Local State ───────────────────────────────────────
   const [orchestrator, setOrchestrator] = useState<StreamOrchestratorState>(
@@ -144,25 +150,45 @@ export function usePositionProtection(): UsePositionProtectionResult {
   const monitorRef = useRef(monitor);
   monitorRef.current = monitor;
 
-  // ─── Recovery from Convex ──────────────────────────────
+  // ─── Load and recover positions from the self-hosted backend ──
   useEffect(() => {
-    if (!convexPositions || convexPositions.length === 0) return;
+    if (!backendUserId) return;
+    let active = true;
+    listBackendPositions()
+      .then(({ items }) => {
+        if (!active) return;
+        setBackendPositions(items);
+        setLoadedBackendUserId(backendUserId);
+        setPersistenceDegraded(false);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setBackendPositions([]);
+        setLoadedBackendUserId(backendUserId);
+        setPersistenceDegraded(true);
+        if (cause instanceof BackendApiError) {
+          console.error("[position-protection] Backend load failed:", cause.code);
+        }
+      });
+    return () => { active = false; };
+  }, [backendUserId]);
 
-    // Recover positions into the orchestrator
+  useEffect(() => {
+    if (!backendPositionsForUser || backendPositionsForUser.length === 0) return;
+
     setOrchestrator((prev) => {
       let state = prev;
-      for (const pos of convexPositions) {
+      for (const pos of backendPositionsForUser) {
         const positionId = String(pos.positionId);
-        const existing = state.positions.get(positionId);
-        if (!existing) {
+        if (!state.positions.has(positionId)) {
           const registered: RegisteredPosition = {
             positionId,
             instrument: pos.instrument,
             side: pos.side as "LONG" | "SHORT",
             entryPrice: pos.entryPrice,
-            stopLoss: pos.stopLoss,
-            takeProfit: pos.takeProfit,
-            leverage: pos.leverage,
+            stopLoss: pos.stopLoss ?? undefined,
+            takeProfit: pos.takeProfit ?? undefined,
+            leverage: pos.leverage ?? undefined,
             horizon: pos.horizon as RegisteredPosition["horizon"],
             openedAt: pos.openedAt,
             lifecycle: "MONITORING",
@@ -172,7 +198,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
       }
       return state;
     });
-  }, [convexPositions]);
+  }, [backendPositionsForUser]);
 
   // ─── Register Position ─────────────────────────────────
   const handleRegisterPosition = useCallback(
