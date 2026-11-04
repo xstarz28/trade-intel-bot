@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { useBackendSession } from "@/hooks/use-backend-session";
 import {
+  BackendApiError,
   getBackendGoogleSignInUrl,
   importBackendAccount,
   type ConvexAccountExport,
@@ -28,6 +29,10 @@ export function AccountMigrationPanel() {
     inserted: Record<string, number>;
     skipped: Record<string, number>;
   } | null>(null);
+
+  if (backendState.status === "error" && backendState.error instanceof BackendApiError && backendState.error.status === 404) {
+    return null;
+  }
 
   const handleMigration = async () => {
     setError(null);
