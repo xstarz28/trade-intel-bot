@@ -249,6 +249,8 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
+          {saving && <p className="text-[10px] text-muted-foreground">Menyimpan jurnal...</p>}
           <p className="text-xs text-muted-foreground">
             Snapshot the current analysis. This captures the engine output at this moment.
           </p>
@@ -397,7 +399,8 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                     size="sm"
                     variant={status === "OPEN" ? "default" : "outline"}
                     className="text-[10px] font-mono"
-                    onClick={() => handleTransition(entry, status)}
+                    disabled={saving}
+                    onClick={() => void handleTransition(entry, status)}
                   >
                     → {status}
                   </Button>
