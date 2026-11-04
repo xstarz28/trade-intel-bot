@@ -19,6 +19,46 @@ export interface BackendSession {
   user: BackendUser | null;
 }
 
+export interface BackendJournalRecord {
+  _id: string;
+  _creationTime: number;
+  instrument: string;
+  instrumentType: string;
+  timeframe: string;
+  style: string;
+  analysisSnapshot: Record<string, unknown>;
+  status: string;
+  entry?: number | null;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
+  riskReward?: number | null;
+  positionSize?: number | null;
+  notionalValue?: number | null;
+  exitPrice?: number | null;
+  pnl?: number | null;
+  pnlPercent?: number | null;
+  outcome?: string | null;
+  closedAt?: number | null;
+  entryReason?: string | null;
+  thesisAtEntry?: string | null;
+  confirmationObserved?: string | null;
+  invalidationObserved?: string | null;
+  whatWentRight?: string | null;
+  whatWentWrong?: string | null;
+  lessons?: string | null;
+  notes?: string | null;
+  timestamps: { createdAt: number; updatedAt: number };
+}
+
+export type CreateBackendJournalEntry = Pick<
+  BackendJournalRecord,
+  "instrument" | "instrumentType" | "timeframe" | "style" | "analysisSnapshot"
+> & Partial<Pick<
+  BackendJournalRecord,
+  "status" | "entry" | "stopLoss" | "takeProfit" | "riskReward" |
+  "positionSize" | "notionalValue" | "entryReason" | "thesisAtEntry" | "notes"
+>>;
+
 export interface BackendAccountExport {
   format: "trade-intel-account-export";
   version: 1;
@@ -176,4 +216,64 @@ export function importBackendAccount(
 /** Downloads the authenticated user's portable account data as structured JSON. */
 export function exportBackendAccount(fetchImpl?: typeof fetch) {
   return backendRequest<BackendAccountExport>("/api/v1/account/export", {}, fetchImpl);
+}
+
+
+/** Lists the authenticated user's persisted journal entries. */
+export function listBackendJournal(
+  filters: { instrument?: string; status?: string } = {},
+  fetchImpl?: typeof fetch,
+) {
+  const params = new URLSearchParams();
+  if (filters.instrument) params.set("instrument", filters.instrument);
+  if (filters.status) params.set("status", filters.status);
+  const suffix = params.size ? `?${params.toString()}` : "";
+  return backendRequest<{ items: BackendJournalRecord[] }>(
+    `/api/v1/journal${suffix}`, {}, fetchImpl,
+  );
+}
+
+/** Creates a journal record with an immutable analysis snapshot. */
+export function createBackendJournalEntry(
+  entry: CreateBackendJournalEntry,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ item: BackendJournalRecord }>(
+    "/api/v1/journal", { method: "POST", body: JSON.stringify(entry) }, fetchImpl,
+  );
+}
+
+/** Updates mutable journal review and trade fields. */
+export function updateBackendJournalEntry(
+  id: string,
+  patch: Partial<Pick<BackendJournalRecord,
+    "entry" | "stopLoss" | "takeProfit" | "riskReward" | "positionSize" |
+    "notionalValue" | "entryReason" | "thesisAtEntry" | "confirmationObserved" |
+    "invalidationObserved" | "whatWentRight" | "whatWentWrong" | "lessons" | "notes"
+  >>,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ item: BackendJournalRecord }>(
+    `/api/v1/journal/${encodeURIComponent(id)}`,
+    { method: "PATCH", body: JSON.stringify(patch) }, fetchImpl,
+  );
+}
+
+/** Applies a validated journal lifecycle transition. */
+export function transitionBackendJournalEntry(
+  id: string,
+  transition: { newStatus: string; exitPrice?: number; pnl?: number; pnlPercent?: number; outcome?: string },
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ item: BackendJournalRecord }>(
+    `/api/v1/journal/${encodeURIComponent(id)}/transition`,
+    { method: "PATCH", body: JSON.stringify(transition) }, fetchImpl,
+  );
+}
+
+/** Deletes one journal record owned by the current backend account. */
+export function deleteBackendJournalEntry(id: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ success: boolean }>(
+    `/api/v1/journal/${encodeURIComponent(id)}`, { method: "DELETE" }, fetchImpl,
+  );
 }
