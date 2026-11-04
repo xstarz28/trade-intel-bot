@@ -1,6 +1,8 @@
 import type { CotData } from "@/lib/data/cot";
 import type { EiaData } from "@/lib/data/eia";
 import type { TreasuryData } from "@/lib/data/treasury";
+import type { MarketData, TechnicalData } from "@/lib/data/market-types";
+import type { AnalysisResult } from "@/types/analysis";
 /**
  * Typed client for the self-hosted Trade Intel API.
  *
@@ -727,12 +729,21 @@ export interface BackendMarketAnalysisInput {
   tradingStyle?: string;
 }
 
-/** Runs the shared decision engine through the authenticated self-hosted API. */
+export interface BackendMarketAnalysisResult {
+  success: boolean;
+  error?: string;
+  errorCode?: "INVALID_INPUT" | "UNSUPPORTED" | "RATE_LIMIT" | "API_UNAVAILABLE";
+  data?: MarketData;
+  technical?: TechnicalData;
+  analysis?: AnalysisResult;
+}
+
+/** Fetches verified market data and the shared decision-engine result from the self-hosted API. */
 export function analyzeBackendMarket(
   input: BackendMarketAnalysisInput,
   fetchImpl?: typeof fetch,
 ) {
-  return backendRequest<import("@/types/analysis").AnalysisResult>(
+  return backendRequest<BackendMarketAnalysisResult>(
     "/api/v1/market-data/analyze",
     { method: "POST", body: JSON.stringify(input) },
     fetchImpl,
