@@ -213,7 +213,8 @@ describe("self-hosted backend API client", () => {
     await expect(getBackendPosition("pos-1", fetcher)).resolves.toEqual({ item: position });
     await expect(deleteBackendPosition("pos-1", fetcher)).resolves.toEqual({ success: true });
     await expect(listBackendPositionAlerts("pos-1", 25, fetcher)).resolves.toEqual({ items: [alert] });
-    await expect(saveBackendPositionAlert("pos-1", { ...alert, _id: undefined }, fetcher))
+    const { _id: alertRecordId, ...alertInput } = alert;
+    await expect(saveBackendPositionAlert("pos-1", alertInput, fetcher))
       .resolves.toEqual({ item: alert });
     await expect(acknowledgeBackendAlert("alert-1", fetcher)).resolves.toEqual({ success: true });
     expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
