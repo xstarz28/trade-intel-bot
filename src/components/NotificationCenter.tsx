@@ -315,7 +315,7 @@ export function NotificationCenter() {
                     ...prefs,
                     enabledCategories: prefs.enabledCategories.length === ALL_CATEGORIES.length ? [] : [...ALL_CATEGORIES],
                   };
-                  savePrefsMut({
+                  void persistPreferences({
                     minimumSeverity: updated.minimumSeverity,
                     enabledCategories: updated.enabledCategories,
                     enabledScopes: updated.enabledScopes,
@@ -348,7 +348,7 @@ export function NotificationCenter() {
                         newCats = [...prefs.enabledCategories, cat];
                       }
                       const updated = { ...prefs, enabledCategories: newCats };
-                      savePrefsMut({
+                      void persistPreferences({
                         minimumSeverity: updated.minimumSeverity,
                         enabledCategories: updated.enabledCategories,
                         enabledScopes: updated.enabledScopes,
@@ -382,7 +382,7 @@ export function NotificationCenter() {
                   checked={prefs.showReadNotifications}
                   onChange={(e) => {
                     const updated = { ...prefs, showReadNotifications: e.target.checked };
-                    savePrefsMut({
+                    void persistPreferences({
                       minimumSeverity: updated.minimumSeverity,
                       enabledCategories: updated.enabledCategories,
                       enabledScopes: updated.enabledScopes,
@@ -403,7 +403,7 @@ export function NotificationCenter() {
                   checked={prefs.showDismissedNotifications}
                   onChange={(e) => {
                     const updated = { ...prefs, showDismissedNotifications: e.target.checked };
-                    savePrefsMut({
+                    void persistPreferences({
                       minimumSeverity: updated.minimumSeverity,
                       enabledCategories: updated.enabledCategories,
                       enabledScopes: updated.enabledScopes,
