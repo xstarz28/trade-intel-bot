@@ -87,6 +87,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
       "/api/v1/intelligence/eia",
       "/api/v1/intelligence/treasury",
       "/api/v1/intelligence/fx-rate",
+      "/api/v1/intelligence/calendar",
       "/api/v1/intelligence/okx-spec",
       "/api/v1/intelligence/okx-orderbook",
       "/api/v1/intelligence/okx-futures-open-interest",
@@ -127,6 +128,14 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
           result=await engine.fetchEiaInventory(env.EIA_API_KEY,fetchImpl);
         } else if(url.pathname==="/api/v1/intelligence/treasury") {
           result=await engine.fetchTreasuryYields(fetchImpl);
+        } else if(url.pathname==="/api/v1/intelligence/calendar") {
+          const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
+          const instrumentType=typeof input.instrumentType==="string"?input.instrumentType.trim():"";
+          if(!instrument||instrument.length>80||!["crypto","stock","forex","commodity","indices"].includes(instrumentType)) {
+            json(response,400,{success:false,error:"invalid_calendar_instrument"});
+            return true;
+          }
+          result=await engine.fetchEconomicCalendar(instrument,instrumentType,env.TICKATLAS_API_KEY,fetchImpl);
         } else if(url.pathname==="/api/v1/intelligence/okx-spec") {
           const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
           if(!instrument||instrument.length>80) {
