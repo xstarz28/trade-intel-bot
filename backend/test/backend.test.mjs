@@ -559,7 +559,7 @@ describe("self-hosted backend", () => {
     const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
     try {
       await withServer(database, async (baseUrl) => {
-        for (const path of ["/api/v1/intelligence/cot", "/api/v1/intelligence/eia", "/api/v1/intelligence/treasury", "/api/v1/intelligence/fx-rate"]) {
+        for (const path of ["/api/v1/intelligence/cot", "/api/v1/intelligence/eia", "/api/v1/intelligence/treasury", "/api/v1/intelligence/fx-rate", "/api/v1/intelligence/okx-spec", "/api/v1/intelligence/okx-orderbook", "/api/v1/intelligence/okx-futures-open-interest"]) {
           const response = await fetch(baseUrl + path, {
             method: "POST",
             headers: { Origin: env.APP_ORIGIN, "Content-Type": "application/json" },
@@ -640,6 +640,34 @@ describe("self-hosted backend", () => {
           });
         },
       });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects empty OKX instrument requests before contacting public endpoints", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(baseUrl + "/api/v1/auth/anonymous", {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        for (const path of [
+          "/api/v1/intelligence/okx-spec",
+          "/api/v1/intelligence/okx-orderbook",
+          "/api/v1/intelligence/okx-futures-open-interest",
+        ]) {
+          const response = await fetch(baseUrl + path, {
+            method: "POST",
+            headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+            body: JSON.stringify({ instrument: "" }),
+          });
+          assert.equal(response.status, 400, path);
+          assert.deepEqual(await response.json(), { success: false, error: "invalid_instrument" });
+        }
+      }, { env, fetchImpl: async () => { throw new Error("provider must not be called for invalid input"); } });
     } finally {
       database.close();
     }
