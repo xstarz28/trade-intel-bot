@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createAppServer } from "../src/app.mjs";
+import { openDatabase } from "../src/database.mjs";
 import { normalizeConvexAccountExport } from "../src/convex-account-import.mjs";
 
 const targetUser = { id: "backend-user-1", email: "trader@example.test" };
@@ -128,5 +134,94 @@ describe("native Convex account export mapping", () => {
       () => normalizeConvexAccountExport({ ...base, data: { analyses: {} } }, targetUser),
       (error) => error.status === 400,
     );
+  });
+});
+
+
+describe("native Convex account import endpoint", () => {
+  it("imports only into the authenticated backend account after email identity match", async () => {
+    const directory = mkdtempSync(join(tmpdir(), "trade-intel-convex-import-"));
+    const database = openDatabase(
+      join(directory, "test.sqlite"),
+      fileURLToPath(new URL("../migrations/", import.meta.url)),
+    );
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    const server = createAppServer({ database, env });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const baseUrl = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+        method: "POST",
+        headers: { Origin: env.APP_ORIGIN },
+      });
+      const user = (await signIn.json()).user;
+      const cookie = signIn.headers.get("set-cookie").split(";")[0];
+      database.raw.prepare(
+        "UPDATE users SET email = ?, email_verified_at = ? WHERE id = ?",
+      ).run("trader@example.test", Date.now(), user.id);
+
+      const exported = {
+        format: "trade-intel-convex-account-export",
+        version: 1,
+        account: { id: "convex-user-1", email: "TRADER@example.test" },
+        data: {
+          analyses: [{
+            _id: "convex-analysis-1",
+            _creationTime: 100,
+            userId: "convex-user-1",
+            instrument: "BTC-USDT",
+            instrumentType: "crypto",
+            timeframe: "H4",
+            bias: "BULLISH",
+            confidence: 80,
+            breakdown: { trend: 1, indicator: 1, fundamental: 0, sentiment: 0 },
+            keyLevels: { support: "65000", resistance: "70000", invalidation: "63000" },
+            riskNote: "Wait for confirmation",
+            dataCompleteness: "COMPLETE",
+            dataFlags: [],
+            timestamp: 99,
+          }],
+        },
+      };
+      const imported = await fetch(`${baseUrl}/api/v1/account/import`, {
+        method: "POST",
+        headers: {
+          Origin: env.APP_ORIGIN,
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(exported),
+      });
+      assert.equal(imported.status, 200);
+      const result = await imported.json();
+      assert.equal(result.totalInserted, 1);
+      const row = database.raw.prepare(
+        "SELECT id, user_id, instrument, created_at FROM analyses WHERE id = ?",
+      ).get("convex-analysis-1");
+      assert.equal(row.user_id, user.id);
+      assert.equal(row.instrument, "BTC-USDT");
+      assert.equal(row.created_at, 100);
+
+      const mismatched = await fetch(`${baseUrl}/api/v1/account/import`, {
+        method: "POST",
+        headers: {
+          Origin: env.APP_ORIGIN,
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...exported,
+          account: { id: "another-convex-user", email: "different@example.test" },
+        }),
+      });
+      assert.equal(mismatched.status, 409);
+      assert.equal((await mismatched.json()).error, "convex_account_identity_mismatch");
+    } finally {
+      await new Promise((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+      database.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
