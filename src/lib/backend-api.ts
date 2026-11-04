@@ -74,6 +74,22 @@ export interface BackendAccountExport {
   counts: Record<string, number>;
 }
 
+export interface ConvexAccountExport {
+  format: "trade-intel-convex-account-export";
+  version: 1;
+  exportedAt: string;
+  account: {
+    id: string;
+    email: string | null;
+    name: string | null;
+    isAnonymous: boolean;
+  };
+  data: Record<string, Record<string, unknown>[]>;
+  counts: Record<string, number>;
+  /** Required only when the source Convex guest has no email identity. */
+  confirmSourceAccountId?: string;
+}
+
 export interface BackendAnalysisRecord {
   _id: string;
   _creationTime: number;
@@ -197,7 +213,7 @@ export function getBackendGoogleSignInUrl() {
 
 /** Restores a previously downloaded Trade Intel account export. */
 export function importBackendAccount(
-  payload: BackendAccountExport,
+  payload: BackendAccountExport | ConvexAccountExport,
   fetchImpl?: typeof fetch,
 ) {
   return backendRequest<{
