@@ -9,6 +9,7 @@ import { createMarketDataHandler } from "./market-data.mjs";
 import { createFundamentalsHandler } from "./fundamentals.mjs";
 import { createHistoryHandler } from "./history.mjs";
 import { createAccountExportHandler } from "./account-export.mjs";
+import { createAccountImportHandler } from "./account-import.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -89,6 +90,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
   const fundamentalsHandler = database ? createFundamentalsHandler({ database, env }) : null;
   const historyHandler = database ? createHistoryHandler({ database, env }) : null;
   const accountExportHandler = database ? createAccountExportHandler({ database, env }) : null;
+  const accountImportHandler = database ? createAccountImportHandler({ database, env }) : null;
   const configuredOrigin = env.APP_ORIGIN?.trim();
   const allowedOrigin = configuredOrigin || (
     env.NODE_ENV === "production" ? "" : "http://localhost:5173"
@@ -162,6 +164,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
     try {
       if (await authHandler(request, response, url)) return;
       if (accountExportHandler && await accountExportHandler(request, response, url)) return;
+      if (accountImportHandler && await accountImportHandler(request, response, url)) return;
       if (domainHandler && await domainHandler(request, response, url)) return;
       if (positionHandler && await positionHandler(request, response, url)) return;
       if (alertHandler && await alertHandler(request, response, url)) return;
