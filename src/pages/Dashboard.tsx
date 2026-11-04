@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BarChart3, Briefcase } from "lucide-react";
 
-/** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
+/** Convert a self-hosted analysis-history record to the AnalysisResult shape used by the UI. */
 function fromDbRecord(record: any): AnalysisResult {
   const historicalContextSummaries = buildHistoricalContextSummaries(record);
   const historicalDecision = resolveHistoricalDecision(record.recommendation, record.noTradeReasons);
