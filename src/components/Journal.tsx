@@ -119,20 +119,31 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   const [editMode, setEditMode] = useState(false);
 
   // ── Create from analysis ──
+  const persistNewEntry = async (entry: JournalEntry) => {
+    setSaving(true);
+    setBackendError(null);
+    try {
+      const { item } = await createBackendJournalEntry(journalEntryToBackendCreate(entry));
+      const persisted = backendJournalToEntry(item);
+      setEntries((prev) => [persisted, ...prev.filter((existing) => existing.id !== persisted.id)]);
+      setSelectedEntry(persisted);
+      setView("detail");
+      onJournalCreated?.(persisted);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menyimpan jurnal: " + cause.code
+        : "Gagal menyimpan jurnal ke backend.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleCreateFromAnalysis = (result: AnalysisResult) => {
-    const entry = journalFromAnalysis(result);
-    setEntries((prev) => [entry, ...prev]);
-    setSelectedEntry(entry);
-    setView("detail");
-    onJournalCreated?.(entry);
+    void persistNewEntry(journalFromAnalysis(result));
   };
 
   const handleCreateObservation = (result: AnalysisResult) => {
-    const entry = createObservationEntry(result, "Observation — no trade taken");
-    setEntries((prev) => [entry, ...prev]);
-    setSelectedEntry(entry);
-    setView("detail");
-    onJournalCreated?.(entry);
+    void persistNewEntry(createObservationEntry(result, "Observation — no trade taken"));
   };
 
   // ── Lifecycle ──
