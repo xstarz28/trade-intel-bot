@@ -8,6 +8,7 @@ import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 import {
   analyzeBackendMarket,
+  fetchBackendFxRate,
   fetchBackendCotPositioning,
   fetchBackendEiaInventory,
   fetchBackendTreasuryYields,
@@ -196,7 +197,6 @@ export default function Dashboard() {
   }, []);
   // Legacy Convex actions remain only for provider legs not yet extracted.
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
-  const fetchFxRate = useAction(api.marketData.fetchFxRate);
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchDeFiLlamaFundamentals = useAction(api.coinglass.fetchDeFiLlamaFundamentals);
@@ -548,7 +548,7 @@ export default function Dashboard() {
           },
           {
             fx: fxPair
-              ? () => fetchFxRate({ from: fxPair!.from, to: fxPair!.to })
+              ? () => fetchBackendFxRate(fxPair!.from, fxPair!.to)
               : undefined,
             cot: () => fetchBackendCotPositioning(input.instrument),
             execution: input.instrumentType === "crypto" &&
@@ -1016,7 +1016,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchFxRate, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, fetchOkxOrderBook, fetchOkxInstrumentSpec, updateStep, riskSizingInputs, t],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, fetchOkxOrderBook, fetchOkxInstrumentSpec, updateStep, riskSizingInputs, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
