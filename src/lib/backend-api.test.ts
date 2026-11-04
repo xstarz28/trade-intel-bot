@@ -4,6 +4,11 @@ import {
   createAnonymousBackendSession,
   exportBackendAccount,
   importBackendAccount,
+  listBackendJournal,
+  createBackendJournalEntry,
+  updateBackendJournalEntry,
+  transitionBackendJournalEntry,
+  deleteBackendJournalEntry,
   getBackendSession,
   listBackendAnalyses,
   logoutBackendSession,
@@ -113,6 +118,51 @@ describe("self-hosted backend API client", () => {
       "/api/v1/account/import",
       expect.objectContaining({ method: "POST", credentials: "include", cache: "no-store" }),
     );
+  });
+
+  it("supports authenticated journal listing, creation, review, transitions, and deletion", async () => {
+    const item = {
+      _id: "journal-1",
+      _creationTime: 1,
+      instrument: "BTC-USDT",
+      instrumentType: "crypto",
+      timeframe: "H4",
+      style: "SWING",
+      analysisSnapshot: { analysisId: "analysis-1", decision: "LONG" },
+      status: "PLANNED",
+      timestamps: { createdAt: 1, updatedAt: 1 },
+    };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(200, { items: [item] }))
+      .mockResolvedValueOnce(response(201, { item }))
+      .mockResolvedValueOnce(response(200, { item }))
+      .mockResolvedValueOnce(response(200, { item: { ...item, status: "OPEN" } }))
+      .mockResolvedValueOnce(response(200, { success: true }));
+
+    await expect(listBackendJournal({ instrument: "BTC-USDT" }, fetcher))
+      .resolves.toEqual({ items: [item] });
+    await expect(createBackendJournalEntry({
+      instrument: "BTC-USDT",
+      instrumentType: "crypto",
+      timeframe: "H4",
+      style: "SWING",
+      analysisSnapshot: item.analysisSnapshot,
+    }, fetcher)).resolves.toEqual({ item });
+    await expect(updateBackendJournalEntry("journal-1", { notes: "Review" }, fetcher))
+      .resolves.toEqual({ item });
+    await expect(transitionBackendJournalEntry("journal-1", { newStatus: "OPEN" }, fetcher))
+      .resolves.toMatchObject({ item: { status: "OPEN" } });
+    await expect(deleteBackendJournalEntry("journal-1", fetcher))
+      .resolves.toEqual({ success: true });
+
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/journal?instrument=BTC-USDT",
+      "/api/v1/journal",
+      "/api/v1/journal/journal-1",
+      "/api/v1/journal/journal-1/transition",
+      "/api/v1/journal/journal-1",
+    ]);
+    expect(fetcher.mock.calls.slice(1).every(([, init]) => init?.credentials === "include")).toBe(true);
   });
 
   it("logs out through the backend session endpoint", async () => {
