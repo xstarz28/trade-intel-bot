@@ -294,7 +294,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
         setPersistenceDegraded(true);
       });
     },
-    [backendUserId],
+    [],
   );
 
   // ─── Ingest Event ──────────────────────────────────────
@@ -390,7 +390,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
         return result.state;
       });
     },
-    [backendUserId],
+    [],
   );
 
   const handleIngestEvents = useCallback(
