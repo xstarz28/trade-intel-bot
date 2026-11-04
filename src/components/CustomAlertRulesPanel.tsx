@@ -4,7 +4,7 @@
  * Trader-facing UI for managing custom intelligence alert rules.
  * CRUD via Convex mutations. No auto-execution. INFORMATIONAL_ONLY.
  */
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapPriority, mapScope } from "@/lib/i18n/enum-mapping";
 import { toast } from "sonner";
@@ -443,46 +443,49 @@ export function CustomAlertRulesPanel() {
     }) => {
       try {
         const ruleId = `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        await createRule({
+        const { item } = await createBackendAlertRule({
           ruleId,
           name: opts.name,
           enabled: true,
           scope: opts.scope,
-          instrument: opts.instrument,
-          positionId: opts.positionId,
+          instrument: opts.instrument ?? null,
+          positionId: opts.positionId ?? null,
           condition: opts.condition,
           severity: opts.severity,
           cooldownMs: opts.cooldownMs,
         });
+        setBackendRules((current) => [item, ...current.filter((rule) => rule.ruleId !== item.ruleId)]);
         toast.success(`Rule "${opts.name}" created`);
       } catch (err: any) {
         toast.error(err?.message ?? "Failed to create rule");
       }
     },
-    [createRule],
+    [backendUserId],
   );
 
   const handleToggle = useCallback(
     async (ruleId: string, enabled: boolean) => {
       try {
-        await updateRule({ ruleId, enabled });
+        const { item } = await updateBackendAlertRule(ruleId, { enabled });
+        setBackendRules((current) => current.map((rule) => rule.ruleId === ruleId ? item : rule));
       } catch (err: any) {
         toast.error(err?.message ?? "Failed to update rule");
       }
     },
-    [updateRule],
+    [backendUserId],
   );
 
   const handleDelete = useCallback(
     async (ruleId: string) => {
       try {
-        await deleteRule({ ruleId });
+        await deleteBackendAlertRule(ruleId);
+        setBackendRules((current) => current.filter((rule) => rule.ruleId !== ruleId));
         toast.success("Rule deleted");
       } catch (err: any) {
         toast.error(err?.message ?? "Failed to delete rule");
       }
     },
-    [deleteRule],
+    [backendUserId],
   );
 
   return (
