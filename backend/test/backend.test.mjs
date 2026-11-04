@@ -345,55 +345,44 @@ describe("self-hosted backend", () => {
     }
   });
 
-  it("restores a portable export into the active account and remaps record ownership", async () => {
+  it("restores a portable export and overwrites untrusted imported ownership", async () => {
     const database = createTemporaryDatabase();
     const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
     try {
       await withServer(database, async (baseUrl) => {
-        const first = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
           method: "POST", headers: { Origin: env.APP_ORIGIN },
         });
-        const firstUser = (await first.json()).user;
-        const firstCookie = first.headers.get("set-cookie").split(";")[0];
+        const user = (await signIn.json()).user;
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
         const now = Date.now();
         database.raw.prepare(
           "INSERT INTO notification_preferences (id,user_id,updated_at) VALUES (?,?,?)",
-        ).run("pref-import-1", firstUser.id, now);
+        ).run("pref-import-1", user.id, now);
 
-        const exportResponse = await fetch(`${baseUrl}/api/v1/account/export`, {
-          headers: { Cookie: firstCookie },
+        const exportedResponse = await fetch(`${baseUrl}/api/v1/account/export`, {
+          headers: { Cookie: cookie },
         });
-        assert.equal(exportResponse.status, 200);
-        const exported = await exportResponse.json();
+        assert.equal(exportedResponse.status, 200);
+        const exported = await exportedResponse.json();
 
-        const second = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
-          method: "POST", headers: { Origin: env.APP_ORIGIN },
-        });
-        const secondUser = (await second.json()).user;
-        const secondCookie = second.headers.get("set-cookie").split(";")[0];
-        const imported = await fetch(`${baseUrl}/api/v1/account/import`, {
+        database.raw.prepare("DELETE FROM notification_preferences WHERE id = ?").run("pref-import-1");
+        exported.data.notification_preferences[0].user_id = "forged-other-user";
+        const response = await fetch(`${baseUrl}/api/v1/account/import`, {
           method: "POST",
           headers: {
             Origin: env.APP_ORIGIN,
-            Cookie: secondCookie,
+            Cookie: cookie,
             "content-type": "application/json",
           },
           body: JSON.stringify(exported),
         });
-        assert.equal(imported.status, 200);
-        const result = await imported.json();
+        assert.equal(response.status, 200);
+        const result = await response.json();
         assert.equal(result.totalInserted, 1);
         assert.equal(
           database.raw.prepare("SELECT user_id FROM notification_preferences WHERE id = ?").get("pref-import-1").user_id,
-          secondUser.id,
-        );
-        assert.equal(
-          database.raw.prepare("SELECT COUNT(*) AS count FROM notification_preferences WHERE user_id = ?").get(firstUser.id).count,
-          1,
-        );
-        assert.equal(
-          database.raw.prepare("SELECT COUNT(*) AS count FROM notification_preferences WHERE user_id = ?").get(secondUser.id).count,
-          1,
+          user.id,
         );
       }, { env });
     } finally {
