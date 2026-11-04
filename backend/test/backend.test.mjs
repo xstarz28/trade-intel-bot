@@ -18,7 +18,7 @@ function createTemporaryDatabase() {
 }
 
 
-function createGoogleIdToken({ clientId, nonce, subject = "google-subject-e2e", email = "verified@example.test" }) {
+function createGoogleIdToken({ clientId, nonce, subject = "google-subject-e2e", email = "verified@example.test", issuedAt = Math.floor(Date.now() / 1000), expiresAt = Math.floor(Date.now() / 1000) + 3600 }) {
   const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const jwk = {
     ...publicKey.export({ format: "jwk" }),
@@ -31,8 +31,8 @@ function createGoogleIdToken({ clientId, nonce, subject = "google-subject-e2e", 
   const claims = encode({
     iss: "https://accounts.google.com",
     aud: clientId,
-    exp: Math.floor(Date.now() / 1000) + 3600,
-    iat: Math.floor(Date.now() / 1000),
+    exp: expiresAt,
+    iat: issuedAt,
     nonce,
     sub: subject,
     email,
@@ -1060,15 +1060,48 @@ describe("self-hosted backend", () => {
     }
   });
 
-  it("rejects Google ID tokens with an invalid nonce", async () => {
+  it("rejects Google ID tokens with an invalid nonce, expired claims, or a future issue time", async () => {
     const clientId = "123456789-example.apps.googleusercontent.com";
-    const { jwk, idToken } = createGoogleIdToken({ clientId, nonce: "expected-nonce" });
-    const fetchImpl = async () => new Response(JSON.stringify({ keys: [jwk] }), {
+    const fetchKeys = (jwk) => async () => new Response(JSON.stringify({ keys: [jwk] }), {
       status: 200,
       headers: { "content-type": "application/json" },
     });
+    const nonceFixture = createGoogleIdToken({ clientId, nonce: "expected-nonce" });
     await assert.rejects(
-      verifyGoogleIdToken(idToken, { clientId, nonce: "different-nonce", fetchImpl }),
+      verifyGoogleIdToken(nonceFixture.idToken, {
+        clientId,
+        nonce: "different-nonce",
+        fetchImpl: fetchKeys(nonceFixture.jwk),
+      }),
+      /claims failed validation/,
+    );
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    const expiredFixture = createGoogleIdToken({
+      clientId,
+      nonce: "expected-nonce",
+      expiresAt: nowSeconds - 10,
+    });
+    await assert.rejects(
+      verifyGoogleIdToken(expiredFixture.idToken, {
+        clientId,
+        nonce: "expected-nonce",
+        fetchImpl: fetchKeys(expiredFixture.jwk),
+      }),
+      /claims failed validation/,
+    );
+
+    const futureFixture = createGoogleIdToken({
+      clientId,
+      nonce: "expected-nonce",
+      issuedAt: nowSeconds + 120,
+    });
+    await assert.rejects(
+      verifyGoogleIdToken(futureFixture.idToken, {
+        clientId,
+        nonce: "expected-nonce",
+        fetchImpl: fetchKeys(futureFixture.jwk),
+      }),
       /claims failed validation/,
     );
   });
