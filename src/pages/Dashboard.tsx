@@ -7,12 +7,14 @@ import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
 import {
+  analyzeBackendMarket,
   fetchBackendCotPositioning,
   fetchBackendEiaInventory,
   fetchBackendTreasuryYields,
   listBackendAnalyses,
   saveBackendAnalysis,
   type BackendAnalysisRecord,
+  type BackendMarketAnalysisResult,
 } from "@/lib/backend-api";
 import { AccountMigrationPanel } from "@/components/AccountMigrationPanel";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
@@ -92,6 +94,29 @@ const ACTION_TIMEOUTS_MS = {
   calendar: 8_000,
   derivatives: 8_000,
 } as const;
+
+function normalizeMarketDataResult(
+  result: MarketDataResult | BackendMarketAnalysisResult,
+): MarketDataResult {
+  let errorCode: MarketDataResult["errorCode"];
+  switch (result.errorCode) {
+    case "UNSUPPORTED":
+      errorCode = "UNSUPPORTED_INSTRUMENT";
+      break;
+    case "INVALID_INPUT":
+      errorCode = "API_UNAVAILABLE";
+      break;
+    default:
+      errorCode = result.errorCode;
+  }
+  return {
+    success: result.success,
+    data: result.data,
+    technical: result.technical,
+    error: result.error,
+    errorCode,
+  };
+}
 
 function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return Promise.race([
@@ -244,15 +269,31 @@ export default function Dashboard() {
         let defiFundamentalsResult: any = null;
         let calendarResult: any = null;
         try {
+          // The self-hosted engine owns spot/FX/equity/commodity/index market data.
+          // Keep the legacy provider only for derivative contracts until the backend
+          // has an exact-contract OHLCV implementation; never substitute spot candles.
+          const usesLegacyDerivativeMarket =
+            input.instrumentType === "crypto" &&
+            (input.instrument.toUpperCase().endsWith("-SWAP") || /-[0-9]{6}$/.test(input.instrument.toUpperCase()));
+          const marketPromise: Promise<MarketDataResult | BackendMarketAnalysisResult> =
+            usesLegacyDerivativeMarket
+              ? fetchMarketData({
+                  instrument: input.instrument,
+                  instrumentType: input.instrumentType,
+                  timeframe: input.timeframe,
+                  tradingStyle: input.tradingStyle,
+                })
+              : analyzeBackendMarket({
+                  instrument: input.instrument,
+                  instrumentType: input.instrumentType,
+                  timeframe: input.timeframe,
+                  tradingStyle: input.tradingStyle,
+                });
+
           // Build fetch promises
           const fetchPromises: Promise<any>[] = [
             withActionTimeout(
-              fetchMarketData({
-                instrument: input.instrument,
-                instrumentType: input.instrumentType,
-                timeframe: input.timeframe,
-                tradingStyle: input.tradingStyle,
-              }),
+              marketPromise,
               ACTION_TIMEOUTS_MS.market,
               "Primary market data",
             ),
@@ -332,7 +373,21 @@ export default function Dashboard() {
                 calculateTechnical(nativeLive.marketData.candles),
             };
           } else if (marketResult.status === "fulfilled") {
-            marketDataResult = marketResult.value as MarketDataResult;
+            const marketValue = marketResult.value as MarketDataResult | BackendMarketAnalysisResult;
+            marketDataResult = normalizeMarketDataResult(marketValue);
+            if ("analysis" in marketValue && marketValue.analysis) {
+              const backendAnalysis = marketValue.analysis;
+              intelligenceResult = {
+                success: Boolean(
+                  backendAnalysis.fundamentalData ||
+                  backendAnalysis.sentimentData ||
+                  backendAnalysis.macroData,
+                ),
+                fundamentals: backendAnalysis.fundamentalData,
+                sentiment: backendAnalysis.sentimentData,
+                macro: backendAnalysis.macroData,
+              };
+            }
           } else if (nativeLive?.marketData) {
             // Only use a verified snapshot when its actual candle interval matches the request.
             marketDataResult = {
@@ -410,7 +465,7 @@ export default function Dashboard() {
           updateStep(1, "done");
 
           // Intelligence is non-critical
-          if (intelResult.status === "fulfilled") {
+          if (intelResult.status === "fulfilled" && (intelResult.value?.success || !intelligenceResult)) {
             intelligenceResult = intelResult.value;
           }
           // Calendar is non-critical
