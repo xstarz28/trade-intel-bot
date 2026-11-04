@@ -90,6 +90,8 @@ Store backups outside the host and periodically test restoring one. The live dat
 - `GET /api/v1/auth/google` and `GET /api/v1/auth/google/callback`
 - `GET /api/v1/account/export` (authenticated, user-scoped JSON export; excludes sessions/OAuth secrets and global provider observations)
 - `POST /api/v1/account/import` (authenticated restore from a versioned self-hosted export or native Convex export; ownership is reassigned to the active backend account, with duplicate rows skipped). Native Convex exports must come from the authenticated `accountMigration:exportMyAccount` query and must match the backend account email; email-less guest exports require explicit source-account ID confirmation.
+
+The Dashboard's **Migrasi ke backend mandiri** panel starts the backend Google session, invokes the authenticated Convex export query, and posts the resulting snapshot to this importer. Before using it in production, deploy the read-only Convex export function and configure backend Google OAuth. The transfer does not switch the remaining frontend features away from Convex.
 - `GET/POST/DELETE /api/v1/analyses`
 - `GET/POST /api/v1/journal`, `GET/PATCH/DELETE /api/v1/journal/{id}`, `PATCH /api/v1/journal/{id}/transition`
 - `GET/POST /api/v1/positions`, `GET/DELETE /api/v1/positions/{positionId}`
