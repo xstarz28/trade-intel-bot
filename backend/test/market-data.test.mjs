@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -284,5 +284,95 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(stale.success, false);
     assert.match(stale.error, /FX_RATE_STALE/);
     assert.equal(stale.direct, undefined);
+  });
+
+  it("fetches only exact OKX instrument metadata and rejects mismatched contract rows", async () => {
+    let requestedUrl = "";
+    const result = await fetchOkxInstrumentSpec("BTC-USDT-SWAP", async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify({
+        code: "0",
+        data: [{
+          instId: "BTC-USDT-SWAP", instType: "SWAP", state: "live",
+          ctType: "linear", ctVal: "0.01", ctValCcy: "BTC",
+          settleCcy: "USDT", lotSz: "0.01", minSz: "0.01", tickSz: "0.1",
+        }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    assert.equal(result.success, true);
+    assert.match(requestedUrl, /instType=SWAP/);
+    assert.match(decodeURIComponent(requestedUrl), /instId=BTC-USDT-SWAP/);
+    assert.equal(result.data.instruments.length, 1);
+    assert.equal(result.data.instruments[0].instId, "BTC-USDT-SWAP");
+    assert.equal(result.data.freshness, "static");
+
+    const mismatch = await fetchOkxInstrumentSpec("ETH-USDT-SWAP", async () => new Response(JSON.stringify({
+      code: "0",
+      data: [{ instId: "BTC-USDT-SWAP", instType: "SWAP", state: "live" }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    assert.equal(mismatch.success, false);
+    assert.match(mismatch.error, /exact requested instrument ETH-USDT-SWAP/);
+  });
+
+  it("builds OKX execution quality only from the requested instrument's exchange-timestamped book", async () => {
+    const now = Date.now();
+    const result = await fetchOkxOrderBook("BTC-USDT-SWAP", async () => new Response(JSON.stringify({
+      code: "0",
+      data: [{
+        instId: "BTC-USDT-SWAP",
+        ts: String(now),
+        bids: [["65000", "2"], ["64999", "3"]],
+        asks: [["65001", "4"], ["65002", "5"]],
+      }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    assert.equal(result.success, true);
+    assert.equal(result.data.available, true);
+    assert.equal(result.data.instrumentId, "BTC-USDT-SWAP");
+    assert.equal(result.data.bid, 65000);
+    assert.equal(result.data.ask, 65001);
+    assert.equal(result.data.freshness, "FRESH");
+
+    const mismatch = await fetchOkxOrderBook("BTC-USDT-SWAP", async () => new Response(JSON.stringify({
+      code: "0",
+      data: [{
+        instId: "ETH-USDT-SWAP",
+        ts: String(now),
+        bids: [["3000", "2"]],
+        asks: [["3001", "2"]],
+      }],
+    }), { status: 200, headers: { "content-type": "application/json" } }));
+    assert.equal(mismatch.success, false);
+    assert.equal(mismatch.data.available, false);
+    assert.match(mismatch.data.reason, /instrument identity mismatch/);
+  });
+
+  it("fetches USD open interest only for the literal dated OKX futures contract", async () => {
+    const now = Date.now();
+    let requestedUrl = "";
+    const result = await fetchOkxFuturesOpenInterest("BTC-USDT-261225", async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify({
+        code: "0",
+        data: [{
+          instId: "BTC-USDT-261225",
+          instType: "FUTURES",
+          oiUsd: "1250000",
+          ts: String(now),
+        }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    assert.equal(result.success, true);
+    assert.match(requestedUrl, /instType=FUTURES/);
+    assert.match(decodeURIComponent(requestedUrl), /instId=BTC-USDT-261225/);
+    assert.equal(result.data.openInterest.current, 1_250_000);
+    assert.equal(result.data.availability.fundingRate, false);
+
+    let providerCalled = false;
+    const invalid = await fetchOkxFuturesOpenInterest("BTC-USDT-SWAP", async () => {
+      providerCalled = true;
+      throw new Error("A perpetual contract must not be substituted for dated futures.");
+    });
+    assert.equal(invalid.success, false);
+    assert.equal(providerCalled, false);
   });
 });
