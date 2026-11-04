@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/sonner";
 import { RequireAuth } from "@/components/RequireAuth";
+import { AppAuthProvider } from "@/lib/convex-provider";
 import React, { lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter, Route, Routes } from "react-router";
@@ -70,8 +71,8 @@ createRoot(document.getElementById("root")!).render(
                 <Route path="/" element={<Landing />} />
                 <Route path="/auth" element={<AuthPage redirectAfterAuth="/dashboard" />} />
                 <Route path="/pricing" element={<Pricing />} />
-                <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
-                <Route path="/journal" element={<RequireAuth><Journal /></RequireAuth>} />
+                <Route path="/dashboard" element={<RequireAuth><AppAuthProvider><Dashboard /></AppAuthProvider></RequireAuth>} />
+                <Route path="/journal" element={<RequireAuth><AppAuthProvider><Journal /></AppAuthProvider></RequireAuth>} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
