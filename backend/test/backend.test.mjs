@@ -315,6 +315,9 @@ describe("self-hosted backend", () => {
           "INSERT INTO notification_preferences (id,user_id,updated_at) VALUES (?,?,?)",
         ).run("pref-export-1", user.id, now);
         database.raw.prepare(
+          "INSERT INTO users (id,name,created_at,updated_at) VALUES (?,?,?,?)",
+        ).run("another-user", "Other Trader", now, now);
+        database.raw.prepare(
           "INSERT INTO notification_preferences (id,user_id,updated_at) VALUES (?,?,?)",
         ).run("pref-export-2", "another-user", now);
 
