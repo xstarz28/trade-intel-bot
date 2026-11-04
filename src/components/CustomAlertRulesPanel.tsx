@@ -288,8 +288,8 @@ function RuleRow({
     name: string;
     enabled: boolean;
     scope: string;
-    instrument?: string;
-    positionId?: string;
+    instrument?: string | null;
+    positionId?: string | null;
     condition: string;
     severity: string;
     cooldownMs: number;
