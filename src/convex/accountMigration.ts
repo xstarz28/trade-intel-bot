@@ -4,19 +4,19 @@
  * Convex auth/session tables are intentionally excluded.
  */
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { query } from "./_generated/server";
+import { query, type QueryCtx } from "./_generated/server";
 
 const MAX_ROWS_PER_TABLE = 10_000;
 
 async function takeUserRows(
-  ctx: Parameters<Parameters<typeof query>[0]["handler"]>[0],
-  table: string,
+  ctx: QueryCtx,
+  table: any,
   index: string,
-  userId: string,
+  userId: any,
 ) {
   const rows = await ctx.db
-    .query(table as never)
-    .withIndex(index as never, (q: any) => q.eq("userId", userId))
+    .query(table)
+    .withIndex(index as any, (q: any) => q.eq("userId", userId))
     .take(MAX_ROWS_PER_TABLE + 1);
   if (rows.length > MAX_ROWS_PER_TABLE) {
     throw new Error(`Account migration export limit exceeded for ${table}`);
