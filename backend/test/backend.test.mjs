@@ -72,6 +72,29 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("allows CORS preflight for PATCH and DELETE API operations", async () => {
+    const env = {
+      NODE_ENV: "development",
+      APP_ORIGIN: "http://localhost:5173",
+    };
+    await withServer(null, async (baseUrl) => {
+      for (const method of ["PATCH", "DELETE"]) {
+        const response = await fetch(`${baseUrl}/api/v1/journal/example`, {
+          method: "OPTIONS",
+          headers: {
+            Origin: env.APP_ORIGIN,
+            "Access-Control-Request-Method": method,
+            "Access-Control-Request-Headers": "content-type",
+          },
+        });
+        assert.equal(response.status, 204);
+        assert.equal(response.headers.get("access-control-allow-origin"), env.APP_ORIGIN);
+        assert.match(response.headers.get("access-control-allow-methods") ?? "", new RegExp(method));
+        assert.equal(response.headers.get("access-control-allow-credentials"), "true");
+      }
+    }, { env });
+  });
+
   it("fails readiness when persistence is not configured", async () => {
     await withServer(null, async (baseUrl) => {
       const response = await fetch(`${baseUrl}/health/ready`);
