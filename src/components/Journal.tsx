@@ -74,19 +74,16 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   const { state: backendState } = useBackendSession();
-  const [loading, setLoading] = useState(false);
+  const backendUserId = backendState.status === "authenticated" ? backendState.user.id : null;
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [backendError, setBackendError] = useState<string | null>(null);
+  const loading = Boolean(backendUserId && loadedUserId !== backendUserId);
+  const journalEntries = loadedUserId === backendUserId ? entries : [];
 
   useEffect(() => {
-    if (backendState.status !== "authenticated") {
-      setEntries([]);
-      setSelectedEntry(null);
-      return;
-    }
+    if (!backendUserId) return;
     let active = true;
-    setLoading(true);
-    setBackendError(null);
     listBackendJournal()
       .then(({ items }) => {
         if (!active) return;
@@ -95,18 +92,18 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         setSelectedEntry((current) =>
           current ? mapped.find((entry) => entry.id === current.id) ?? null : null,
         );
+        setBackendError(null);
+        setLoadedUserId(backendUserId);
       })
       .catch((cause: unknown) => {
         if (!active) return;
         setBackendError(cause instanceof BackendApiError
           ? "Backend journal error: " + cause.code
           : "Tidak dapat memuat jurnal dari backend.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+        setLoadedUserId(backendUserId);
       });
     return () => { active = false; };
-  }, [backendState.status, backendState.status === "authenticated" ? backendState.user.id : ""]);
+  }, [backendUserId]);
   const [filterInstrument, setFilterInstrument] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [editMode, setEditMode] = useState(false);
@@ -205,7 +202,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   };
 
   // ── Filtered entries ──
-  const filteredEntries = entries.filter((e) => {
+  const filteredEntries = journalEntries.filter((e) => {
     if (filterInstrument && !e.instrument.toLowerCase().includes(filterInstrument.toLowerCase())) return false;
     if (filterStatus && e.status !== filterStatus) return false;
     return true;
@@ -480,10 +477,10 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         )}
         {/* Quick Stats */}
         <div className="flex flex-wrap gap-2 text-[10px] font-mono">
-          <Badge variant="outline" className="border-border/50">total: {entries.length}</Badge>
-          <Badge variant="outline" className="border-border/50">open: {entries.filter((e) => e.status === "OPEN").length}</Badge>
-          <Badge variant="outline" className="border-border/50">closed: {entries.filter((e) => e.status === "CLOSED").length}</Badge>
-          <Badge variant="outline" className="border-border/50">planned: {entries.filter((e) => e.status === "PLANNED").length}</Badge>
+          <Badge variant="outline" className="border-border/50">total: {journalEntries.length}</Badge>
+          <Badge variant="outline" className="border-border/50">open: {journalEntries.filter((e) => e.status === "OPEN").length}</Badge>
+          <Badge variant="outline" className="border-border/50">closed: {journalEntries.filter((e) => e.status === "CLOSED").length}</Badge>
+          <Badge variant="outline" className="border-border/50">planned: {journalEntries.filter((e) => e.status === "PLANNED").length}</Badge>
         </div>
 
         {/* Filters */}
@@ -511,7 +508,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         {/* Entry List */}
         {filteredEntries.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">
-            {entries.length === 0 ? "No journal entries yet." : "No entries match filters."}
+            {journalEntries.length === 0 ? "No journal entries yet." : "No entries match filters."}
           </p>
         ) : (
           <div className="space-y-1">
