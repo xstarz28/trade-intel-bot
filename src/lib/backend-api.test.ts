@@ -148,6 +148,27 @@ describe("self-hosted backend API client", () => {
     expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
   });
 
+  it("fetches OKX instrument, order-book and dated-futures intelligence through the backend", async () => {
+    const spec = { success: true, data: { fetchedAt: 1, source: "OKX public instruments", freshness: "static", instruments: [{ instId: "BTC-USDT-SWAP", instType: "SWAP" }], parseWarnings: [] } };
+    const book = { success: true, data: { available: false, reason: "stale exchange snapshot" } };
+    const futures = { success: true, data: { provider: "okx-public-futures-open-interest", symbol: "BTC-USDT-261225", timestamp: 1, freshness: "realtime", openInterest: { current: 1250000 }, availability: { openInterest: true, fundingRate: false, longShort: false, liquidations: false }, confidence: "low", interpretation: "Exact-contract USD open interest only" } };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(200, spec))
+      .mockResolvedValueOnce(response(200, book))
+      .mockResolvedValueOnce(response(200, futures));
+
+    await expect(fetchBackendOkxInstrumentSpec("BTC-USDT-SWAP", fetcher)).resolves.toEqual(spec);
+    await expect(fetchBackendOkxOrderBook("BTC-USDT-SWAP", fetcher)).resolves.toEqual(book);
+    await expect(fetchBackendOkxFuturesOpenInterest("BTC-USDT-261225", fetcher)).resolves.toEqual(futures);
+
+    expect(fetcher.mock.calls.map(([url, init]) => [url, init?.method, init?.body])).toEqual([
+      ["/api/v1/intelligence/okx-spec", "POST", JSON.stringify({ instrument: "BTC-USDT-SWAP" })],
+      ["/api/v1/intelligence/okx-orderbook", "POST", JSON.stringify({ instrument: "BTC-USDT-SWAP" })],
+      ["/api/v1/intelligence/okx-futures-open-interest", "POST", JSON.stringify({ instrument: "BTC-USDT-261225" })],
+    ]);
+    expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
+  });
+
   it("exports account data through the authenticated backend endpoint", async () => {
     const payload = {
       format: "trade-intel-account-export" as const,
