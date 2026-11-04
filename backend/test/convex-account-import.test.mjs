@@ -174,6 +174,8 @@ describe("native Convex account import endpoint", () => {
             timeframe: "H4",
             bias: "BULLISH",
             confidence: 80,
+            technicalSummary: "Trend is constructive",
+            fundamentalSummary: "No negative catalyst",
             breakdown: { trend: 1, indicator: 1, fundamental: 0, sentiment: 0 },
             keyLevels: { support: "65000", resistance: "70000", invalidation: "63000" },
             riskNote: "Wait for confirmation",
