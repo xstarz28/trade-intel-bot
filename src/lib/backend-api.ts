@@ -277,3 +277,227 @@ export function deleteBackendJournalEntry(id: string, fetchImpl?: typeof fetch) 
     `/api/v1/journal/${encodeURIComponent(id)}`, { method: "DELETE" }, fetchImpl,
   );
 }
+
+
+export interface BackendPosition {
+  _id: string;
+  positionId: string;
+  instrument: string;
+  side: string;
+  entryPrice: number;
+  stopLoss: number | null;
+  takeProfit: number | null;
+  leverage: number | null;
+  horizon: string;
+  openedAt: number;
+  peakPrice: number | null;
+  peakProfit: number | null;
+  currentSeverity: string;
+  lifecycleState: string;
+  monitoringLifecycle: string;
+  lastUpdateAt: number;
+  lastAlertAt: number;
+  consecutiveSameSeverity: number;
+}
+
+export type SaveBackendPosition = Omit<BackendPosition, "_id">;
+
+export interface BackendPositionAlert {
+  _id: string;
+  alertId: string;
+  positionId: string;
+  instrument: string;
+  severity: string;
+  notificationPriority: string;
+  reason: string;
+  action: string;
+  timestamp: number;
+  acknowledged: boolean;
+}
+
+export interface BackendAlertRule {
+  _id: string;
+  ruleId: string;
+  name: string;
+  enabled: boolean;
+  scope: string;
+  instrument: string | null;
+  positionId: string | null;
+  condition: string;
+  severity: string;
+  cooldownMs: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type CreateBackendAlertRule = Pick<
+  BackendAlertRule,
+  "ruleId" | "name" | "enabled" | "scope" | "condition" | "severity" | "cooldownMs"
+> & Partial<Pick<BackendAlertRule, "instrument" | "positionId">>;
+
+export interface BackendNotification {
+  _id: string;
+  notificationId: string;
+  alertIdentity: string;
+  ruleId: string;
+  ruleName: string;
+  timestamp: number;
+  instrument: string | null;
+  positionId: string | null;
+  side: string | null;
+  severity: string;
+  title: string;
+  message: string;
+  category: string;
+  impact: string;
+  read: boolean;
+  dismissed: boolean;
+  source: string;
+  condition: string;
+}
+
+export interface BackendNotificationPreferences {
+  minimumSeverity: string;
+  enabledCategories: string[];
+  enabledScopes: string[];
+  mutedRuleIds: string[];
+  enabledInstruments: string[];
+  mutedInstruments: string[];
+  showReadNotifications: boolean;
+  showDismissedNotifications: boolean;
+}
+
+export function listBackendPositions(fetchImpl?: typeof fetch) {
+  return backendRequest<{ items: BackendPosition[] }>("/api/v1/positions", {}, fetchImpl);
+}
+
+export function saveBackendPosition(position: SaveBackendPosition, fetchImpl?: typeof fetch) {
+  return backendRequest<{ item: BackendPosition }>("/api/v1/positions", {
+    method: "POST", body: JSON.stringify(position),
+  }, fetchImpl);
+}
+
+export function getBackendPosition(positionId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ item: BackendPosition }>(
+    `/api/v1/positions/${encodeURIComponent(positionId)}`, {}, fetchImpl,
+  );
+}
+
+export function deleteBackendPosition(positionId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ success: boolean }>(
+    `/api/v1/positions/${encodeURIComponent(positionId)}`, { method: "DELETE" }, fetchImpl,
+  );
+}
+
+export function listBackendPositionAlerts(
+  positionId: string,
+  limit = 50,
+  fetchImpl?: typeof fetch,
+) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return backendRequest<{ items: BackendPositionAlert[] }>(
+    `/api/v1/positions/${encodeURIComponent(positionId)}/alerts?${params.toString()}`, {}, fetchImpl,
+  );
+}
+
+export function saveBackendPositionAlert(
+  positionId: string,
+  alert: Omit<BackendPositionAlert, "_id" | "positionId"> & { positionId?: string },
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ item: BackendPositionAlert }>(
+    `/api/v1/positions/${encodeURIComponent(positionId)}/alerts`,
+    { method: "POST", body: JSON.stringify(alert) }, fetchImpl,
+  );
+}
+
+export function acknowledgeBackendAlert(alertId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ success: boolean }>(
+    `/api/v1/alerts/${encodeURIComponent(alertId)}/acknowledge`,
+    { method: "POST", body: "{}" }, fetchImpl,
+  );
+}
+
+export function listBackendAlertRules(fetchImpl?: typeof fetch) {
+  return backendRequest<{ items: BackendAlertRule[] }>("/api/v1/alert-rules", {}, fetchImpl);
+}
+
+export function createBackendAlertRule(rule: CreateBackendAlertRule, fetchImpl?: typeof fetch) {
+  return backendRequest<{ item: BackendAlertRule }>("/api/v1/alert-rules", {
+    method: "POST", body: JSON.stringify(rule),
+  }, fetchImpl);
+}
+
+export function updateBackendAlertRule(
+  ruleId: string,
+  patch: Partial<Pick<BackendAlertRule, "name" | "enabled" | "severity" | "cooldownMs">>,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ item: BackendAlertRule }>(
+    `/api/v1/alert-rules/${encodeURIComponent(ruleId)}`,
+    { method: "PATCH", body: JSON.stringify(patch) }, fetchImpl,
+  );
+}
+
+export function deleteBackendAlertRule(ruleId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ success: boolean }>(
+    `/api/v1/alert-rules/${encodeURIComponent(ruleId)}`, { method: "DELETE" }, fetchImpl,
+  );
+}
+
+export function listBackendNotifications(limit = 100, fetchImpl?: typeof fetch) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return backendRequest<{ items: BackendNotification[] }>(
+    `/api/v1/notifications?${params.toString()}`, {}, fetchImpl,
+  );
+}
+
+export function listBackendUnreadNotifications(fetchImpl?: typeof fetch) {
+  return backendRequest<{ items: BackendNotification[] }>("/api/v1/notifications/unread", {}, fetchImpl);
+}
+
+export function getBackendUnreadNotificationCount(fetchImpl?: typeof fetch) {
+  return backendRequest<{ count: number }>("/api/v1/notifications/unread-count", {}, fetchImpl);
+}
+
+export function markBackendNotificationRead(notificationId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ success: boolean }>(
+    `/api/v1/notifications/${encodeURIComponent(notificationId)}/read`,
+    { method: "POST", body: "{}" }, fetchImpl,
+  );
+}
+
+export function dismissBackendNotification(notificationId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ success: boolean }>(
+    `/api/v1/notifications/${encodeURIComponent(notificationId)}/dismiss`,
+    { method: "POST", body: "{}" }, fetchImpl,
+  );
+}
+
+export function markAllBackendNotificationsRead(fetchImpl?: typeof fetch) {
+  return backendRequest<{ updated: number }>(
+    "/api/v1/notifications/read-all", { method: "POST", body: "{}" }, fetchImpl,
+  );
+}
+
+export function getBackendNotificationPreferences(fetchImpl?: typeof fetch) {
+  return backendRequest<{ preferences: BackendNotificationPreferences }>(
+    "/api/v1/notification-preferences", {}, fetchImpl,
+  );
+}
+
+export function saveBackendNotificationPreferences(
+  preferences: BackendNotificationPreferences,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ preferences: BackendNotificationPreferences }>(
+    "/api/v1/notification-preferences",
+    { method: "PUT", body: JSON.stringify(preferences) }, fetchImpl,
+  );
+}
+
+export function resetBackendNotificationPreferences(fetchImpl?: typeof fetch) {
+  return backendRequest<{ preferences: BackendNotificationPreferences }>(
+    "/api/v1/notification-preferences", { method: "DELETE" }, fetchImpl,
+  );
+}
