@@ -101,7 +101,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
     if (origin && allowedOrigin && origin === allowedOrigin) {
       response.setHeader("access-control-allow-origin", allowedOrigin);
       response.setHeader("access-control-allow-credentials", "true");
-      response.setHeader("access-control-allow-methods", "GET, POST, OPTIONS");
+      response.setHeader("access-control-allow-methods", "GET, POST, PATCH, DELETE, OPTIONS");
       response.setHeader("access-control-allow-headers", "content-type");
       response.setHeader("vary", "Origin");
     }
