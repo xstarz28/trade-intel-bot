@@ -4,6 +4,9 @@ import type { TreasuryData } from "@/lib/data/treasury";
 import type { MarketData, TechnicalData } from "@/lib/data/market-types";
 import type { AnalysisResult } from "@/types/analysis";
 import type { FxRateSnapshot } from "@/lib/risk";
+import type { OkxSpecData } from "@/lib/risk/okx-spec";
+import type { ExecutionData } from "@/lib/execution-quality";
+import type { CryptoDerivativesData } from "@/lib/data/crypto/derivatives-types";
 /**
  * Typed client for the self-hosted Trade Intel API.
  *
@@ -826,6 +829,31 @@ export function fetchBackendEiaInventory(fetchImpl?: typeof fetch) {
   return backendRequest<BackendProviderResult<EiaData>>("/api/v1/intelligence/eia", {
     method: "POST", body: "{}",
   }, fetchImpl);
+}
+
+/** Fetches exact OKX public instrument metadata through the backend. */
+export function fetchBackendOkxInstrumentSpec(instrument: string, fetchImpl?: typeof fetch) {
+  return backendRequest<BackendProviderResult<OkxSpecData>>("/api/v1/intelligence/okx-spec", {
+    method: "POST",
+    body: JSON.stringify({ instrument }),
+  }, fetchImpl);
+}
+
+/** Fetches an exact-contract OKX order-book snapshot through the backend. */
+export function fetchBackendOkxOrderBook(instrument: string, fetchImpl?: typeof fetch) {
+  return backendRequest<BackendProviderResult<ExecutionData>>("/api/v1/intelligence/okx-orderbook", {
+    method: "POST",
+    body: JSON.stringify({ instrument }),
+  }, fetchImpl);
+}
+
+/** Fetches USD-notional open interest for the literal dated OKX futures contract. */
+export function fetchBackendOkxFuturesOpenInterest(instrument: string, fetchImpl?: typeof fetch) {
+  return backendRequest<BackendProviderResult<CryptoDerivativesData>>(
+    "/api/v1/intelligence/okx-futures-open-interest",
+    { method: "POST", body: JSON.stringify({ instrument }) },
+    fetchImpl,
+  );
 }
 
 /** Fetches nominal and observed real Treasury yields through the self-hosted backend. */
