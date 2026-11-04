@@ -451,6 +451,48 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("protects self-hosted macro intelligence endpoints behind authenticated sessions", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        for (const path of ["/api/v1/intelligence/cot", "/api/v1/intelligence/eia", "/api/v1/intelligence/treasury"]) {
+          const response = await fetch(baseUrl + path, {
+            method: "POST",
+            headers: { Origin: env.APP_ORIGIN, "Content-Type": "application/json" },
+            body: JSON.stringify({ instrument: "EURUSD" }),
+          });
+          assert.equal(response.status, 401, path);
+          assert.deepEqual(await response.json(), { error: "authentication_required" });
+        }
+      }, { env, fetchImpl: async () => { throw new Error("provider must not be called without authentication"); } });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("validates COT instrument input before contacting the provider", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(baseUrl + "/api/v1/auth/anonymous", {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const response = await fetch(baseUrl + "/api/v1/intelligence/cot", {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ instrument: "!!!" }),
+        });
+        assert.equal(response.status, 400);
+        assert.deepEqual(await response.json(), { success: false, error: "invalid_instrument" });
+      }, { env, fetchImpl: async () => { throw new Error("provider must not be called for invalid input"); } });
+    } finally {
+      database.close();
+    }
+  });
+
   it("does not pretend Google OAuth is configured when credentials are absent", async () => {
     const database = createTemporaryDatabase();
     try {
