@@ -52,10 +52,16 @@ async function readBody(request) {
  * ownership fields and account/session credentials are never trusted.
  */
 export function createAccountImportHandler({ database, env = process.env }) {
-  const tableColumns = new Map(IMPORT_TABLES.map((table) => [
-    table,
-    new Set(database.raw.prepare(`PRAGMA table_info(${table})`).all().map((column) => column.name)),
-  ]));
+  const tableMetadata = new Map(IMPORT_TABLES.map((table) => {
+    const columns = database.raw.prepare(`PRAGMA table_info(${table})`).all();
+    return [table, {
+      allowed: new Set(columns.map((column) => column.name)),
+      required: new Set(columns
+        .filter((column) => column.notnull && column.dflt_value === null)
+        .map((column) => column.name)
+        .filter((column) => column !== "id" && column !== "user_id")),
+    }];
+  }));
 
   return async (request, response, url) => {
     if (url.pathname !== "/api/v1/account/import") return false;
@@ -100,12 +106,17 @@ export function createAccountImportHandler({ database, env = process.env }) {
           json(response, 413, { error: "account_export_row_limit_exceeded", maximum: MAX_ROWS });
           return true;
         }
-        const columns = tableColumns.get(table);
+        const metadata = tableMetadata.get(table);
         for (const row of rows) {
           if (!row || typeof row !== "object" || Array.isArray(row) ||
-              Object.keys(row).some((key) => !columns.has(key)) ||
+              Object.keys(row).some((key) => !metadata.allowed.has(key)) ||
               typeof row.id !== "string" || !row.id) {
             json(response, 400, { error: "invalid_export_row", table });
+            return true;
+          }
+          const missing = [...metadata.required].filter((column) => !(column in row));
+          if (missing.length) {
+            json(response, 400, { error: "incomplete_export_row", table, missing });
             return true;
           }
         }
@@ -118,7 +129,7 @@ export function createAccountImportHandler({ database, env = process.env }) {
       try {
         for (const table of IMPORT_TABLES) {
           const rows = input.data[table] ?? [];
-          const columns = tableColumns.get(table);
+          const columns = tableMetadata.get(table).allowed;
           const statementCache = new Map();
           inserted[table] = 0;
           skipped[table] = 0;
