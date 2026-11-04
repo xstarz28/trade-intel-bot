@@ -1,14 +1,14 @@
 /**
  * Phase 60 — Position Protection Hook
  *
- * Integrates Convex persistence, stream orchestrator, and the protection engine
+ * Integrates self-hosted backend persistence, stream orchestrator, and the protection engine
  * into a single React hook. Handles:
  *
  * - Position registration with persistence
  * - Real-time market event processing
- * - Protection evaluation with Convex persistence
+ * - Protection evaluation with backend persistence
  * - Alert history persistence
- * - Recovery from Convex on mount
+ * - Recovery from backend on mount
  * - Acknowledgment persistence
  * - Position lifecycle management
  *
@@ -112,9 +112,9 @@ export interface UsePositionProtectionResult {
   reconcile: (provider: string, price: number, timestamp: number) => void;
   /** Alert history for a position. */
   alertHistory: AlertHistoryEntry[];
-  /** Whether Convex persistence is available. */
+  /** Whether authenticated backend persistence is available. */
   persistenceAvailable: boolean;
-  /** Whether Convex is degraded. */
+  /** Whether backend persistence is degraded. */
   persistenceDegraded: boolean;
 }
 
@@ -233,7 +233,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
         return next;
       });
 
-      // 3. Persist to Convex (fire-and-forget)
+      // 3. Persist to backend (fire-and-forget)
       const persistedState: PersistedPositionState = {
         positionId,
         instrument,
@@ -268,7 +268,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
         setPersistenceDegraded(true);
       });
     },
-    [backendUserId],
+    [],
   );
 
   // ─── Remove Position ───────────────────────────────────
@@ -422,7 +422,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
         });
       }
     },
-    [positionAlerts, backendUserId],
+    [positionAlerts],
   );
 
   // ─── Provider Management ───────────────────────────────
