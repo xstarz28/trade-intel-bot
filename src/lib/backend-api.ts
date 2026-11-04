@@ -624,3 +624,73 @@ export function saveBackendRuntimeHealth(
     method: "POST", body: JSON.stringify(snapshot),
   }, fetchImpl);
 }
+
+
+export interface BackendRuleAlertHistory {
+  _id: string;
+  alertId: string;
+  ruleId: string;
+  ruleName: string;
+  positionId: string | null;
+  instrument: string | null;
+  condition: string;
+  severity: string;
+  description: string;
+  previousState: string | null;
+  currentState: string | null;
+  timestamp: number;
+}
+
+export interface BackendStreamCursor {
+  _id: string;
+  provider: string;
+  instrument: string;
+  lastEventId: string;
+  lastTimestamp: number;
+  lastSequence: number | null;
+}
+
+export type SaveBackendRuleAlertHistory = Omit<BackendRuleAlertHistory, "_id">;
+export type SaveBackendStreamCursor = Omit<BackendStreamCursor, "_id">;
+
+export function listBackendRuleAlertHistory(limit = 50, fetchImpl?: typeof fetch) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return backendRequest<{ items: BackendRuleAlertHistory[] }>(
+    `/api/v1/alert-rules/history?${params.toString()}`, {}, fetchImpl,
+  );
+}
+
+export function saveBackendRuleAlertHistory(
+  alert: SaveBackendRuleAlertHistory,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ item: BackendRuleAlertHistory }>(
+    "/api/v1/alert-rules/history", { method: "POST", body: JSON.stringify(alert) }, fetchImpl,
+  );
+}
+
+export function clearBackendRuleAlertHistory(fetchImpl?: typeof fetch) {
+  return backendRequest<{ deleted: number }>(
+    "/api/v1/alert-rules/history", { method: "DELETE" }, fetchImpl,
+  );
+}
+
+export function getBackendStreamCursor(
+  provider: string,
+  instrument: string,
+  fetchImpl?: typeof fetch,
+) {
+  const params = new URLSearchParams({ provider, instrument });
+  return backendRequest<{ item: BackendStreamCursor | null }>(
+    `/api/v1/stream-cursors?${params.toString()}`, {}, fetchImpl,
+  );
+}
+
+export function saveBackendStreamCursor(
+  cursor: SaveBackendStreamCursor,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ success: boolean }>(
+    "/api/v1/stream-cursors", { method: "PUT", body: JSON.stringify(cursor) }, fetchImpl,
+  );
+}
