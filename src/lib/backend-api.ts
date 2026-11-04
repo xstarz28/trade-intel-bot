@@ -1,3 +1,6 @@
+import type { CotData } from "@/lib/data/cot";
+import type { EiaData } from "@/lib/data/eia";
+import type { TreasuryData } from "@/lib/data/treasury";
 /**
  * Typed client for the self-hosted Trade Intel API.
  *
@@ -788,21 +791,21 @@ export interface BackendProviderResult<T> {
 
 /** Fetches verified CFTC positioning through the self-hosted backend. */
 export function fetchBackendCotPositioning(instrument: string, fetchImpl?: typeof fetch) {
-  return backendRequest<BackendProviderResult<unknown>>("/api/v1/intelligence/cot", {
+  return backendRequest<BackendProviderResult<CotData>>("/api/v1/intelligence/cot", {
     method: "POST", body: JSON.stringify({ instrument }),
   }, fetchImpl);
 }
 
 /** Fetches EIA weekly petroleum inventories with the backend's public FRED fallback. */
 export function fetchBackendEiaInventory(fetchImpl?: typeof fetch) {
-  return backendRequest<BackendProviderResult<unknown>>("/api/v1/intelligence/eia", {
+  return backendRequest<BackendProviderResult<EiaData>>("/api/v1/intelligence/eia", {
     method: "POST", body: "{}",
   }, fetchImpl);
 }
 
 /** Fetches nominal and observed real Treasury yields through the self-hosted backend. */
 export function fetchBackendTreasuryYields(fetchImpl?: typeof fetch) {
-  return backendRequest<BackendProviderResult<unknown>>("/api/v1/intelligence/treasury", {
+  return backendRequest<BackendProviderResult<TreasuryData>>("/api/v1/intelligence/treasury", {
     method: "POST", body: "{}",
   }, fetchImpl);
 }
