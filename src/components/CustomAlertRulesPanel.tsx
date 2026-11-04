@@ -74,8 +74,8 @@ function NewRuleForm({
     condition: RuleCondition;
     severity: RuleSeverity;
     cooldownMs: number;
-    instrument?: string | null;
-    positionId?: string | null;
+    instrument?: string;
+    positionId?: string;
   }) => void;
 }) {
   const { t } = useI18n();
