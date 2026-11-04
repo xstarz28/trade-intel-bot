@@ -11,7 +11,6 @@ export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectA
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const redirect = resolveAuthRedirect(params.get("returnTo"), redirectAfterAuth);
-  const authError = params.get("error");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(() => {
     switch (params.get("error")) {
@@ -29,8 +28,8 @@ export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectA
   });
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated && !authError) navigate(redirect, { replace: true });
-  }, [authLoading, isAuthenticated, navigate, redirect, authError]);
+    if (!authLoading && isAuthenticated && !error) navigate(redirect, { replace: true });
+  }, [authLoading, isAuthenticated, navigate, redirect, error]);
 
   const run = async (provider: string) => {
     setLoading(true); setError(null);
