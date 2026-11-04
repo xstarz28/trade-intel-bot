@@ -252,11 +252,23 @@ export function usePositionProtection(): UsePositionProtectionResult {
         consecutiveSameSeverity: 0,
       };
 
-      savePositionMutation(persistedState).catch(() => {
+      saveBackendPosition({
+        ...persistedState,
+        stopLoss: persistedState.stopLoss ?? null,
+        takeProfit: persistedState.takeProfit ?? null,
+        leverage: persistedState.leverage ?? null,
+        peakPrice: persistedState.peakPrice ?? null,
+        peakProfit: persistedState.peakProfit ?? null,
+      }).then(({ item }) => {
+        setBackendPositions((current) => [
+          ...current.filter((position) => position.positionId !== item.positionId),
+          item,
+        ]);
+      }).catch(() => {
         setPersistenceDegraded(true);
       });
     },
-    [savePositionMutation],
+    [backendUserId],
   );
 
   // ─── Remove Position ───────────────────────────────────
@@ -275,12 +287,14 @@ export function usePositionProtection(): UsePositionProtectionResult {
         return next;
       });
 
-      // Persist removal to Convex
-      deletePositionMutation({ positionId }).catch(() => {
+      // Persist removal to the self-hosted backend
+      deleteBackendPosition(positionId).then(() => {
+        setBackendPositions((current) => current.filter((position) => position.positionId !== positionId));
+      }).catch(() => {
         setPersistenceDegraded(true);
       });
     },
-    [deletePositionMutation],
+    [backendUserId],
   );
 
   // ─── Ingest Event ──────────────────────────────────────
@@ -345,7 +359,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
 
               next.set(alertEvent.positionId, protectionResult.alert);
 
-              // Persist alert to Convex
+              // Persist alert to the self-hosted backend
               const persistedAlert: PersistedAlert = {
                 alertId: alertEvent.eventId,
                 positionId: alertEvent.positionId,
@@ -357,7 +371,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
                 timestamp: alertEvent.timestamp,
                 acknowledged: false,
               };
-              saveAlertMutation(persistedAlert).catch(() => {
+              saveBackendPositionAlert(persistedAlert.positionId, persistedAlert).catch(() => {
                 setPersistenceDegraded(true);
               });
 
@@ -376,7 +390,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
         return result.state;
       });
     },
-    [saveAlertMutation],
+    [backendUserId],
   );
 
   const handleIngestEvents = useCallback(
@@ -399,16 +413,16 @@ export function usePositionProtection(): UsePositionProtectionResult {
         return next;
       });
 
-      // Persist to Convex — find the most recent alert for this position
+      // Persist acknowledgment in the self-hosted backend
       const alerts = positionAlerts.get(positionId);
       if (alerts && alerts.length > 0) {
         const latest = alerts[alerts.length - 1];
-        acknowledgeAlertMutation({ alertId: latest.eventId }).catch(() => {
+        acknowledgeBackendAlert(latest.eventId).catch(() => {
           setPersistenceDegraded(true);
         });
       }
     },
-    [positionAlerts, acknowledgeAlertMutation],
+    [positionAlerts, backendUserId],
   );
 
   // ─── Provider Management ───────────────────────────────
@@ -502,7 +516,7 @@ export function usePositionProtection(): UsePositionProtectionResult {
     onProviderDisconnected: handleProviderDisconnected,
     reconcile: handleReconcile,
     alertHistory,
-    persistenceAvailable: isConvexAvailable,
+    persistenceAvailable: isBackendAvailable,
     persistenceDegraded,
   };
 }
