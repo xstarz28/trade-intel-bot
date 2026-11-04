@@ -254,12 +254,13 @@ export default function Dashboard() {
           ];
           if (input.instrumentType === "crypto") {
             fetchPromises.push(
-              withActionTimeout(
-                Promise.resolve().then(() =>
-                  /-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())
-                    ? fetchOkxFuturesOpenInterest({ instrument: input.instrument })
-                    : fetchDerivatives({ instrument: input.instrument }),
-                ),
+              withActionTimeout<any>(
+                Promise.resolve().then(async (): Promise<any> => {
+                  if (/-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())) {
+                    return fetchOkxFuturesOpenInterest({ instrument: input.instrument });
+                  }
+                  return fetchDerivatives({ instrument: input.instrument });
+                }),
                 ACTION_TIMEOUTS_MS.derivatives,
                 /-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())
                   ? "Exact-contract OKX futures open interest"
