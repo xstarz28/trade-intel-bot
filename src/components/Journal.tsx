@@ -8,7 +8,7 @@
  * Never calculates bias, conviction, gates, or scenarios.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -31,6 +31,17 @@ import {
   classifyOutcome,
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
+import { useBackendSession } from "@/hooks/use-backend-session";
+import {
+  BackendApiError,
+  createBackendJournalEntry,
+  getBackendGoogleSignInUrl,
+  listBackendJournal,
+  transitionBackendJournalEntry,
+  updateBackendJournalEntry,
+} from "@/lib/backend-api";
+import { backendJournalToEntry } from "@/lib/backend-journal-adapter";
+import { journalEntryToBackendCreate } from "@/lib/backend-journal-payload";
 
 // ── Status Colors ────────────────────────────────────────────────
 
@@ -69,6 +80,40 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
+  const { state: backendState } = useBackendSession();
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [backendError, setBackendError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (backendState.status !== "authenticated") {
+      setEntries([]);
+      setSelectedEntry(null);
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    setBackendError(null);
+    listBackendJournal()
+      .then(({ items }) => {
+        if (!active) return;
+        const mapped = items.map(backendJournalToEntry);
+        setEntries(mapped);
+        setSelectedEntry((current) =>
+          current ? mapped.find((entry) => entry.id === current.id) ?? null : null,
+        );
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setBackendError(cause instanceof BackendApiError
+          ? "Backend journal error: " + cause.code
+          : "Tidak dapat memuat jurnal dari backend.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, [backendState.status, backendState.status === "authenticated" ? backendState.user.id : ""]);
   const [filterInstrument, setFilterInstrument] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [editMode, setEditMode] = useState(false);
