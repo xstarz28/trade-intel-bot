@@ -333,4 +333,45 @@ describe("self-hosted backend API client", () => {
     expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
   });
 
+
+  it("persists rule alert history and per-instrument stream cursors", async () => {
+    const history = {
+      _id: "rule-alert-db-1", alertId: "rule-alert-1", ruleId: "rule-1",
+      ruleName: "Risk trigger", positionId: "pos-1", instrument: "BTC-USDT",
+      condition: "drawdown > 3%", severity: "HIGH", description: "Drawdown threshold reached",
+      previousState: "NORMAL", currentState: "HIGH", timestamp: 20,
+    };
+    const cursor = {
+      _id: "cursor-db-1", provider: "okx", instrument: "BTC-USDT",
+      lastEventId: "event-123", lastTimestamp: 21, lastSequence: 4,
+    };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(200, { items: [history] }))
+      .mockResolvedValueOnce(response(201, { item: history }))
+      .mockResolvedValueOnce(response(200, { deleted: 1 }))
+      .mockResolvedValueOnce(response(200, { item: cursor }))
+      .mockResolvedValueOnce(response(200, { item: null }))
+      .mockResolvedValueOnce(response(200, { success: true }));
+
+    const { listBackendRuleAlertHistory, saveBackendRuleAlertHistory,
+      clearBackendRuleAlertHistory, getBackendStreamCursor, saveBackendStreamCursor } =
+      await import("./backend-api");
+    await expect(listBackendRuleAlertHistory(25, fetcher)).resolves.toEqual({ items: [history] });
+    const { _id: historyRecordId, ...historyInput } = history;
+    expect(historyRecordId).toBe("rule-alert-db-1");
+    await expect(saveBackendRuleAlertHistory(historyInput, fetcher)).resolves.toEqual({ item: history });
+    await expect(clearBackendRuleAlertHistory(fetcher)).resolves.toEqual({ deleted: 1 });
+    await expect(getBackendStreamCursor("okx", "BTC-USDT", fetcher)).resolves.toEqual({ item: cursor });
+    await expect(getBackendStreamCursor("okx", "ETH-USDT", fetcher)).resolves.toEqual({ item: null });
+    const { _id: cursorRecordId, ...cursorInput } = cursor;
+    expect(cursorRecordId).toBe("cursor-db-1");
+    await expect(saveBackendStreamCursor(cursorInput, fetcher)).resolves.toEqual({ success: true });
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/alert-rules/history?limit=25", "/api/v1/alert-rules/history",
+      "/api/v1/alert-rules/history", "/api/v1/stream-cursors?provider=okx&instrument=BTC-USDT",
+      "/api/v1/stream-cursors?provider=okx&instrument=ETH-USDT", "/api/v1/stream-cursors",
+    ]);
+    expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
+  });
+
 });
