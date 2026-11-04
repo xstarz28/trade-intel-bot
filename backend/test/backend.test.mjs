@@ -559,7 +559,7 @@ describe("self-hosted backend", () => {
     const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
     try {
       await withServer(database, async (baseUrl) => {
-        for (const path of ["/api/v1/intelligence/cot", "/api/v1/intelligence/eia", "/api/v1/intelligence/treasury"]) {
+        for (const path of ["/api/v1/intelligence/cot", "/api/v1/intelligence/eia", "/api/v1/intelligence/treasury", "/api/v1/intelligence/fx-rate"]) {
           const response = await fetch(baseUrl + path, {
             method: "POST",
             headers: { Origin: env.APP_ORIGIN, "Content-Type": "application/json" },
@@ -591,6 +591,55 @@ describe("self-hosted backend", () => {
         assert.equal(response.status, 400);
         assert.deepEqual(await response.json(), { success: false, error: "invalid_instrument" });
       }, { env, fetchImpl: async () => { throw new Error("provider must not be called for invalid input"); } });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("serves validated dated FX references only to authenticated backend sessions", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    const date = new Date().toISOString().slice(0, 10);
+    let providerCalls = 0;
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(baseUrl + "/api/v1/auth/anonymous", {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+
+        const invalid = await fetch(baseUrl + "/api/v1/intelligence/fx-rate", {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ from: "EURO", to: "USD" }),
+        });
+        assert.equal(invalid.status, 400);
+        assert.deepEqual(await invalid.json(), { success: false, error: "invalid_fx_currency_pair" });
+        assert.equal(providerCalls, 0);
+
+        const response = await fetch(baseUrl + "/api/v1/intelligence/fx-rate", {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ from: "CAD", to: "SGD" }),
+        });
+        assert.equal(response.status, 200);
+        const result = await response.json();
+        assert.equal(result.success, true);
+        assert.equal(result.direct.pair, "CAD/SGD");
+        assert.equal(result.direct.rate, 0.98);
+        assert.match(result.direct.source, /Frankfurter daily reference/);
+        assert.equal(providerCalls, 1);
+      }, {
+        env,
+        fetchImpl: async (input) => {
+          providerCalls += 1;
+          assert.equal(String(input), "https://api.frankfurter.dev/v2/rate/cad/sgd");
+          return new Response(JSON.stringify({ base: "CAD", quote: "SGD", date, rate: 0.98 }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        },
+      });
     } finally {
       database.close();
     }
