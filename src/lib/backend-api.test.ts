@@ -182,4 +182,103 @@ describe("self-hosted backend API client", () => {
       code: "authentication_required",
     } satisfies Partial<BackendApiError>);
   });
+
+  it("uses authenticated endpoints for monitored positions and their alerts", async () => {
+    const position = {
+      _id: "db-1", positionId: "pos-1", instrument: "BTC-USDT", side: "LONG",
+      entryPrice: 65000, stopLoss: 63000, takeProfit: 70000, leverage: 1,
+      horizon: "SWING", openedAt: 1, peakPrice: null, peakProfit: null,
+      currentSeverity: "INFO", lifecycleState: "ACTIVE", monitoringLifecycle: "MONITORING",
+      lastUpdateAt: 1, lastAlertAt: 1, consecutiveSameSeverity: 0,
+    };
+    const alert = {
+      _id: "alert-db-1", alertId: "alert-1", positionId: "pos-1", instrument: "BTC-USDT",
+      severity: "HIGH", notificationPriority: "HIGH", reason: "Stop approaching",
+      action: "Review risk", timestamp: 2, acknowledged: false,
+    };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(200, { items: [position] }))
+      .mockResolvedValueOnce(response(200, { item: position }))
+      .mockResolvedValueOnce(response(200, { item: position }))
+      .mockResolvedValueOnce(response(200, { success: true }))
+      .mockResolvedValueOnce(response(200, { items: [alert] }))
+      .mockResolvedValueOnce(response(201, { item: alert }))
+      .mockResolvedValueOnce(response(200, { success: true }));
+
+    const { listBackendPositions, saveBackendPosition, getBackendPosition,
+      deleteBackendPosition, listBackendPositionAlerts, saveBackendPositionAlert,
+      acknowledgeBackendAlert } = await import("./backend-api");
+    await expect(listBackendPositions(fetcher)).resolves.toEqual({ items: [position] });
+    await expect(saveBackendPosition(position, fetcher)).resolves.toEqual({ item: position });
+    await expect(getBackendPosition("pos-1", fetcher)).resolves.toEqual({ item: position });
+    await expect(deleteBackendPosition("pos-1", fetcher)).resolves.toEqual({ success: true });
+    await expect(listBackendPositionAlerts("pos-1", 25, fetcher)).resolves.toEqual({ items: [alert] });
+    await expect(saveBackendPositionAlert("pos-1", { ...alert, _id: undefined }, fetcher))
+      .resolves.toEqual({ item: alert });
+    await expect(acknowledgeBackendAlert("alert-1", fetcher)).resolves.toEqual({ success: true });
+    expect(fetcher.mock.calls.map(([url]) => url)).toEqual([
+      "/api/v1/positions", "/api/v1/positions", "/api/v1/positions/pos-1",
+      "/api/v1/positions/pos-1", "/api/v1/positions/pos-1/alerts?limit=25",
+      "/api/v1/positions/pos-1/alerts", "/api/v1/alerts/alert-1/acknowledge",
+    ]);
+  });
+
+  it("uses authenticated endpoints for alert rules, notifications, and preferences", async () => {
+    const rule = {
+      _id: "db-rule-1", ruleId: "rule-1", name: "Risk trigger", enabled: true,
+      scope: "POSITION", instrument: "BTC-USDT", positionId: null, condition: "drawdown > 3%",
+      severity: "HIGH", cooldownMs: 60000, createdAt: 1, updatedAt: 1,
+    };
+    const notification = {
+      _id: "db-notification-1", notificationId: "notification-1", alertIdentity: "alert-1",
+      ruleId: "rule-1", ruleName: "Risk trigger", timestamp: 1, instrument: "BTC-USDT",
+      positionId: "pos-1", side: "LONG", severity: "HIGH", title: "Risk alert",
+      message: "Review position", category: "PORTFOLIO", impact: "HIGH", read: false,
+      dismissed: false, source: "engine", condition: "drawdown > 3%",
+    };
+    const preferences = {
+      minimumSeverity: "INFO", enabledCategories: ["PORTFOLIO"], enabledScopes: ["POSITION"],
+      mutedRuleIds: [], enabledInstruments: [], mutedInstruments: [],
+      showReadNotifications: true, showDismissedNotifications: false,
+    };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(200, { items: [rule] }))
+      .mockResolvedValueOnce(response(201, { item: rule }))
+      .mockResolvedValueOnce(response(200, { item: rule }))
+      .mockResolvedValueOnce(response(200, { success: true }))
+      .mockResolvedValueOnce(response(200, { items: [notification] }))
+      .mockResolvedValueOnce(response(200, { items: [notification] }))
+      .mockResolvedValueOnce(response(200, { count: 1 }))
+      .mockResolvedValueOnce(response(200, { success: true }))
+      .mockResolvedValueOnce(response(200, { success: true }))
+      .mockResolvedValueOnce(response(200, { updated: 1 }))
+      .mockResolvedValueOnce(response(200, { preferences }))
+      .mockResolvedValueOnce(response(200, { preferences }))
+      .mockResolvedValueOnce(response(200, { preferences }));
+
+    const { listBackendAlertRules, createBackendAlertRule, updateBackendAlertRule,
+      deleteBackendAlertRule, listBackendNotifications, listBackendUnreadNotifications,
+      getBackendUnreadNotificationCount, markBackendNotificationRead,
+      dismissBackendNotification, markAllBackendNotificationsRead,
+      getBackendNotificationPreferences, saveBackendNotificationPreferences,
+      resetBackendNotificationPreferences } = await import("./backend-api");
+    await expect(listBackendAlertRules(fetcher)).resolves.toEqual({ items: [rule] });
+    await expect(createBackendAlertRule({
+      ruleId: "rule-1", name: "Risk trigger", enabled: true, scope: "POSITION",
+      condition: "drawdown > 3%", severity: "HIGH", cooldownMs: 60000,
+    }, fetcher)).resolves.toEqual({ item: rule });
+    await expect(updateBackendAlertRule("rule-1", { enabled: false }, fetcher)).resolves.toEqual({ item: rule });
+    await expect(deleteBackendAlertRule("rule-1", fetcher)).resolves.toEqual({ success: true });
+    await expect(listBackendNotifications(20, fetcher)).resolves.toEqual({ items: [notification] });
+    await expect(listBackendUnreadNotifications(fetcher)).resolves.toEqual({ items: [notification] });
+    await expect(getBackendUnreadNotificationCount(fetcher)).resolves.toEqual({ count: 1 });
+    await expect(markBackendNotificationRead("notification-1", fetcher)).resolves.toEqual({ success: true });
+    await expect(dismissBackendNotification("notification-1", fetcher)).resolves.toEqual({ success: true });
+    await expect(markAllBackendNotificationsRead(fetcher)).resolves.toEqual({ updated: 1 });
+    await expect(getBackendNotificationPreferences(fetcher)).resolves.toEqual({ preferences });
+    await expect(saveBackendNotificationPreferences(preferences, fetcher)).resolves.toEqual({ preferences });
+    await expect(resetBackendNotificationPreferences(fetcher)).resolves.toEqual({ preferences });
+    expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
+  });
+
 });
