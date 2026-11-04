@@ -74,8 +74,8 @@ function NewRuleForm({
     condition: RuleCondition;
     severity: RuleSeverity;
     cooldownMs: number;
-    instrument?: string;
-    positionId?: string;
+    instrument?: string | null;
+    positionId?: string | null;
   }) => void;
 }) {
   const { t } = useI18n();
@@ -488,8 +488,20 @@ export function CustomAlertRulesPanel() {
     [backendUserId],
   );
 
+  if (backendState.status !== "authenticated") {
+    return (
+      <div className="space-y-2 rounded-lg border border-border/40 p-3">
+        <span className="text-[10px] font-mono font-semibold">Alert Rules</span>
+        <p className="text-xs text-muted-foreground">Aturan alert dikelola oleh backend mandiri. Hubungkan akun backend untuk melanjutkan.</p>
+        {backendState.status === "error" && <p role="alert" className="text-xs text-destructive">Sesi backend tidak dapat diperiksa.</p>}
+        {backendState.status === "anonymous" && <Button size="sm" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>Hubungkan akun backend</Button>}
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-3">
+      {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
