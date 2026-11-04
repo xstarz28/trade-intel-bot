@@ -101,13 +101,13 @@ describe("self-hosted backend", () => {
     }
   });
 
-  it("allows CORS preflight for PATCH and DELETE API operations", async () => {
+  it("allows CORS preflight for PUT, PATCH, and DELETE API operations", async () => {
     const env = {
       NODE_ENV: "development",
       APP_ORIGIN: "http://localhost:5173",
     };
     await withServer(null, async (baseUrl) => {
-      for (const method of ["PATCH", "DELETE"]) {
+      for (const method of ["PUT", "PATCH", "DELETE"]) {
         const response = await fetch(`${baseUrl}/api/v1/journal/example`, {
           method: "OPTIONS",
           headers: {
