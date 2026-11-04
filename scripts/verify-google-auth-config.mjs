@@ -2,10 +2,10 @@
 import { pathToFileURL } from "node:url";
 
 const REQUIRED_NAMES = [
-  "AUTH_GOOGLE_ID",
-  "AUTH_GOOGLE_SECRET",
-  "CONVEX_SITE_URL",
-  "SITE_URL",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "APP_ORIGIN",
+  "PUBLIC_BASE_URL",
 ];
 
 function httpsOrigin(value) {
@@ -27,7 +27,10 @@ function httpsOrigin(value) {
   }
 }
 
-/** Reports only names/status. CONFIGURED is structural validation, not sign-in proof. */
+/**
+ * Validates the self-hosted Google OAuth environment without ever returning
+ * credential values. This checks configuration shape, not a live OAuth login.
+ */
 export function classifyGoogleAuthConfig(env = process.env) {
   const missing = [];
   const invalid = [];
@@ -36,41 +39,32 @@ export function classifyGoogleAuthConfig(env = process.env) {
     if (typeof env[name] !== "string" || env[name].trim().length === 0) missing.push(name);
   }
 
-  const googleId = env.AUTH_GOOGLE_ID?.trim() ?? "";
+  const googleId = env.GOOGLE_CLIENT_ID?.trim() ?? "";
   if (googleId && !/^[0-9]+-[A-Za-z0-9_-]+\.apps\.googleusercontent\.com$/.test(googleId)) {
-    invalid.push("AUTH_GOOGLE_ID must be a Google OAuth client ID");
+    invalid.push("GOOGLE_CLIENT_ID must be a Google OAuth client ID");
   }
 
-  const googleSecret = env.AUTH_GOOGLE_SECRET?.trim() ?? "";
+  const googleSecret = env.GOOGLE_CLIENT_SECRET?.trim() ?? "";
   if (googleSecret && (googleSecret.length < 16 || /\s/.test(googleSecret))) {
-    invalid.push("AUTH_GOOGLE_SECRET must be a non-empty secret without whitespace");
+    invalid.push("GOOGLE_CLIENT_SECRET must be a non-empty secret without whitespace");
   }
 
-  const convexSite = httpsOrigin(env.CONVEX_SITE_URL);
-  if (env.CONVEX_SITE_URL?.trim() && (!convexSite || !convexSite.hostname.endsWith(".convex.site"))) {
-    invalid.push("CONVEX_SITE_URL must be an HTTPS origin on *.convex.site");
+  const appOrigin = httpsOrigin(env.APP_ORIGIN);
+  if (env.APP_ORIGIN?.trim() && !appOrigin) {
+    invalid.push("APP_ORIGIN must be an HTTPS origin");
   }
 
-  const convexCloud = httpsOrigin(env.VITE_CONVEX_URL);
-  if (env.VITE_CONVEX_URL?.trim() && (!convexCloud || !convexCloud.hostname.endsWith(".convex.cloud"))) {
-    invalid.push("VITE_CONVEX_URL must be an HTTPS origin on *.convex.cloud");
-  }
-  if (convexSite && convexCloud) {
-    const expectedSiteHost = convexCloud.hostname.replace(/\.convex\.cloud$/i, ".convex.site");
-    if (convexSite.hostname !== expectedSiteHost) {
-      invalid.push("CONVEX_SITE_URL and VITE_CONVEX_URL must identify the same deployment");
-    }
+  const backendOrigin = httpsOrigin(env.PUBLIC_BASE_URL);
+  if (env.PUBLIC_BASE_URL?.trim() && !backendOrigin) {
+    invalid.push("PUBLIC_BASE_URL must be an HTTPS origin");
   }
 
-  const siteUrl = httpsOrigin(env.SITE_URL);
-  if (env.SITE_URL?.trim() && !siteUrl) {
-    invalid.push("SITE_URL must be an HTTPS origin");
-  } else if (siteUrl && siteUrl.hostname !== "xstarzanalysis.vercel.app") {
-    invalid.push("SITE_URL must use the official XSTARZG Analysis domain");
+  if (appOrigin && backendOrigin && appOrigin.origin !== backendOrigin.origin) {
+    invalid.push("APP_ORIGIN and PUBLIC_BASE_URL must match for the same-origin session cookie deployment");
   }
 
-  const callbackUrl = convexSite
-    ? new URL("/api/auth/callback/google", convexSite).toString()
+  const callbackUrl = backendOrigin
+    ? new URL("/api/v1/auth/google/callback", backendOrigin).toString()
     : null;
   const state = invalid.length > 0 ? "INVALID" : missing.length > 0 ? "NOT_CONFIGURED" : "CONFIGURED";
   return { state, missing, invalid, callbackUrl };
@@ -81,7 +75,7 @@ function main() {
   if (process.argv.includes("--json")) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } else {
-    process.stdout.write(`Google OAuth configuration: ${result.state}\n`);
+    process.stdout.write(`Self-hosted Google OAuth configuration: ${result.state}\n`);
     if (result.missing.length) process.stdout.write(`Missing variables: ${result.missing.join(", ")}\n`);
     if (result.invalid.length) process.stdout.write(`Invalid configuration: ${result.invalid.join("; ")}\n`);
     if (result.callbackUrl) process.stdout.write(`Expected Google callback URL: ${result.callbackUrl}\n`);
