@@ -399,24 +399,42 @@ describe("self-hosted backend API client", () => {
   });
 
 
-  it("runs market analysis through the authenticated self-hosted decision engine", async () => {
+  it("returns market data, technical context, and the decision from the self-hosted analysis engine", async () => {
     const result = {
-      id: "analysis-1", instrument: "BTC-USDT", instrumentType: "crypto",
-      timeframe: "4H", tradingStyle: "SWING", bias: "BULLISH", confidence: 78,
-      recommendation: "LONG",
+      success: true,
+      data: {
+        instrument: "BTC-USDT",
+        instrumentType: "crypto",
+        provider: "okx-spot",
+        fetchTimestamp: 1,
+        price: { price: 65000, timestamp: 1, source: "okx-spot" },
+        candles: [],
+        timeframe: "H4",
+        dataFreshness: "realtime",
+      },
+      technical: { structure: "HH/HL", swingHighs: [], swingLows: [], supportLevels: [], resistanceLevels: [], volumeTrend: "stable", dataPoints: 0 },
+      analysis: {
+        id: "analysis-1", instrument: "BTC-USDT", instrumentType: "crypto",
+        timeframe: "H4", tradingStyle: "SWING", bias: "BULLISH", confidence: 78,
+        recommendation: "LONG", technicalSummary: "Trend aligned",
+        fundamentalSummary: "No external fundamental feed",
+        breakdown: { trend: 80, indicator: 70, fundamental: 50, sentiment: 50 },
+        keyLevels: { support: "64000", resistance: "68000", invalidation: "63000" },
+        riskNote: "Defined risk", dataCompleteness: "PARTIAL", dataFlags: [], timestamp: 1,
+      },
     };
     const fetcher = vi.fn().mockResolvedValueOnce(response(200, result));
     const { analyzeBackendMarket } = await import("./backend-api");
     await expect(analyzeBackendMarket({
       instrument: "BTC-USDT", instrumentType: "crypto",
-      timeframe: "4H", tradingStyle: "SWING",
+      timeframe: "H4", tradingStyle: "SWING",
     }, fetcher)).resolves.toEqual(result);
     expect(fetcher).toHaveBeenCalledWith("/api/v1/market-data/analyze", expect.objectContaining({
       method: "POST",
       credentials: "include",
       body: JSON.stringify({
         instrument: "BTC-USDT", instrumentType: "crypto",
-        timeframe: "4H", tradingStyle: "SWING",
+        timeframe: "H4", tradingStyle: "SWING",
       }),
     }));
   });
