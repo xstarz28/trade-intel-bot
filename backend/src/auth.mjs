@@ -206,14 +206,22 @@ export async function verifyGoogleIdToken(idToken, { clientId, nonce, fetchImpl 
 
   const audienceValid = claims.aud === clientId ||
     (Array.isArray(claims.aud) && claims.aud.includes(clientId));
+  const authorizedPartyValid = !Array.isArray(claims.aud) ||
+    claims.aud.length <= 1 || claims.azp === clientId;
   const nowSeconds = Math.floor(Date.now() / 1000);
+  const issuedAtValid = typeof claims.iat === "number" &&
+    claims.iat <= nowSeconds + 60 &&
+    claims.iat >= nowSeconds - 600;
   if (
     !["https://accounts.google.com", "accounts.google.com"].includes(claims.iss) ||
     !audienceValid ||
+    !authorizedPartyValid ||
     typeof claims.exp !== "number" ||
     claims.exp <= nowSeconds ||
+    !issuedAtValid ||
     claims.nonce !== nonce ||
     typeof claims.sub !== "string" ||
+    claims.sub.length === 0 ||
     typeof claims.email !== "string" ||
     claims.email_verified !== true
   ) {
