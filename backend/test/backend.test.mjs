@@ -458,6 +458,16 @@ describe("self-hosted backend", () => {
         const response = await fetch(`${baseUrl}/api/v1/auth/google`);
         assert.equal(response.status, 503);
         assert.deepEqual(await response.json(), { error: "google_auth_not_configured" });
+
+        const browserResponse = await fetch(`${baseUrl}/api/v1/auth/google`, {
+          headers: { Accept: "text/html" },
+          redirect: "manual",
+        });
+        assert.equal(browserResponse.status, 302);
+        assert.equal(
+          browserResponse.headers.get("location"),
+          "http://localhost:5173/auth?error=google_auth_not_configured",
+        );
       });
     } finally {
       database.close();
