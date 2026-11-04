@@ -10,6 +10,9 @@ import {
   analyzeBackendMarket,
   fetchBackendFxRate,
   fetchBackendCotPositioning,
+  fetchBackendOkxFuturesOpenInterest,
+  fetchBackendOkxInstrumentSpec,
+  fetchBackendOkxOrderBook,
   fetchBackendEiaInventory,
   fetchBackendTreasuryYields,
   listBackendAnalyses,
@@ -201,9 +204,6 @@ export default function Dashboard() {
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchDeFiLlamaFundamentals = useAction(api.coinglass.fetchDeFiLlamaFundamentals);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
-  const fetchOkxOrderBook = useAction(api.okx.fetchOkxOrderBook);
-  const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
-  const fetchOkxFuturesOpenInterest = useAction(api.okx.fetchOkxFuturesOpenInterest);
 
   const handleSignOut = async () => {
     await signOut();
@@ -319,7 +319,7 @@ export default function Dashboard() {
               withActionTimeout<unknown>(
                 Promise.resolve().then(async (): Promise<unknown> => {
                   if (/-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())) {
-                    return fetchOkxFuturesOpenInterest({ instrument: input.instrument });
+                    return fetchBackendOkxFuturesOpenInterest(input.instrument);
                   }
                   return fetchDerivatives({ instrument: input.instrument });
                 }),
@@ -553,13 +553,13 @@ export default function Dashboard() {
             cot: () => fetchBackendCotPositioning(input.instrument),
             execution: input.instrumentType === "crypto" &&
               (input.instrument.toUpperCase().endsWith("-SWAP") || /-[0-9]{6}$/.test(input.instrument.toUpperCase()))
-              ? () => fetchOkxOrderBook({ instrument: input.instrument })
+              ? () => fetchBackendOkxOrderBook(input.instrument)
               : undefined,
             eia: () => fetchBackendEiaInventory(),
             treasury: () => fetchBackendTreasuryYields(),
             okxSpec: input.instrumentType === "crypto" &&
               (input.instrument.toUpperCase().endsWith("-SWAP") || /-[0-9]{6}$/.test(input.instrument.toUpperCase()))
-              ? () => fetchOkxInstrumentSpec({ instrument: input.instrument })
+              ? () => fetchBackendOkxInstrumentSpec(input.instrument)
               : undefined,
           },
         );
@@ -1016,7 +1016,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, fetchOkxOrderBook, fetchOkxInstrumentSpec, updateStep, riskSizingInputs, t],
+    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, updateStep, riskSizingInputs, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
