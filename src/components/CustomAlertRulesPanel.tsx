@@ -460,7 +460,7 @@ export function CustomAlertRulesPanel() {
         toast.error(err?.message ?? "Failed to create rule");
       }
     },
-    [backendUserId],
+    [],
   );
 
   const handleToggle = useCallback(
@@ -472,7 +472,7 @@ export function CustomAlertRulesPanel() {
         toast.error(err?.message ?? "Failed to update rule");
       }
     },
-    [backendUserId],
+    [],
   );
 
   const handleDelete = useCallback(
@@ -485,7 +485,7 @@ export function CustomAlertRulesPanel() {
         toast.error(err?.message ?? "Failed to delete rule");
       }
     },
-    [backendUserId],
+    [],
   );
 
   if (backendState.status !== "authenticated") {
