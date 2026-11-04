@@ -38,7 +38,6 @@ describe("useAuth — self-hosted backend authority", () => {
   beforeEach(() => {
     backendState = { status: "loading" };
     vi.clearAllMocks();
-    vi.stubGlobal("window", { location: { assign: mockAssign } });
   });
 
   it("remains initializing while the backend session is being restored", () => {
@@ -75,10 +74,15 @@ describe("useAuth — self-hosted backend authority", () => {
 
   it("starts Google OAuth through the self-hosted backend", async () => {
     const { result } = renderHook(() => useAuth());
-    await act(async () => result.current.signIn("google"));
-    expect(mockGoogleUrl).toHaveBeenCalledOnce();
-    expect(mockAssign).toHaveBeenCalledWith("https://api.example.test/api/v1/auth/google");
-    expect(mockCreateAnonymous).not.toHaveBeenCalled();
+    vi.stubGlobal("window", { location: { assign: mockAssign } });
+    try {
+      await act(async () => result.current.signIn("google"));
+      expect(mockGoogleUrl).toHaveBeenCalledOnce();
+      expect(mockAssign).toHaveBeenCalledWith("https://api.example.test/api/v1/auth/google");
+      expect(mockCreateAnonymous).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("creates a real backend guest account and restores its session", async () => {
