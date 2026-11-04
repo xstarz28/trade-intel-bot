@@ -38,10 +38,7 @@ describe("useAuth — self-hosted backend authority", () => {
   beforeEach(() => {
     backendState = { status: "loading" };
     vi.clearAllMocks();
-    vi.stubGlobal("window", {
-      ...window,
-      location: { ...window.location, assign: mockAssign },
-    });
+    vi.stubGlobal("window", { location: { assign: mockAssign } });
   });
 
   it("remains initializing while the backend session is being restored", () => {
