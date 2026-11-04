@@ -105,15 +105,27 @@ export function AccountMigrationPanel() {
           </p>
         )}
 
-        <Button
-          size="sm"
-          className="w-full sm:w-auto"
-          disabled={busy || backendState.status === "loading" || backendState.status === "error"}
-          onClick={() => void handleMigration()}
-        >
-          {busy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowRightLeft className="mr-2 size-3.5" />}
-          {backendState.status === "authenticated" ? "Migrasikan data Convex sekarang" : "Hubungkan akun backend"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            className="w-full sm:w-auto"
+            disabled={busy || backendState.status === "loading" || backendState.status === "error"}
+            onClick={() => void handleMigration()}
+          >
+            {busy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowRightLeft className="mr-2 size-3.5" />}
+            {backendState.status === "authenticated" ? "Migrasikan data Convex sekarang" : "Hubungkan akun backend"}
+          </Button>
+          {backendState.status === "authenticated" && backendState.user.isAnonymous && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={busy}
+              onClick={() => window.location.assign(getBackendGoogleSignInUrl())}
+            >
+              Hubungkan Google
+            </Button>
+          )}
+        </div>
 
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
 
