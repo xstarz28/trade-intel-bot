@@ -13,6 +13,7 @@ import {
   fetchBackendOkxFuturesOpenInterest,
   fetchBackendOkxInstrumentSpec,
   fetchBackendOkxOrderBook,
+  fetchBackendCalendar,
   fetchBackendEiaInventory,
   fetchBackendTreasuryYields,
   listBackendAnalyses,
@@ -203,7 +204,6 @@ export default function Dashboard() {
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchDeFiLlamaFundamentals = useAction(api.coinglass.fetchDeFiLlamaFundamentals);
-  const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
 
   const handleSignOut = async () => {
     await signOut();
@@ -306,10 +306,7 @@ export default function Dashboard() {
               "Intelligence",
             ),
             withActionTimeout(
-              fetchCalendar({
-                instrument: input.instrument,
-                instrumentType: input.instrumentType,
-              }),
+              fetchBackendCalendar(input.instrument, input.instrumentType),
               ACTION_TIMEOUTS_MS.calendar,
               "Calendar",
             ),
@@ -1016,7 +1013,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, updateStep, riskSizingInputs, t],
+    [fetchMarketData, fetchIntelligence, fetchDerivatives, fetchDeFiLlamaFundamentals, updateStep, riskSizingInputs, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
