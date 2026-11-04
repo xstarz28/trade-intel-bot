@@ -82,7 +82,13 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
     return true;
   };
   return async(request,response,url)=>{
-    if(url.pathname!=="/api/v1/market-data/analyze") return false;
+    const providerPaths=new Set([
+      "/api/v1/intelligence/cot",
+      "/api/v1/intelligence/eia",
+      "/api/v1/intelligence/treasury",
+      "/api/v1/market-data/analyze",
+    ]);
+    if(!providerPaths.has(url.pathname)) return false;
     if(request.method!=="POST") {
       json(response,405,{error:"method_not_allowed"});
       return true;
@@ -103,6 +109,24 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
     }
     try {
       const input=await readBody(request);
+      if(url.pathname!=="/api/v1/market-data/analyze") {
+        const engine=await import("../dist/market-data-engine.mjs");
+        let result;
+        if(url.pathname==="/api/v1/intelligence/cot") {
+          const instrument=typeof input.instrument==="string"?input.instrument.trim().toUpperCase():"";
+          if(!/^[A-Z0-9._-]{1,30}$/.test(instrument)) {
+            json(response,400,{success:false,error:"invalid_instrument"});
+            return true;
+          }
+          result=await engine.fetchCotPositioning(instrument,fetchImpl);
+        } else if(url.pathname==="/api/v1/intelligence/eia") {
+          result=await engine.fetchEiaInventory(env.EIA_API_KEY,fetchImpl);
+        } else {
+          result=await engine.fetchTreasuryYields(fetchImpl);
+        }
+        json(response,result.success?200:503,result);
+        return true;
+      }
       const {analyzeMarket,fetchAlphaVantageIntelligence}=await import("../dist/market-data-engine.mjs");
       const instrument=typeof input.instrument==="string"?input.instrument.trim().toUpperCase():"";
       const instrumentType=input.instrumentType;
