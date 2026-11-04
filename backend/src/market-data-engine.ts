@@ -18,7 +18,7 @@ import {
   requireExactOrderBookInstrument,
   type ExecutionData,
 } from "../../src/lib/execution-quality";
-import type { CryptoDerivativesData } from "../../src/lib/data/crypto/derivatives-types";
+import type { CryptoDerivativesData } from "../../src/lib/data/derivatives-types";
 import {
   normalizeNewsArticles,
   aggregateSentiment,
