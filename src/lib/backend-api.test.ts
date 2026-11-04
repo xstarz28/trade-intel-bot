@@ -281,4 +281,52 @@ describe("self-hosted backend API client", () => {
     expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
   });
 
+
+  it("persists and reads per-position history and runtime health", async () => {
+    const snapshot = {
+      _id: "snapshot-1", positionId: "pos-1", instrument: "BTC-USDT", side: "LONG",
+      timestamp: 10, thesisState: "VALID", evidenceQuality: "HIGH", marketRegime: "TRENDING",
+      h1Trend: "BULLISH", m15Trend: "BULLISH", m5Trend: "NEUTRAL", mtfAlignment: "ALIGNED",
+      momentum: "POSITIVE", volatility: "NORMAL", structure: "HH_HL",
+      supportingCount: 4, conflictingCount: 1, invalidationCondition: "Below 63000",
+      watchNext: "Retest", dataAvailability: "COMPLETE",
+    };
+    const timeline = {
+      positionId: "pos-1", latestSnapshot: snapshot, previousSnapshot: null, events: [],
+    };
+    const health = {
+      _id: "health-1", timestamp: 11, overallStatus: "HEALTHY",
+      components: [{ component: "market-data", status: "OK", consecutiveFailures: 0, message: "ok", freshness: "FRESH" }],
+      intelligenceCycleStatus: "OK", alertPipelineStatus: "OK", persistenceStatus: "OK",
+      providerAvailability: { okx: "AVAILABLE" }, staleComponents: [], unavailableComponents: [],
+    };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(201, { id: "snapshot-1", pruned: 0 }))
+      .mockResolvedValueOnce(response(201, { ids: ["event-1"], inserted: 1, pruned: 0 }))
+      .mockResolvedValueOnce(response(200, timeline))
+      .mockResolvedValueOnce(response(200, { deleted: 1 }))
+      .mockResolvedValueOnce(response(200, { pruned: 0 }))
+      .mockResolvedValueOnce(response(200, { item: health }))
+      .mockResolvedValueOnce(response(200, { items: [health] }))
+      .mockResolvedValueOnce(response(201, { id: "health-1" }));
+
+    const { saveBackendHistorySnapshot, saveBackendHistoryEvents, getBackendHistoryTimeline,
+      deleteBackendPositionHistory, pruneBackendPositionHistory, getLatestBackendRuntimeHealth,
+      listBackendRuntimeHealth, saveBackendRuntimeHealth } = await import("./backend-api");
+    const { _id, ...snapshotInput } = snapshot;
+    await expect(saveBackendHistorySnapshot(snapshotInput, fetcher)).resolves.toEqual({ id: "snapshot-1", pruned: 0 });
+    await expect(saveBackendHistoryEvents({
+      positionId: "pos-1", instrument: "BTC-USDT", side: "LONG",
+      events: [{ timestamp: 12, eventType: "THESIS_UPDATE", description: "Retest", previousState: "WATCH", currentState: "VALID", category: "STRUCTURE", strength: "MEDIUM" }],
+    }, fetcher)).resolves.toMatchObject({ inserted: 1 });
+    await expect(getBackendHistoryTimeline("pos-1", fetcher)).resolves.toEqual(timeline);
+    await expect(deleteBackendPositionHistory("pos-1", fetcher)).resolves.toEqual({ deleted: 1 });
+    await expect(pruneBackendPositionHistory("pos-1", fetcher)).resolves.toEqual({ pruned: 0 });
+    await expect(getLatestBackendRuntimeHealth(fetcher)).resolves.toEqual({ item: health });
+    await expect(listBackendRuntimeHealth(10, fetcher)).resolves.toEqual({ items: [health] });
+    const { _id: healthId, ...healthInput } = health;
+    await expect(saveBackendRuntimeHealth(healthInput, fetcher)).resolves.toEqual({ id: "health-1" });
+    expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
+  });
+
 });
