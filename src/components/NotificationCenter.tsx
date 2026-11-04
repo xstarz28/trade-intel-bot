@@ -5,11 +5,22 @@
  * filtering, and severity display. Informational only — no execution buttons.
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapPriority, mapSide } from "@/lib/i18n/enum-mapping";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { useBackendSession } from "@/hooks/use-backend-session";
+import {
+  BackendApiError,
+  getBackendGoogleSignInUrl,
+  listBackendNotifications,
+  getBackendNotificationPreferences,
+  markBackendNotificationRead,
+  markAllBackendNotificationsRead,
+  saveBackendNotificationPreferences,
+  resetBackendNotificationPreferences,
+  type BackendNotification,
+  type BackendNotificationPreferences,
+} from "@/lib/backend-api";
 import type { NotificationFilter } from "../lib/position-protection/notification-engine";
 import {
   filterNotifications,
