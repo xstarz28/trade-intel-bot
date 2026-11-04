@@ -86,6 +86,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
       "/api/v1/intelligence/cot",
       "/api/v1/intelligence/eia",
       "/api/v1/intelligence/treasury",
+      "/api/v1/intelligence/fx-rate",
       "/api/v1/market-data/analyze",
     ]);
     if(!providerPaths.has(url.pathname)) return false;
@@ -121,8 +122,16 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
           result=await engine.fetchCotPositioning(instrument,fetchImpl);
         } else if(url.pathname==="/api/v1/intelligence/eia") {
           result=await engine.fetchEiaInventory(env.EIA_API_KEY,fetchImpl);
-        } else {
+        } else if(url.pathname==="/api/v1/intelligence/treasury") {
           result=await engine.fetchTreasuryYields(fetchImpl);
+        } else {
+          const from=typeof input.from==="string"?input.from.trim().toUpperCase():"";
+          const to=typeof input.to==="string"?input.to.trim().toUpperCase():"";
+          if(!/^[A-Z]{3}$/.test(from)||!/^[A-Z]{3}$/.test(to)||from===to) {
+            json(response,400,{success:false,error:"invalid_fx_currency_pair"});
+            return true;
+          }
+          result=await engine.fetchFxReference(from,to,fetchImpl);
         }
         json(response,result.success?200:503,result);
         return true;
