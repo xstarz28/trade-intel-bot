@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from "react";
+import { useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstrumentInput } from "@/components/InstrumentInput";
@@ -6,6 +6,14 @@ import { RiskSizingControl, type RiskSizingInputs } from "@/components/RiskSizin
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  fetchBackendCotPositioning,
+  fetchBackendEiaInventory,
+  fetchBackendTreasuryYields,
+  listBackendAnalyses,
+  saveBackendAnalysis,
+  type BackendAnalysisRecord,
+} from "@/lib/backend-api";
 import { AccountMigrationPanel } from "@/components/AccountMigrationPanel";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
@@ -13,7 +21,7 @@ import type { AnalysisResult } from "@/types/analysis";
 import { buildHistoricalContextSummaries, buildPersistedContextSummaries, resolveHistoricalDecision } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
 import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery, useAction } from "convex/react";
+import { useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
@@ -142,19 +150,32 @@ export default function Dashboard() {
   // Phase 153 — retain the latest verified live market snapshot per instrument.
   // This is runtime-only state and is intentionally NOT reconstructed from history.
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  // Convex persistence
-  const saveAnalysis = useMutation(api.analyses.save);
-  const dbHistory = useQuery(api.analyses.list);
-  // Convex actions for server-side data fetching
+  // Analysis history is persisted by the self-hosted backend, scoped to its session.
+  const [dbHistory, setDbHistory] = useState<BackendAnalysisRecord[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    listBackendAnalyses()
+      .then(({ items }) => {
+        if (!active) return;
+        setDbHistory(items);
+        setHistoryError(null);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setHistoryError(error instanceof Error ? error.message : "Unable to load analysis history");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  // Legacy Convex actions remain only for provider legs not yet extracted.
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
   const fetchFxRate = useAction(api.marketData.fetchFxRate);
   const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
   const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
   const fetchDeFiLlamaFundamentals = useAction(api.coinglass.fetchDeFiLlamaFundamentals);
   const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
-  const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
-  const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
-  const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
   const fetchOkxOrderBook = useAction(api.okx.fetchOkxOrderBook);
   const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
   const fetchOkxFuturesOpenInterest = useAction(api.okx.fetchOkxFuturesOpenInterest);
@@ -474,13 +495,13 @@ export default function Dashboard() {
             fx: fxPair
               ? () => fetchFxRate({ from: fxPair!.from, to: fxPair!.to })
               : undefined,
-            cot: () => fetchCotPositioning({ instrument: input.instrument }),
+            cot: () => fetchBackendCotPositioning(input.instrument),
             execution: input.instrumentType === "crypto" &&
               (input.instrument.toUpperCase().endsWith("-SWAP") || /-[0-9]{6}$/.test(input.instrument.toUpperCase()))
               ? () => fetchOkxOrderBook({ instrument: input.instrument })
               : undefined,
-            eia: () => fetchEiaInventory({}),
-            treasury: () => fetchTreasuryYields({}),
+            eia: () => fetchBackendEiaInventory(),
+            treasury: () => fetchBackendTreasuryYields(),
             okxSpec: input.instrumentType === "crypto" &&
               (input.instrument.toUpperCase().endsWith("-SWAP") || /-[0-9]{6}$/.test(input.instrument.toUpperCase()))
               ? () => fetchOkxInstrumentSpec({ instrument: input.instrument })
@@ -895,9 +916,9 @@ export default function Dashboard() {
 
         setCurrentResult(result);
 
-        // Persist to Convex (fire-and-forget)
+        // Persist the immutable analysis snapshot to the self-hosted account history.
         try {
-          await saveAnalysis({
+          const saved = await saveBackendAnalysis({
             instrument: result.instrument,
             instrumentType: result.instrumentType,
             timeframe: result.timeframe,
@@ -919,8 +940,14 @@ export default function Dashboard() {
             dataSource: result.dataSource,
             ...buildPersistedContextSummaries(result),
           });
-        } catch {
-          // Save failed (guest user) — analysis still shows in session
+          setDbHistory((current) => [
+            saved.item,
+            ...current.filter((item) => item._id !== saved.item._id),
+          ].slice(0, 20));
+          setHistoryError(null);
+        } catch (error) {
+          // Persistence failure must not discard a valid analysis result.
+          setHistoryError(error instanceof Error ? error.message : "Unable to save analysis history");
         }
       } catch (err: any) {
         if (!isStaleRun()) {
@@ -934,7 +961,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchFxRate, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep, riskSizingInputs, t],
+    [fetchMarketData, fetchFxRate, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, fetchOkxOrderBook, fetchOkxInstrumentSpec, updateStep, riskSizingInputs, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
