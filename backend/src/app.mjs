@@ -8,6 +8,7 @@ import { createAlertHandler } from "./alerts.mjs";
 import { createMarketDataHandler } from "./market-data.mjs";
 import { createFundamentalsHandler } from "./fundamentals.mjs";
 import { createHistoryHandler } from "./history.mjs";
+import { createAccountExportHandler } from "./account-export.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -87,6 +88,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
   const marketDataHandler = database ? createMarketDataHandler({ database, env, fetchImpl }) : null;
   const fundamentalsHandler = database ? createFundamentalsHandler({ database, env }) : null;
   const historyHandler = database ? createHistoryHandler({ database, env }) : null;
+  const accountExportHandler = database ? createAccountExportHandler({ database, env }) : null;
   const configuredOrigin = env.APP_ORIGIN?.trim();
   const allowedOrigin = configuredOrigin || (
     env.NODE_ENV === "production" ? "" : "http://localhost:5173"
