@@ -161,6 +161,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
 
     try {
       if (await authHandler(request, response, url)) return;
+      if (accountExportHandler && await accountExportHandler(request, response, url)) return;
       if (domainHandler && await domainHandler(request, response, url)) return;
       if (positionHandler && await positionHandler(request, response, url)) return;
       if (alertHandler && await alertHandler(request, response, url)) return;
