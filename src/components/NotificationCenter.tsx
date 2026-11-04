@@ -167,7 +167,7 @@ export function NotificationCenter() {
   };
 
   const prefs: NotificationPreferences = useMemo(() => {
-    if (!rawPrefs) return DEFAULT_PREFERENCES;
+    if (!rawPrefs || loadedUserId !== backendUserId) return DEFAULT_PREFERENCES;
     return {
       minimumSeverity: (rawPrefs as any).minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
       enabledCategories: (rawPrefs as any).enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
@@ -178,7 +178,7 @@ export function NotificationCenter() {
       showReadNotifications: (rawPrefs as any).showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
       showDismissedNotifications: (rawPrefs as any).showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
     };
-  }, [rawPrefs]);
+  }, [rawPrefs, loadedUserId, backendUserId]);
 
   const filtered = useMemo(() => {
     if (!notifications) return [];
@@ -198,10 +198,23 @@ export function NotificationCenter() {
     ).length;
   }, [notifications, prefs]);
 
-  const isLoading = notifications === undefined;
+  const isLoading = backendState.status === "loading" ||
+    (backendUserId !== null && loadedUserId !== backendUserId);
+
+  if (backendState.status !== "authenticated") {
+    return (
+      <div className="space-y-2 rounded-lg border border-border/40 p-3">
+        <h3 className="text-sm font-mono font-semibold">{t.notifications.title}</h3>
+        <p className="text-xs text-muted-foreground">Notifikasi tersimpan di backend mandiri. Hubungkan akun backend untuk melihat dan mengelolanya.</p>
+        {backendState.status === "error" && <p role="alert" className="text-xs text-destructive">Sesi backend tidak dapat diperiksa.</p>}
+        {backendState.status === "anonymous" && <button className="text-xs underline" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>Hubungkan akun backend</button>}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
+      {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -223,7 +236,7 @@ export function NotificationCenter() {
           </button>
           {unreadCount !== undefined && unreadCount > 0 && (
             <button
-              onClick={() => markAllRead()}
+              onClick={() => handleMarkAllRead()}
               className="text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
             >
               {t.notifications.markAllRead}
@@ -269,7 +282,7 @@ export function NotificationCenter() {
                   key={sev}
                   onClick={() => {
                     const updated = { ...prefs, minimumSeverity: sev as NotificationSeverity };
-                    savePrefsMut({
+                    void persistPreferences({
                       minimumSeverity: updated.minimumSeverity,
                       enabledCategories: updated.enabledCategories,
                       enabledScopes: updated.enabledScopes,
@@ -410,7 +423,7 @@ export function NotificationCenter() {
 
           {/* Reset */}
           <button
-            onClick={() => resetPrefsMut()}
+            onClick={() => handleResetPreferences()}
             className="text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors"
           >
             Reset to defaults
@@ -446,7 +459,7 @@ export function NotificationCenter() {
             key={notif.notificationId}
             onClick={() => {
               if (!notif.read) {
-                markRead({ notificationId: notif.notificationId });
+                void handleMarkRead(notif.notificationId);
               }
             }}
             className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${
