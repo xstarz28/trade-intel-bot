@@ -196,16 +196,45 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
     setSelectedEntry(updated);
   };
 
-  const handleUpdateReview = (entry: JournalEntry, field: string, value: string) => {
-    const updated = updateReview(entry, { [field]: value });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
+  const handleUpdateReview = async (entry: JournalEntry, field: string, value: string) => {
+    const allowed = new Set([
+      "entryReason", "thesisAtEntry", "confirmationObserved", "invalidationObserved",
+      "whatWentRight", "whatWentWrong", "lessons", "notes",
+    ]);
+    if (!allowed.has(field)) return;
+    setSaving(true);
+    setBackendError(null);
+    try {
+      const { item } = await updateBackendJournalEntry(entry.id, { [field]: value });
+      const persisted = backendJournalToEntry(item);
+      updateEntryInList(persisted);
+      setSelectedEntry(persisted);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menyimpan review: " + cause.code
+        : "Gagal menyimpan review jurnal.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleUpdateTrade = (entry: JournalEntry, field: string, value: number | undefined) => {
-    const updated = updateTradeInfo(entry, { [field]: value });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
+  const handleUpdateTrade = async (entry: JournalEntry, field: string, value: number | undefined) => {
+    const allowed = new Set(["entry", "stopLoss", "takeProfit", "riskReward", "positionSize", "notionalValue"]);
+    if (!allowed.has(field)) return;
+    setSaving(true);
+    setBackendError(null);
+    try {
+      const { item } = await updateBackendJournalEntry(entry.id, { [field]: value });
+      const persisted = backendJournalToEntry(item);
+      updateEntryInList(persisted);
+      setSelectedEntry(persisted);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menyimpan trade: " + cause.code
+        : "Gagal menyimpan detail trade.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Filtered entries ──
