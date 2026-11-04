@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, it } from "node:test";
 import { createAppServer } from "../src/app.mjs";
-import { upsertGoogleUser } from "../src/auth.mjs";
+import { upsertGoogleUser, verifyGoogleIdToken } from "../src/auth.mjs";
 import { openDatabase } from "../src/database.mjs";
 
 const temporaryDirectories = [];
@@ -14,6 +15,34 @@ function createTemporaryDatabase() {
   const directory = mkdtempSync(join(tmpdir(), "trade-intel-backend-"));
   temporaryDirectories.push(directory);
   return openDatabase(join(directory, "test.sqlite"), fileURLToPath(new URL("../migrations/", import.meta.url)));
+}
+
+
+function createGoogleIdToken({ clientId, nonce, subject = "google-subject-e2e", email = "verified@example.test" }) {
+  const { publicKey, privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+  const jwk = {
+    ...publicKey.export({ format: "jwk" }),
+    kid: "trade-intel-test-key",
+    alg: "RS256",
+    use: "sig",
+  };
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const header = encode({ alg: "RS256", kid: jwk.kid, typ: "JWT" });
+  const claims = encode({
+    iss: "https://accounts.google.com",
+    aud: clientId,
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    iat: Math.floor(Date.now() / 1000),
+    nonce,
+    sub: subject,
+    email,
+    email_verified: true,
+    name: "Verified Trader",
+    picture: "https://example.test/avatar.png",
+  });
+  const signingInput = `${header}.${claims}`;
+  const signature = sign("RSA-SHA256", Buffer.from(signingInput), privateKey).toString("base64url");
+  return { jwk, idToken: `${signingInput}.${signature}` };
 }
 
 function yahooChartPayload(now) {
@@ -914,6 +943,130 @@ describe("self-hosted backend", () => {
     }
   });
 
+
+
+  it("completes Google OAuth with state, nonce, PKCE, signature verification and a backend session", async () => {
+    const database = createTemporaryDatabase();
+    const clientId = "123456789-example.apps.googleusercontent.com";
+    const env = {
+      NODE_ENV: "production",
+      APP_ORIGIN: "https://xstarzganaliys.com",
+      PUBLIC_BASE_URL: "https://xstarzganaliys.com",
+      GOOGLE_CLIENT_ID: clientId,
+      GOOGLE_CLIENT_SECRET: "gocspx-production-test-secret",
+    };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const start = await fetch(`${baseUrl}/api/v1/auth/google`, {
+          redirect: "manual",
+          headers: { Accept: "text/html" },
+        });
+        assert.equal(start.status, 302);
+
+        const authorization = new URL(start.headers.get("location"));
+        assert.equal(authorization.origin, "https://accounts.google.com");
+        assert.equal(authorization.pathname, "/o/oauth2/v2/auth");
+        assert.equal(authorization.searchParams.get("client_id"), clientId);
+        assert.equal(authorization.searchParams.get("redirect_uri"), "https://xstarzganaliys.com/api/v1/auth/google/callback");
+        assert.equal(authorization.searchParams.get("response_type"), "code");
+        assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
+        assert.equal(authorization.searchParams.get("scope"), "openid email profile");
+
+        const state = authorization.searchParams.get("state");
+        const nonce = authorization.searchParams.get("nonce");
+        const challenge = authorization.searchParams.get("code_challenge");
+        assert.ok(state && state.length >= 40);
+        assert.ok(nonce && nonce.length >= 40);
+        assert.ok(challenge && challenge.length >= 40);
+
+        const stateCookie = start.headers.get("set-cookie");
+        assert.ok(stateCookie);
+        assert.match(stateCookie, /^__Host-xstarz_oauth_state=/);
+        assert.match(stateCookie, /; HttpOnly/);
+        assert.match(stateCookie, /; Secure/);
+
+        const stateHash = createHash("sha256").update(state).digest("hex");
+        const flow = database.raw.prepare(
+          "SELECT nonce, code_verifier, expires_at FROM oauth_flows WHERE state_hash = ?",
+        ).get(stateHash);
+        assert.ok(flow);
+        assert.equal(flow.nonce, nonce);
+        assert.equal(
+          createHash("sha256").update(flow.code_verifier).digest("base64url"),
+          challenge,
+        );
+
+        const { jwk, idToken } = createGoogleIdToken({ clientId, nonce });
+        const fetchImpl = async (input, options = {}) => {
+          const target = String(input);
+          if (target === "https://oauth2.googleapis.com/token") {
+            const form = new URLSearchParams(options.body);
+            assert.equal(form.get("code"), "google-auth-code");
+            assert.equal(form.get("client_id"), clientId);
+            assert.equal(form.get("client_secret"), env.GOOGLE_CLIENT_SECRET);
+            assert.equal(form.get("code_verifier"), flow.code_verifier);
+            assert.equal(form.get("redirect_uri"), "https://xstarzganaliys.com/api/v1/auth/google/callback");
+            return new Response(JSON.stringify({ id_token: idToken }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          if (target === "https://www.googleapis.com/oauth2/v3/certs") {
+            return new Response(JSON.stringify({ keys: [jwk] }), {
+              status: 200,
+              headers: { "content-type": "application/json" },
+            });
+          }
+          throw new Error(`Unexpected OAuth provider request: ${target}`);
+        };
+
+        const stateCookiePair = stateCookie.split(";")[0];
+        const callback = await fetch(
+          `${baseUrl}/api/v1/auth/google/callback?state=${encodeURIComponent(state)}&code=google-auth-code`,
+          {
+            redirect: "manual",
+            headers: { Cookie: stateCookiePair },
+          },
+        );
+        assert.equal(callback.status, 302);
+        assert.equal(callback.headers.get("location"), "https://xstarzganaliys.com/dashboard");
+
+        const callbackCookies = callback.headers.get("set-cookie") ?? "";
+        const sessionCookie = callbackCookies.match(/__Host-xstarz_session=[^;,]+/)?.[0];
+        assert.ok(sessionCookie, "Google callback must issue the backend session cookie");
+
+        const session = await fetch(`${baseUrl}/api/v1/auth/session`, {
+          headers: { Cookie: sessionCookie },
+        });
+        assert.equal(session.status, 200);
+        const payload = await session.json();
+        assert.equal(payload.user.email, "verified@example.test");
+        assert.equal(payload.user.name, "Verified Trader");
+        assert.equal(payload.user.isAnonymous, false);
+
+        const persisted = database.raw.prepare(
+          "SELECT google_subject FROM users WHERE id = ?",
+        ).get(payload.user.id);
+        assert.equal(persisted.google_subject, "google-subject-e2e");
+        assert.equal(database.raw.prepare("SELECT COUNT(*) AS count FROM oauth_flows").get().count, 0);
+      }, { env, fetchImpl: async () => { throw new Error("OAuth fetch must be injected by the callback test"); } });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rejects Google ID tokens with an invalid nonce or expired claims", async () => {
+    const clientId = "123456789-example.apps.googleusercontent.com";
+    const { jwk, idToken } = createGoogleIdToken({ clientId, nonce: "expected-nonce" });
+    const fetchImpl = async () => new Response(JSON.stringify({ keys: [jwk] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+    await assert.rejects(
+      verifyGoogleIdToken(idToken, { clientId, nonce: "different-nonce", fetchImpl }),
+      /claims failed validation/,
+    );
+  });
 
   it("rate-limits repeated anonymous account creation from one client", async () => {
     const database = createTemporaryDatabase();
