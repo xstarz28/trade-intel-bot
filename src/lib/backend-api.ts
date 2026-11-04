@@ -698,7 +698,7 @@ export function saveBackendStreamCursor(
 
 export interface BackendMarketAnalysisInput {
   instrument: string;
-  instrumentType: "crypto" | "stock" | "forex" | "commodity" | "index";
+  instrumentType: "crypto" | "stock" | "forex" | "commodity" | "indices";
   timeframe: string;
   tradingStyle?: string;
 }
