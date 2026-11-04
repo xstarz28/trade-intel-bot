@@ -694,3 +694,23 @@ export function saveBackendStreamCursor(
     "/api/v1/stream-cursors", { method: "PUT", body: JSON.stringify(cursor) }, fetchImpl,
   );
 }
+
+
+export interface BackendMarketAnalysisInput {
+  instrument: string;
+  instrumentType: "crypto" | "stock" | "forex" | "commodity" | "index";
+  timeframe: string;
+  tradingStyle?: string;
+}
+
+/** Runs the shared decision engine through the authenticated self-hosted API. */
+export function analyzeBackendMarket(
+  input: BackendMarketAnalysisInput,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<import("@/types/analysis").AnalysisResult>(
+    "/api/v1/market-data/analyze",
+    { method: "POST", body: JSON.stringify(input) },
+    fetchImpl,
+  );
+}
