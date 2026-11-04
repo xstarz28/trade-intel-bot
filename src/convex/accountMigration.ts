@@ -4,20 +4,11 @@
  * Convex auth/session tables are intentionally excluded.
  */
 import { getAuthUserId } from "@convex-dev/auth/server";
-import { query, type QueryCtx } from "./_generated/server";
+import { query } from "./_generated/server";
 
 const MAX_ROWS_PER_TABLE = 10_000;
 
-async function takeUserRows(
-  ctx: QueryCtx,
-  table: any,
-  index: string,
-  userId: any,
-) {
-  const rows = await ctx.db
-    .query(table)
-    .withIndex(index as any, (q: any) => q.eq("userId", userId))
-    .take(MAX_ROWS_PER_TABLE + 1);
+function ensureBounded<T>(table: string, rows: T[]) {
   if (rows.length > MAX_ROWS_PER_TABLE) {
     throw new Error(`Account migration export limit exceeded for ${table}`);
   }
@@ -51,18 +42,30 @@ export const exportMyAccount = query({
       historicalEvents,
       runtimeHealthSnapshots,
     ] = await Promise.all([
-      takeUserRows(ctx, "analyses", "by_user", userId),
-      takeUserRows(ctx, "journal", "by_user_journal", userId),
-      takeUserRows(ctx, "monitoredPositions", "by_user_position", userId),
-      takeUserRows(ctx, "alertHistory", "by_user_alerts", userId),
-      takeUserRows(ctx, "streamCursors", "by_user_provider_instrument", userId),
-      takeUserRows(ctx, "historicalSnapshots", "by_user_position_ts", userId),
-      takeUserRows(ctx, "alertRules", "by_user", userId),
-      takeUserRows(ctx, "ruleAlertHistory", "by_user", userId),
-      takeUserRows(ctx, "notifications", "by_user", userId),
-      takeUserRows(ctx, "notificationPreferences", "by_user", userId),
-      takeUserRows(ctx, "historicalEvents", "by_user_position_ts", userId),
-      takeUserRows(ctx, "runtimeHealthSnapshots", "by_user", userId),
+      ctx.db.query("analyses").withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("analyses", rows)),
+      ctx.db.query("journal").withIndex("by_user_journal", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("journal", rows)),
+      ctx.db.query("monitoredPositions").withIndex("by_user_position", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("monitoredPositions", rows)),
+      ctx.db.query("alertHistory").withIndex("by_user_alerts", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("alertHistory", rows)),
+      ctx.db.query("streamCursors").withIndex("by_user_provider_instrument", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("streamCursors", rows)),
+      ctx.db.query("historicalSnapshots").withIndex("by_user_position_ts", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("historicalSnapshots", rows)),
+      ctx.db.query("alertRules").withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("alertRules", rows)),
+      ctx.db.query("ruleAlertHistory").withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("ruleAlertHistory", rows)),
+      ctx.db.query("notifications").withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("notifications", rows)),
+      ctx.db.query("notificationPreferences").withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("notificationPreferences", rows)),
+      ctx.db.query("historicalEvents").withIndex("by_user_position_ts", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("historicalEvents", rows)),
+      ctx.db.query("runtimeHealthSnapshots").withIndex("by_user", (q) => q.eq("userId", userId))
+        .take(MAX_ROWS_PER_TABLE + 1).then((rows) => ensureBounded("runtimeHealthSnapshots", rows)),
     ]);
 
     const data = {
