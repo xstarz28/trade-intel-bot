@@ -155,6 +155,24 @@ export function getBackendGoogleSignInUrl() {
   return `${API_BASE}/api/v1/auth/google`;
 }
 
+/** Restores a previously downloaded Trade Intel account export. */
+export function importBackendAccount(
+  payload: BackendAccountExport,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{
+    success: boolean;
+    accountId: string;
+    inserted: Record<string, number>;
+    skipped: Record<string, number>;
+    totalInserted: number;
+    totalSkipped: number;
+  }>("/api/v1/account/import", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, fetchImpl);
+}
+
 /** Downloads the authenticated user's portable account data as structured JSON. */
 export function exportBackendAccount(fetchImpl?: typeof fetch) {
   return backendRequest<BackendAccountExport>("/api/v1/account/export", {}, fetchImpl);
