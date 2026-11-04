@@ -19,6 +19,21 @@ export interface BackendSession {
   user: BackendUser | null;
 }
 
+export interface BackendAccountExport {
+  format: "trade-intel-account-export";
+  version: 1;
+  exportedAt: string;
+  account: {
+    id: string;
+    name: string | null;
+    email: string | null;
+    isAnonymous: boolean;
+    role: string;
+  };
+  data: Record<string, Record<string, unknown>[]>;
+  counts: Record<string, number>;
+}
+
 export interface BackendAnalysisRecord {
   _id: string;
   _creationTime: number;
@@ -138,4 +153,9 @@ export function clearBackendAnalyses(fetchImpl?: typeof fetch) {
 /** Starts the backend-managed Google OAuth flow in the current browser tab. */
 export function getBackendGoogleSignInUrl() {
   return `${API_BASE}/api/v1/auth/google`;
+}
+
+/** Downloads the authenticated user's portable account data as structured JSON. */
+export function exportBackendAccount(fetchImpl?: typeof fetch) {
+  return backendRequest<BackendAccountExport>("/api/v1/account/export", {}, fetchImpl);
 }
