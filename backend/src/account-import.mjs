@@ -1,4 +1,5 @@
 import { getAuthenticatedUser, isAllowedOrigin } from "./auth.mjs";
+import { normalizeConvexAccountExport } from "./convex-account-import.mjs";
 
 const IMPORT_TABLES = [
   "analyses",
@@ -73,7 +74,10 @@ export function createAccountImportHandler({ database, env = process.env }) {
     }
 
     try {
-      const input = await readBody(request);
+      const rawInput = await readBody(request);
+      const input = rawInput.format === "trade-intel-convex-account-export"
+        ? normalizeConvexAccountExport(rawInput, user)
+        : rawInput;
       if (input.format !== "trade-intel-account-export" || input.version !== 1 ||
           !input.data || typeof input.data !== "object" || Array.isArray(input.data)) {
         json(response, 400, { error: "unsupported_account_export" });
@@ -151,7 +155,7 @@ export function createAccountImportHandler({ database, env = process.env }) {
       return true;
     } catch (error) {
       json(response, error.status ?? 400, {
-        error: error.status === 413 ? "request_too_large" : "account_import_failed",
+        error: error.code ?? (error.status === 413 ? "request_too_large" : "account_import_failed"),
       });
       return true;
     }
