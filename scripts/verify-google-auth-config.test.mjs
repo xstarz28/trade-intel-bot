@@ -3,44 +3,38 @@ import assert from "node:assert/strict";
 import { classifyGoogleAuthConfig } from "./verify-google-auth-config.mjs";
 
 const configured = {
-  AUTH_GOOGLE_ID: "123456789-example.apps.googleusercontent.com",
-  AUTH_GOOGLE_SECRET: "gocspx-abcdefghijklmnop",
-  CONVEX_SITE_URL: "https://hushed-seal-237.convex.site",
-  SITE_URL: "https://xstarzanalysis.vercel.app",
-  VITE_CONVEX_URL: "https://hushed-seal-237.convex.cloud",
+  GOOGLE_CLIENT_ID: "123456789-example.apps.googleusercontent.com",
+  GOOGLE_CLIENT_SECRET: "gocspx-abcdefghijklmnop",
+  APP_ORIGIN: "https://xstarzganaliys.com",
+  PUBLIC_BASE_URL: "https://xstarzganaliys.com",
 };
 
-test("reports missing auth variable names without values", () => {
+test("reports missing self-hosted OAuth variable names without values", () => {
   const result = classifyGoogleAuthConfig({});
   assert.equal(result.state, "NOT_CONFIGURED");
   assert.deepEqual(result.missing, [
-    "AUTH_GOOGLE_ID", "AUTH_GOOGLE_SECRET", "CONVEX_SITE_URL", "SITE_URL",
+    "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APP_ORIGIN", "PUBLIC_BASE_URL",
   ]);
 });
 
-test("accepts structurally plausible OAuth configuration and derives callback", () => {
+test("accepts structurally valid self-hosted OAuth configuration and derives callback", () => {
   const result = classifyGoogleAuthConfig(configured);
   assert.equal(result.state, "CONFIGURED");
   assert.deepEqual(result.missing, []);
   assert.deepEqual(result.invalid, []);
-  assert.equal(result.callbackUrl, "https://hushed-seal-237.convex.site/api/auth/callback/google");
-  assert.equal(JSON.stringify(result).includes(configured.AUTH_GOOGLE_SECRET), false);
+  assert.equal(
+    result.callbackUrl,
+    "https://xstarzganaliys.com/api/v1/auth/google/callback",
+  );
+  assert.equal(JSON.stringify(result).includes(configured.GOOGLE_CLIENT_SECRET), false);
 });
 
-test("does not require the frontend build URL when classifying Convex auth environment variables", () => {
-  const { VITE_CONVEX_URL: _frontendBuildUrl, ...convexAuthEnvironment } = configured;
-  const result = classifyGoogleAuthConfig(convexAuthEnvironment);
-  assert.equal(result.state, "CONFIGURED");
-  assert.deepEqual(result.missing, []);
-});
-
-test("rejects invalid IDs, short secrets, non-HTTPS endpoints and mismatched hosts", () => {
+test("rejects malformed client IDs, weak secrets and non-HTTPS origins", () => {
   const result = classifyGoogleAuthConfig({
     ...configured,
-    AUTH_GOOGLE_ID: "not-a-google-client-id",
-    AUTH_GOOGLE_SECRET: "short",
-    CONVEX_SITE_URL: "http://hushed-seal-237.convex.site",
-    VITE_CONVEX_URL: "https://other.convex.cloud",
+    GOOGLE_CLIENT_ID: "not-a-google-client-id",
+    GOOGLE_CLIENT_SECRET: "short",
+    APP_ORIGIN: "http://xstarzganaliys.com",
   });
   assert.equal(result.state, "INVALID");
   assert.equal(result.invalid.length, 3);
@@ -48,14 +42,21 @@ test("rejects invalid IDs, short secrets, non-HTTPS endpoints and mismatched hos
   assert.equal(JSON.stringify(result).includes("short"), false);
 });
 
-test("rejects non-official frontend origins", () => {
-  const result = classifyGoogleAuthConfig({ ...configured, SITE_URL: "https://preview.vercel.app" });
+test("requires frontend and backend origins to match for host-only cookies", () => {
+  const result = classifyGoogleAuthConfig({
+    ...configured,
+    PUBLIC_BASE_URL: "https://api.xstarzganaliys.com",
+  });
   assert.equal(result.state, "INVALID");
-  assert.ok(result.invalid.some((entry) => entry.includes("official XSTARZG Analysis domain")));
+  assert.ok(result.invalid.some((entry) => entry.includes("must match")));
 });
 
 test("keeps INVALID precedence when required fields are also missing", () => {
-  const result = classifyGoogleAuthConfig({ ...configured, AUTH_GOOGLE_ID: "bad", AUTH_GOOGLE_SECRET: undefined });
+  const result = classifyGoogleAuthConfig({
+    ...configured,
+    GOOGLE_CLIENT_ID: "bad",
+    GOOGLE_CLIENT_SECRET: undefined,
+  });
   assert.equal(result.state, "INVALID");
-  assert.deepEqual(result.missing, ["AUTH_GOOGLE_SECRET"]);
+  assert.deepEqual(result.missing, ["GOOGLE_CLIENT_SECRET"]);
 });
