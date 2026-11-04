@@ -315,7 +315,8 @@ describe("self-hosted backend API client", () => {
     const { saveBackendHistorySnapshot, saveBackendHistoryEvents, getBackendHistoryTimeline,
       deleteBackendPositionHistory, pruneBackendPositionHistory, getLatestBackendRuntimeHealth,
       listBackendRuntimeHealth, saveBackendRuntimeHealth } = await import("./backend-api");
-    const { _id, ...snapshotInput } = snapshot;
+    const { _id: snapshotRecordId, ...snapshotInput } = snapshot;
+    expect(snapshotRecordId).toBe("snapshot-1");
     await expect(saveBackendHistorySnapshot(snapshotInput, fetcher)).resolves.toEqual({ id: "snapshot-1", pruned: 0 });
     await expect(saveBackendHistoryEvents({
       positionId: "pos-1", instrument: "BTC-USDT", side: "LONG",
@@ -326,7 +327,8 @@ describe("self-hosted backend API client", () => {
     await expect(pruneBackendPositionHistory("pos-1", fetcher)).resolves.toEqual({ pruned: 0 });
     await expect(getLatestBackendRuntimeHealth(fetcher)).resolves.toEqual({ item: health });
     await expect(listBackendRuntimeHealth(10, fetcher)).resolves.toEqual({ items: [health] });
-    const { _id: healthId, ...healthInput } = health;
+    const { _id: healthRecordId, ...healthInput } = health;
+    expect(healthRecordId).toBe("health-1");
     await expect(saveBackendRuntimeHealth(healthInput, fetcher)).resolves.toEqual({ id: "health-1" });
     expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
   });
