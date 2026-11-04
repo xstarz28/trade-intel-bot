@@ -20,6 +20,14 @@ import {
 } from "../../src/lib/execution-quality";
 import type { CryptoDerivativesData } from "../../src/lib/data/derivatives-types";
 import {
+  calculateMacroRisk,
+  getRelevantCurrencies,
+  type EconomicCalendarData,
+  type EconomicEvent,
+  type EventImportance,
+  type CalendarResult,
+} from "../../src/lib/data/calendar-types";
+import {
   normalizeNewsArticles,
   aggregateSentiment,
   normalizeFundamentals,
@@ -616,6 +624,206 @@ export async function fetchOkxFuturesOpenInterest(
     const reason = error instanceof Error ? error.message : "unknown provider error";
     return { success: false, error: `OKX open-interest request failed: ${reason}` };
   }
+}
+
+
+const TICKATLAS_CALENDAR_CACHE_TTL_MS = 20 * 60 * 1000;
+const tickAtlasCalendarCache = new Map<string, { data: EconomicCalendarData; expiresAt: number }>();
+
+function parseCalendarValue(value: unknown): number | string | undefined {
+  if (value === null || value === undefined || value === "" || value === "‑" || value === "—" || value === "-") {
+    return undefined;
+  }
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : String(value);
+}
+
+function normalizeTickAtlasEvent(
+  raw: unknown,
+  relevantCountries: Map<string, string>,
+  now: number,
+): EconomicEvent | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const eventName = typeof row.event === "string" ? row.event :
+    typeof row.Event === "string" ? row.Event : "";
+  const currency = typeof row.currency === "string" ? row.currency.toUpperCase() :
+    typeof row.Currency === "string" ? row.Currency.toUpperCase() : "";
+  if (!eventName || !currency || !relevantCountries.has(currency)) return null;
+
+  const rawDate = row.datetime ?? row.Date ?? row.date;
+  const datetime = typeof rawDate === "number" ? rawDate :
+    typeof rawDate === "string" ? Date.parse(rawDate) : NaN;
+  if (!Number.isFinite(datetime) || datetime <= 0) return null;
+
+  const importanceRaw = typeof row.impact === "string" ? row.impact.toLowerCase() :
+    typeof row.Importance === "string" ? row.Importance.toLowerCase() : "";
+  const importance: EventImportance = importanceRaw === "high" ? 3 :
+    importanceRaw === "medium" ? 2 : 1;
+  const actual = parseCalendarValue(row.actual ?? row.Actual);
+  const forecast = parseCalendarValue(row.forecast ?? row.Forecast);
+  const previous = parseCalendarValue(row.previous ?? row.Previous);
+  const revised = parseCalendarValue(row.revised ?? row.Revised);
+  const status: EconomicEvent["status"] = actual !== undefined
+    ? revised !== undefined ? "revised" : "released"
+    : datetime < now ? "released" : "upcoming";
+  const suppliedId = row.id ?? row.Id;
+  const id = suppliedId === undefined || suppliedId === null || suppliedId === ""
+    ? `${currency}-${datetime}-${eventName.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+    : String(suppliedId);
+
+  return {
+    id,
+    event: eventName,
+    category: typeof row.category === "string" ? row.category :
+      typeof row.Category === "string" ? row.Category : "",
+    country: relevantCountries.get(currency) ?? "",
+    currency,
+    datetime,
+    ...(actual !== undefined ? { actual } : {}),
+    ...(forecast !== undefined ? { forecast } : {}),
+    ...(previous !== undefined ? { previous } : {}),
+    ...(revised !== undefined ? { revised } : {}),
+    importance,
+    source: "tickatlas",
+    ...(typeof row.url === "string" ? { sourceUrl: row.url } :
+      typeof row.Source_url === "string" ? { sourceUrl: row.Source_url } : {}),
+    ...(typeof row.period === "string" ? { referencePeriod: row.period } :
+      typeof row.Period === "string" ? { referencePeriod: row.Period } : {}),
+    status,
+  };
+}
+
+function tickAtlasEvents(payload: unknown): unknown[] | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const row = payload as Record<string, unknown>;
+  if (row.success === true && row.data && typeof row.data === "object") {
+    const data = row.data as Record<string, unknown>;
+    if (Array.isArray(data.events)) return data.events;
+  }
+  if (Array.isArray(row.data)) return row.data;
+  return undefined;
+}
+
+/** Fetches normalized TickAtlas economic events through the self-hosted backend. */
+export async function fetchEconomicCalendar(
+  instrument: string,
+  instrumentType: string,
+  apiKey: string | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<CalendarResult> {
+  if (!apiKey?.trim()) {
+    return { success: false, error: "TickAtlas calendar is not configured: TICKATLAS_API_KEY is missing.", errorCode: "AUTH_ERROR" };
+  }
+  const relevantCurrencies = getRelevantCurrencies(instrument, instrumentType);
+  if (relevantCurrencies.length === 0) {
+    return { success: false, error: "No relevant currencies determined for this instrument.", errorCode: "NO_DATA" };
+  }
+  const cacheKey = `${instrument.toUpperCase()}:${instrumentType}`;
+  const now = Date.now();
+  const cached = tickAtlasCalendarCache.get(cacheKey);
+  if (cached && now < cached.expiresAt) return { success: true, data: cached.data };
+  if (cached) tickAtlasCalendarCache.delete(cacheKey);
+
+  const countryParam = relevantCurrencies.map((item) => encodeURIComponent(item.country)).join(",");
+  const relevantCountries = new Map(relevantCurrencies.map((item) => [item.currency, item.country]));
+  const dateFrom = new Date(now).toISOString().slice(0, 10);
+  const dateTo = new Date(now + 7 * 86400000).toISOString().slice(0, 10);
+  const datePast = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
+
+  const requestCalendar = async (from: string, to: string) => {
+    const url = `https://tickatlas.com/v1/calendar?countries=${countryParam}&from=${from}&to=${to}`;
+    const response = await fetchImpl(url, {
+      headers: { "X-API-Key": apiKey.trim(), accept: "application/json" },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!response.ok) {
+      const code = response.status === 401 || response.status === 403 ? "AUTH_ERROR" :
+        response.status === 429 ? "RATE_LIMIT" : "API_UNAVAILABLE";
+      const error = new Error(`TickAtlas calendar HTTP ${response.status}`);
+      Object.assign(error, { code });
+      throw error;
+    }
+    const events = tickAtlasEvents(await response.json().catch(() => null));
+    if (!events) throw new Error("TickAtlas calendar returned an invalid event payload");
+    return events;
+  };
+
+  let rawEvents: unknown[];
+  try {
+    rawEvents = await requestCalendar(dateFrom, dateTo);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code) : "API_UNAVAILABLE";
+    const message = error instanceof Error ? error.message : "TickAtlas calendar request failed";
+    return {
+      success: false,
+      error: message,
+      errorCode: code === "AUTH_ERROR" || code === "RATE_LIMIT" || code === "NO_DATA" ? code : "API_UNAVAILABLE",
+    };
+  }
+
+  try {
+    const pastEvents = await requestCalendar(datePast, dateFrom);
+    const existing = new Set(rawEvents.map((event) => {
+      if (!event || typeof event !== "object") return "";
+      const row = event as Record<string, unknown>;
+      return String(row.id ?? row.Id ?? "");
+    }));
+    for (const event of pastEvents) {
+      if (!event || typeof event !== "object") continue;
+      const row = event as Record<string, unknown>;
+      const id = String(row.id ?? row.Id ?? "");
+      const normalized = normalizeTickAtlasEvent(event, relevantCountries, now);
+      if (normalized && normalized.importance === 3 && normalized.actual !== undefined && (!id || !existing.has(id))) {
+        rawEvents.push(event);
+        if (id) existing.add(id);
+      }
+    }
+  } catch {
+    // Recent released-event enrichment is non-critical; the upcoming window remains authoritative.
+  }
+
+  const events = rawEvents
+    .map((event) => normalizeTickAtlasEvent(event, relevantCountries, now))
+    .filter((event): event is EconomicEvent => event !== null)
+    .sort((a, b) => a.datetime - b.datetime);
+  const nowMs = Date.now();
+  const in24h = nowMs + 86400000;
+  const in72h = nowMs + 3 * 86400000;
+  const upcoming = events.filter((event) => event.status === "upcoming" && event.datetime > nowMs);
+  const recentlyReleased = events.filter((event) =>
+    (event.status === "released" || event.status === "revised") &&
+    event.datetime > nowMs - 7 * 86400000,
+  );
+  const hasHighImpact = events.some((event) => event.importance === 3);
+  const confidence: EconomicCalendarData["confidence"] = events.length === 0 ? "unavailable" :
+    hasHighImpact && events.length >= 5 ? "high" : events.length >= 3 ? "medium" : "low";
+  const data: EconomicCalendarData = {
+    provider: "tickatlas",
+    events,
+    macroRisk: calculateMacroRisk(events),
+    timestamp: Date.now(),
+    freshness: events.length > 0 ? "recent" : "unavailable",
+    confidence,
+    availability: {
+      upcoming24h: upcoming.some((event) => event.datetime <= in24h),
+      upcoming72h: upcoming.some((event) => event.datetime <= in72h),
+      recentReleased: recentlyReleased.length > 0,
+    },
+  };
+  tickAtlasCalendarCache.set(cacheKey, { data, expiresAt: Date.now() + TICKATLAS_CALENDAR_CACHE_TTL_MS });
+  if (tickAtlasCalendarCache.size > 5000) {
+    for (const [key, value] of tickAtlasCalendarCache) {
+      if (Date.now() >= value.expiresAt) tickAtlasCalendarCache.delete(key);
+    }
+    while (tickAtlasCalendarCache.size > 5000) {
+      const oldestKey = tickAtlasCalendarCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      tickAtlasCalendarCache.delete(oldestKey);
+    }
+  }
+  return { success: true, data };
 }
 
 const FX_REFERENCE_CACHE_TTL_MS = 60 * 60 * 1000;
