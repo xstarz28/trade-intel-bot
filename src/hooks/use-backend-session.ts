@@ -22,9 +22,8 @@ export function useBackendSession() {
   const [state, setState] = useState<BackendAuthState>({ status: "loading" });
   const requestVersion = useRef(0);
 
-  const refresh = useCallback(async () => {
+  const loadSession = useCallback(async () => {
     const version = ++requestVersion.current;
-    setState({ status: "loading" });
     try {
       const session = await getBackendSession();
       if (requestVersion.current !== version) return;
@@ -40,6 +39,11 @@ export function useBackendSession() {
     }
   }, []);
 
+  const refresh = useCallback(async () => {
+    setState({ status: "loading" });
+    await loadSession();
+  }, [loadSession]);
+
   const logout = useCallback(async () => {
     const version = ++requestVersion.current;
     await logoutBackendSession();
@@ -47,11 +51,11 @@ export function useBackendSession() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    void loadSession();
     return () => {
       requestVersion.current += 1;
     };
-  }, [refresh]);
+  }, [loadSession]);
 
   return { state, refresh, logout };
 }
