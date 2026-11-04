@@ -2,6 +2,7 @@ import { useCallback } from "react";
 import {
   createAnonymousBackendSession,
   getBackendGoogleSignInUrl,
+  type BackendUser,
 } from "@/lib/backend-api";
 import { useBackendSession } from "@/hooks/use-backend-session";
 
@@ -36,17 +37,27 @@ export function useAuth() {
     await logout();
   }, [logout]);
 
-  const phase: AuthPhase =
-    state.status === "loading" ? "initializing" :
-    state.status === "authenticated" ? "authenticated" :
-    state.status === "error" ? "error" :
-    "unauthenticated";
+  let phase: AuthPhase;
+  let user: BackendUser | null | undefined;
+  if (state.status === "loading") {
+    phase = "initializing";
+    user = undefined;
+  } else if (state.status === "authenticated") {
+    phase = "authenticated";
+    user = state.user;
+  } else if (state.status === "error") {
+    phase = "error";
+    user = null;
+  } else {
+    phase = "unauthenticated";
+    user = null;
+  }
 
   return {
     phase,
     isLoading: phase === "initializing",
     isAuthenticated: phase === "authenticated",
-    user: state.status === "authenticated" ? state.user : state.status === "loading" ? undefined : null,
+    user,
     error: state.status === "error" ? state.error : null,
     signIn,
     signOut,
