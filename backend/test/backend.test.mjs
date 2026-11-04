@@ -955,15 +955,41 @@ describe("self-hosted backend", () => {
       GOOGLE_CLIENT_ID: clientId,
       GOOGLE_CLIENT_SECRET: "gocspx-production-test-secret",
     };
+    let oauthFlow;
+    let signingKey;
+    let idToken;
+    const fetchImpl = async (input, options = {}) => {
+      const target = String(input);
+      if (target === "https://oauth2.googleapis.com/token") {
+        const form = new URLSearchParams(options.body);
+        assert.equal(form.get("code"), "google-auth-code");
+        assert.equal(form.get("client_id"), clientId);
+        assert.equal(form.get("client_secret"), env.GOOGLE_CLIENT_SECRET);
+        assert.equal(form.get("code_verifier"), oauthFlow.code_verifier);
+        assert.equal(form.get("redirect_uri"), "https://xstarzganaliys.com/api/v1/auth/google/callback");
+        return new Response(JSON.stringify({ id_token: idToken }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      if (target === "https://www.googleapis.com/oauth2/v3/certs") {
+        return new Response(JSON.stringify({ keys: [signingKey] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      throw new Error(`Unexpected OAuth provider request: ${target}`);
+    };
+
     try {
       await withServer(database, async (baseUrl) => {
-        const start = await fetch(`${baseUrl}/api/v1/auth/google`, {
+        const startResponse = await fetch(`${baseUrl}/api/v1/auth/google`, {
           redirect: "manual",
           headers: { Accept: "text/html" },
         });
-        assert.equal(start.status, 302);
+        assert.equal(startResponse.status, 302);
 
-        const authorization = new URL(start.headers.get("location"));
+        const authorization = new URL(startResponse.headers.get("location"));
         assert.equal(authorization.origin, "https://accounts.google.com");
         assert.equal(authorization.pathname, "/o/oauth2/v2/auth");
         assert.equal(authorization.searchParams.get("client_id"), clientId);
@@ -979,53 +1005,32 @@ describe("self-hosted backend", () => {
         assert.ok(nonce && nonce.length >= 40);
         assert.ok(challenge && challenge.length >= 40);
 
-        const stateCookie = start.headers.get("set-cookie");
+        const stateCookie = startResponse.headers.get("set-cookie");
         assert.ok(stateCookie);
         assert.match(stateCookie, /^__Host-xstarz_oauth_state=/);
         assert.match(stateCookie, /; HttpOnly/);
         assert.match(stateCookie, /; Secure/);
 
         const stateHash = createHash("sha256").update(state).digest("hex");
-        const flow = database.raw.prepare(
+        oauthFlow = database.raw.prepare(
           "SELECT nonce, code_verifier, expires_at FROM oauth_flows WHERE state_hash = ?",
         ).get(stateHash);
-        assert.ok(flow);
-        assert.equal(flow.nonce, nonce);
+        assert.ok(oauthFlow);
+        assert.equal(oauthFlow.nonce, nonce);
         assert.equal(
-          createHash("sha256").update(flow.code_verifier).digest("base64url"),
+          createHash("sha256").update(oauthFlow.code_verifier).digest("base64url"),
           challenge,
         );
 
-        const { jwk, idToken } = createGoogleIdToken({ clientId, nonce });
-        const fetchImpl = async (input, options = {}) => {
-          const target = String(input);
-          if (target === "https://oauth2.googleapis.com/token") {
-            const form = new URLSearchParams(options.body);
-            assert.equal(form.get("code"), "google-auth-code");
-            assert.equal(form.get("client_id"), clientId);
-            assert.equal(form.get("client_secret"), env.GOOGLE_CLIENT_SECRET);
-            assert.equal(form.get("code_verifier"), flow.code_verifier);
-            assert.equal(form.get("redirect_uri"), "https://xstarzganaliys.com/api/v1/auth/google/callback");
-            return new Response(JSON.stringify({ id_token: idToken }), {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            });
-          }
-          if (target === "https://www.googleapis.com/oauth2/v3/certs") {
-            return new Response(JSON.stringify({ keys: [jwk] }), {
-              status: 200,
-              headers: { "content-type": "application/json" },
-            });
-          }
-          throw new Error(`Unexpected OAuth provider request: ${target}`);
-        };
+        const fixture = createGoogleIdToken({ clientId, nonce });
+        signingKey = fixture.jwk;
+        idToken = fixture.idToken;
 
-        const stateCookiePair = stateCookie.split(";")[0];
         const callback = await fetch(
           `${baseUrl}/api/v1/auth/google/callback?state=${encodeURIComponent(state)}&code=google-auth-code`,
           {
             redirect: "manual",
-            headers: { Cookie: stateCookiePair },
+            headers: { Cookie: stateCookie.split(";")[0] },
           },
         );
         assert.equal(callback.status, 302);
@@ -1049,13 +1054,13 @@ describe("self-hosted backend", () => {
         ).get(payload.user.id);
         assert.equal(persisted.google_subject, "google-subject-e2e");
         assert.equal(database.raw.prepare("SELECT COUNT(*) AS count FROM oauth_flows").get().count, 0);
-      }, { env, fetchImpl: async () => { throw new Error("OAuth fetch must be injected by the callback test"); } });
+      }, { env, fetchImpl });
     } finally {
       database.close();
     }
   });
 
-  it("rejects Google ID tokens with an invalid nonce or expired claims", async () => {
+  it("rejects Google ID tokens with an invalid nonce", async () => {
     const clientId = "123456789-example.apps.googleusercontent.com";
     const { jwk, idToken } = createGoogleIdToken({ clientId, nonce: "expected-nonce" });
     const fetchImpl = async () => new Response(JSON.stringify({ keys: [jwk] }), {
