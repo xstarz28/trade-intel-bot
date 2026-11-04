@@ -147,21 +147,42 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   };
 
   // ── Lifecycle ──
-  const handleTransition = (entry: JournalEntry, newStatus: TradeStatus) => {
+  const handleTransition = async (entry: JournalEntry, newStatus: TradeStatus) => {
+    if (!isValidTransition(entry.status, newStatus)) return;
+    setSaving(true);
+    setBackendError(null);
     try {
-      const updated = transitionEntry(entry, newStatus);
+      const { item } = await transitionBackendJournalEntry(entry.id, { newStatus });
+      const updated = backendJournalToEntry(item);
       updateEntryInList(updated);
       setSelectedEntry(updated);
-    } catch (e) {
-      console.error("Invalid transition:", e);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal mengubah status: " + cause.code
+        : "Gagal mengubah status jurnal.");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleClose = (entry: JournalEntry, exitPrice?: number, pnl?: number) => {
+  const handleClose = async (entry: JournalEntry, exitPrice?: number, pnl?: number) => {
     const outcome = classifyOutcome(pnl);
-    const updated = transitionEntry(entry, "CLOSED", { exitPrice, pnl, outcome });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
+    setSaving(true);
+    setBackendError(null);
+    try {
+      const { item } = await transitionBackendJournalEntry(entry.id, {
+        newStatus: "CLOSED", exitPrice, pnl, outcome,
+      });
+      const updated = backendJournalToEntry(item);
+      updateEntryInList(updated);
+      setSelectedEntry(updated);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menutup jurnal: " + cause.code
+        : "Gagal menyimpan penutupan jurnal.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Updates ──
