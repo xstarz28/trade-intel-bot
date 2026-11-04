@@ -99,7 +99,7 @@ export function createAccountImportHandler({ database, env = process.env }) {
         const columns = tableColumns.get(table);
         for (const row of rows) {
           if (!row || typeof row !== "object" || Array.isArray(row) ||
-              Object.keys(row).some((key) => !columns.has(key) || key === "user_id") ||
+              Object.keys(row).some((key) => !columns.has(key)) ||
               typeof row.id !== "string" || !row.id) {
             json(response, 400, { error: "invalid_export_row", table });
             return true;
