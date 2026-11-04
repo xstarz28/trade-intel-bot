@@ -89,6 +89,8 @@ export function NotificationCenter() {
       })
       .catch((cause: unknown) => {
         if (!active) return;
+        setBackendItems([]);
+        setRawPrefs(undefined);
         setBackendError(cause instanceof BackendApiError
           ? "Backend notification error: " + cause.code
           : "Tidak dapat memuat notifikasi dari backend.");
