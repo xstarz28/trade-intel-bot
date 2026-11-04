@@ -198,8 +198,7 @@ export function NotificationCenter() {
     ).length;
   }, [notifications, prefs]);
 
-  const isLoading = backendState.status === "loading" ||
-    (backendUserId !== null && loadedUserId !== backendUserId);
+
 
   if (backendState.status !== "authenticated") {
     return (
