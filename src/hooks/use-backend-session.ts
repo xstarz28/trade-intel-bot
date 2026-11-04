@@ -51,11 +51,23 @@ export function useBackendSession() {
   }, []);
 
   useEffect(() => {
-    void loadSession();
+    const version = ++requestVersion.current;
+    void getBackendSession().then((session) => {
+      if (requestVersion.current !== version) return;
+      setState(session.user
+        ? { status: "authenticated", user: session.user }
+        : { status: "anonymous" });
+    }).catch((cause: unknown) => {
+      if (requestVersion.current !== version) return;
+      setState({
+        status: "error",
+        error: cause instanceof Error ? cause : new Error("Unable to read backend session"),
+      });
+    });
     return () => {
       requestVersion.current += 1;
     };
-  }, [loadSession]);
+  }, []);
 
   return { state, refresh, logout };
 }
