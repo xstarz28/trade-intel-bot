@@ -19,8 +19,18 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { useBackendSession } from "@/hooks/use-backend-session";
+import {
+  BackendApiError,
+  getBackendGoogleSignInUrl,
+  listBackendAlertRules,
+  createBackendAlertRule,
+  updateBackendAlertRule,
+  deleteBackendAlertRule,
+  listBackendRuleAlertHistory,
+  type BackendAlertRule,
+  type BackendRuleAlertHistory,
+} from "@/lib/backend-api";
 import {
   CONDITION_LABELS,
   SEVERITY_COLORS,
@@ -381,18 +391,43 @@ export function CustomAlertRulesPanel() {
   const [showForm, setShowForm] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
 
-  // Convex reactive queries
-  const rules = useQuery(api.alertRules.listRules);
-  const recentAlerts = useQuery(
-    api.alertRules.getRecentAlerts,
-    showAlerts ? { limit: 20 } : "skip",
-  );
+  const { state: backendState } = useBackendSession();
+  const backendUserId = backendState.status === "authenticated" ? backendState.user.id : null;
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  const [backendRules, setBackendRules] = useState<BackendAlertRule[]>([]);
+  const [backendAlerts, setBackendAlerts] = useState<BackendRuleAlertHistory[]>([]);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
-  // Convex mutations
-  const createRule = useMutation(api.alertRules.createRule);
-  const updateRule = useMutation(api.alertRules.updateRule);
-  const deleteRule = useMutation(api.alertRules.deleteRule);
+  useEffect(() => {
+    if (!backendUserId) return;
+    let active = true;
+    const historyRequest = showAlerts
+      ? listBackendRuleAlertHistory(20)
+      : Promise.resolve({ items: [] as BackendRuleAlertHistory[] });
+    Promise.all([listBackendAlertRules(), historyRequest])
+      .then(([ruleResult, alertResult]) => {
+        if (!active) return;
+        setBackendRules(ruleResult.items);
+        setBackendAlerts(alertResult.items);
+        setBackendError(null);
+        setLoadedUserId(backendUserId);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setBackendRules([]);
+        setBackendAlerts([]);
+        setBackendError(cause instanceof BackendApiError
+          ? "Backend alert rules error: " + cause.code
+          : "Tidak dapat memuat aturan alert dari backend.");
+        setLoadedUserId(backendUserId);
+      });
+    return () => { active = false; };
+  }, [backendUserId, showAlerts]);
 
+  const rules = loadedUserId === backendUserId && backendUserId ? backendRules : undefined;
+  const recentAlerts = loadedUserId === backendUserId && backendUserId && showAlerts
+    ? backendAlerts
+    : undefined;
   const ruleCount = rules?.length ?? 0;
   const atLimit = ruleCount >= MAX_RULES_PER_USER;
 
