@@ -10,6 +10,15 @@ import type { MarketData } from "../../src/lib/data/market-types";
 import type { FundamentalData, SentimentData, MacroData } from "../../src/lib/data/intelligence-types";
 import type { FxRateSnapshot } from "../../src/lib/risk";
 import { parseDailyFxReferenceSnapshot } from "../../src/lib/risk/fx";
+import { mapInstrumentToOkx, parseOkxResponse, type OkxSpecData } from "../../src/lib/risk/okx-spec";
+import { parseOkxFuturesOpenInterest } from "../../src/lib/data/crypto/okx-futures-open-interest";
+import {
+  buildExecutionData,
+  parseOkxOrderBook,
+  requireExactOrderBookInstrument,
+  type ExecutionData,
+} from "../../src/lib/execution-quality";
+import type { CryptoDerivativesData } from "../../src/lib/data/crypto/derivatives-types";
 import {
   normalizeNewsArticles,
   aggregateSentiment,
@@ -515,6 +524,97 @@ function utcMonth(date: Date): string {
   return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
+
+
+/** Fetches exact OKX contract metadata; only the requested instId is returned. */
+export async function fetchOkxInstrumentSpec(
+  instrument: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ success: boolean; data?: OkxSpecData; error?: string }> {
+  const instId = mapInstrumentToOkx(instrument);
+  if (!instId) return { success: false, error: "instrument is not shaped like a verified OKX contract id or BASE/QUOTE pair" };
+  const instType = /-[0-9]{6}$/.test(instId) ? "FUTURES" : "SWAP";
+  try {
+    const response = await fetchImpl(
+      `https://www.okx.com/api/v5/public/instruments?instType=${instType}&instId=${encodeURIComponent(instId)}`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4000) },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { success: false, error: `OKX instruments returned HTTP ${response.status}` };
+    const parsed = parseOkxResponse(payload);
+    const exact = parsed.instruments.filter((item) => item.instId === instId);
+    if (exact.length !== 1) {
+      return {
+        success: false,
+        error: exact.length === 0
+          ? `OKX did not return the exact requested instrument ${instId}`
+          : `OKX returned ambiguous metadata for ${instId}`,
+      };
+    }
+    return {
+      success: true,
+      data: {
+        fetchedAt: Date.now(),
+        source: "OKX public instruments",
+        freshness: "static",
+        instruments: exact,
+        parseWarnings: parsed.parseWarnings,
+      },
+    };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "unknown provider error";
+    return { success: false, error: `OKX instruments request failed: ${reason}` };
+  }
+}
+
+/** Fetches a real OKX order-book snapshot and fails closed on instrument mismatch. */
+export async function fetchOkxOrderBook(
+  instrument: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ success: boolean; data?: ExecutionData; error?: string }> {
+  const instId = mapInstrumentToOkx(instrument);
+  if (!instId) return { success: false, error: "instrument is not shaped like a verified OKX contract id or BASE/QUOTE pair" };
+  try {
+    const response = await fetchImpl(
+      `https://www.okx.com/api/v5/market/books?instId=${encodeURIComponent(instId)}&sz=50`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4000) },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { success: false, error: `OKX order book returned HTTP ${response.status}` };
+    const parsed = requireExactOrderBookInstrument(parseOkxOrderBook(payload), instId);
+    const now = Date.now();
+    const data = buildExecutionData(parsed, now, now);
+    return { success: data.available, data, ...(data.available ? {} : { error: data.reason }) };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "unknown provider error";
+    return { success: false, error: `OKX order-book request failed: ${reason}` };
+  }
+}
+
+/** Exact dated-futures OI in USD; never substitutes the perpetual contract. */
+export async function fetchOkxFuturesOpenInterest(
+  instrument: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{ success: boolean; data?: CryptoDerivativesData; error?: string }> {
+  const instId = mapInstrumentToOkx(instrument);
+  if (!instId || !/-[0-9]{6}$/.test(instId)) {
+    return { success: false, error: "a literal dated OKX futures instrument ID is required" };
+  }
+  try {
+    const response = await fetchImpl(
+      `https://www.okx.com/api/v5/public/open-interest?instType=FUTURES&instId=${encodeURIComponent(instId)}`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4000) },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) return { success: false, error: `OKX open-interest endpoint returned HTTP ${response.status}` };
+    const data = parseOkxFuturesOpenInterest(payload, instId);
+    if (!data) return { success: false, error: "OKX returned no fresh, exact-contract USD open-interest value" };
+    return { success: true, data };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "unknown provider error";
+    return { success: false, error: `OKX open-interest request failed: ${reason}` };
+  }
+}
 
 const FX_REFERENCE_CACHE_TTL_MS = 60 * 60 * 1000;
 
