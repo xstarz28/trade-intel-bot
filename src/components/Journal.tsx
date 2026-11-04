@@ -4,7 +4,7 @@
  * Professional trading/investment journal interface.
  * Pure presentation — zero decision logic.
  *
- * Reads journal state through Convex queries/mutations.
+ * Reads and persists journal state through the authenticated self-hosted API.
  * Never calculates bias, conviction, gates, or scenarios.
  */
 
@@ -18,17 +18,10 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { AnalysisResult } from "@/types/analysis";
 import {
-  createAnalysisSnapshot,
   journalFromAnalysis,
   createObservationEntry,
-  transitionEntry,
-  updateReview,
-  updateTradeInfo,
   isValidTransition,
-  isTerminal,
   getValidTransitions,
-  computePnl,
-  classifyOutcome,
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
 import { useBackendSession } from "@/hooks/use-backend-session";
@@ -165,35 +158,9 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
     }
   };
 
-  const handleClose = async (entry: JournalEntry, exitPrice?: number, pnl?: number) => {
-    const outcome = classifyOutcome(pnl);
-    setSaving(true);
-    setBackendError(null);
-    try {
-      const { item } = await transitionBackendJournalEntry(entry.id, {
-        newStatus: "CLOSED", exitPrice, pnl, outcome,
-      });
-      const updated = backendJournalToEntry(item);
-      updateEntryInList(updated);
-      setSelectedEntry(updated);
-    } catch (cause) {
-      setBackendError(cause instanceof BackendApiError
-        ? "Gagal menutup jurnal: " + cause.code
-        : "Gagal menyimpan penutupan jurnal.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
   // ── Updates ──
   const updateEntryInList = (updated: JournalEntry) => {
     setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
-  };
-
-  const handleUpdateNotes = (entry: JournalEntry, notes: string) => {
-    const updated = updateReview(entry, { notes });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
   };
 
   const handleUpdateReview = async (entry: JournalEntry, field: string, value: string) => {
