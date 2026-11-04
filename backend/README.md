@@ -89,6 +89,7 @@ Store backups outside the host and periodically test restoring one. The live dat
 - `GET /api/v1/auth/session`, `POST /api/v1/auth/anonymous`, `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/google` and `GET /api/v1/auth/google/callback`
 - `GET /api/v1/account/export` (authenticated, user-scoped JSON export; excludes sessions/OAuth secrets and global provider observations)
+- `POST /api/v1/account/import` (authenticated restore from a versioned Trade Intel export; ownership is reassigned to the active account, with duplicate rows skipped)
 - `GET/POST/DELETE /api/v1/analyses`
 - `GET/POST /api/v1/journal`, `GET/PATCH/DELETE /api/v1/journal/{id}`, `PATCH /api/v1/journal/{id}/transition`
 - `GET/POST /api/v1/positions`, `GET/DELETE /api/v1/positions/{positionId}`
