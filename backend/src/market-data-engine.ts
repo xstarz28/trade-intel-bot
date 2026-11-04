@@ -8,6 +8,8 @@ import {
 import { runAnalysis, type AnalysisInput } from "../../src/lib/analysis-engine";
 import type { MarketData } from "../../src/lib/data/market-types";
 import type { FundamentalData, SentimentData, MacroData } from "../../src/lib/data/intelligence-types";
+import type { FxRateSnapshot } from "../../src/lib/risk";
+import { parseDailyFxReferenceSnapshot } from "../../src/lib/risk/fx";
 import {
   normalizeNewsArticles,
   aggregateSentiment,
@@ -93,6 +95,7 @@ const inflight = new Map<string,Promise<MarketAnalysisResult>>();
 
 const alphaVantageCache = new Map<string,{value:AlphaVantageIntelligenceResult;expiresAt:number}>();
 const alphaVantageInflight = new Map<string,Promise<AlphaVantageIntelligenceResult>>();
+const fxReferenceCache = new Map<string, { direct: FxRateSnapshot; expiresAt: number }>();
 
 export interface AlphaVantageIntelligenceResult {
   success:boolean;
@@ -510,6 +513,81 @@ export async function fetchEiaInventory(apiKey: string | undefined, fetchImpl: t
 
 function utcMonth(date: Date): string {
   return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+
+const FX_REFERENCE_CACHE_TTL_MS = 60 * 60 * 1000;
+
+/** Fetches a dated Frankfurter reference rate; never labels it as a live quote. */
+export async function fetchFxReference(
+  fromInput: string,
+  toInput: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<{
+  success: boolean;
+  direct?: FxRateSnapshot | null;
+  inverse?: FxRateSnapshot | null;
+  error?: string;
+}> {
+  const from = fromInput.trim().toUpperCase();
+  const to = toInput.trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to)) {
+    return { success: false, error: "invalid ISO currency code for FX reference" };
+  }
+  if (from === to) return { success: false, error: "same currency — no conversion needed" };
+
+  const pair = `${from}/${to}`;
+  const now = Date.now();
+  const cached = fxReferenceCache.get(pair);
+  if (
+    cached &&
+    now < cached.expiresAt &&
+    now >= cached.direct.timestamp &&
+    now - cached.direct.timestamp <= (cached.direct.maxAgeMs ?? 0)
+  ) {
+    return { success: true, direct: { ...cached.direct }, inverse: null };
+  }
+  if (cached) fxReferenceCache.delete(pair);
+
+  try {
+    const response = await fetchImpl(
+      `https://api.frankfurter.dev/v2/rate/${from.toLowerCase()}/${to.toLowerCase()}`,
+      {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(4000),
+      },
+    );
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      return {
+        success: false,
+        error: `Frankfurter daily FX reference unavailable for ${pair} (HTTP ${response.status})`,
+      };
+    }
+    const parsed = parseDailyFxReferenceSnapshot(payload, from, to, now);
+    if ("error" in parsed) return { success: false, error: parsed.error };
+
+    fxReferenceCache.set(pair, {
+      direct: parsed.snapshot,
+      expiresAt: now + FX_REFERENCE_CACHE_TTL_MS,
+    });
+    if (fxReferenceCache.size > 5000) {
+      for (const [key, value] of fxReferenceCache) {
+        if (now >= value.expiresAt || now - value.direct.timestamp > (value.direct.maxAgeMs ?? 0)) {
+          fxReferenceCache.delete(key);
+        }
+      }
+      while (fxReferenceCache.size > 5000) {
+        const oldestKey = fxReferenceCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        fxReferenceCache.delete(oldestKey);
+      }
+    }
+    return { success: true, direct: parsed.snapshot, inverse: null };
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : "unknown provider error";
+    return { success: false, error: `Frankfurter daily FX reference failed for ${pair}: ${reason}` };
+  }
 }
 
 export async function fetchTreasuryYields(fetchImpl: typeof fetch = fetch) {
