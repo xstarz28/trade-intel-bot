@@ -437,3 +437,103 @@ export async function fetchSecFundamentalObservations(
     };
   }
 }
+
+
+import { buildCotContext, mapInstrumentToCot } from "../../src/lib/data/cot";
+import { buildEiaContext, parseEiaResponse, parseFredInventoryCsv } from "../../src/lib/data/eia";
+import { applyFredYieldFallback, buildTreasuryContext } from "../../src/lib/data/treasury";
+
+async function fetchText(url: string, accept: string, fetchImpl: typeof fetch, timeoutMs = 7000): Promise<string | undefined> {
+  try {
+    const response = await fetchImpl(url, { headers: { accept }, signal: AbortSignal.timeout(timeoutMs) });
+    return response.ok ? await response.text() : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+export async function fetchCotPositioning(instrumentInput: string, fetchImpl: typeof fetch = fetch) {
+  const instrument = instrumentInput.trim().toUpperCase();
+  const mapping = mapInstrumentToCot(instrument);
+  if (!mapping) return { success: false as const, error: `No verified CFTC futures contract mapping for ${instrument}.` };
+  try {
+    const url = "https://publicreporting.cftc.gov/resource/6dca-aqww.json?market_and_exchange_names=" +
+      encodeURIComponent(mapping.sourceInstrument) + "&%24order=report_date_as_yyyy_mm_dd%20DESC&%24limit=2";
+    const response = await fetchImpl(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(7000) });
+    if (!response.ok) return { success: false as const, error: `CFTC endpoint returned HTTP ${response.status}.` };
+    const rows: unknown = await response.json();
+    if (!Array.isArray(rows)) return { success: false as const, error: "CFTC endpoint returned a non-array response." };
+    const context = buildCotContext(rows, instrument, Date.now());
+    return context.available ? { success: true as const, data: context } : { success: false as const, error: context.reason };
+  } catch (error) {
+    return { success: false as const, error: `CFTC fetch failed: ${error instanceof Error ? error.message : "unknown error"}` };
+  }
+}
+
+const EIA_FRED_SERIES = [
+  { productId: "EPC0", seriesId: "WCESTUS1", productName: "Commercial crude oil stocks excluding SPR" },
+  { productId: "EPM0", seriesId: "WGTSTUS1", productName: "Total motor gasoline stocks" },
+  { productId: "EPD0", seriesId: "WDISTUS1", productName: "Distillate fuel oil stocks" },
+] as const;
+
+export async function fetchEiaInventory(apiKey: string | undefined, fetchImpl: typeof fetch = fetch) {
+  const now = Date.now();
+  const base = "https://api.eia.gov/v2/petroleum/sto/data/";
+  const products = ["EPC0", "EPM0", "EPD0"] as const;
+  const eiaLegs = apiKey?.trim() ? await Promise.all(products.map(async productId => {
+    const url = base + "?api_key=" + encodeURIComponent(apiKey) +
+      "&frequency=weekly&data%5B0%5D=value&facets%5Bproduct%5D%5B%5D=" + productId +
+      "&facets%5Bprocess%5D%5B%5D=STA&facets%5Barea%5D%5B%5D=NUS-Z00" +
+      "&sort%5B0%5D%5Bcolumn%5D=period&sort%5B0%5D%5Bdirection%5D=desc&length=2";
+    try {
+      const response = await fetchImpl(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(7000) });
+      if (!response.ok) return { ok: false, requestedProductId: productId, reason: `EIA HTTP ${response.status}` };
+      return { ok: true, requestedProductId: productId, parsed: parseEiaResponse(await response.json()) };
+    } catch (error) {
+      return { ok: false, requestedProductId: productId, reason: error instanceof Error ? error.message : "EIA network failure" };
+    }
+  })) : [];
+  let context = buildEiaContext(eiaLegs, now, now);
+  if (!context.available) {
+    const start = new Date(now - 35 * 86400000).toISOString().slice(0, 10);
+    const end = new Date(now).toISOString().slice(0, 10);
+    const fredLegs = await Promise.all(EIA_FRED_SERIES.map(async item => {
+      const url = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + item.seriesId + "&cosd=" + start + "&coed=" + end;
+      const csv = await fetchText(url, "text/csv", fetchImpl);
+      return csv ? { ok: true, requestedProductId: item.productId, parsed: parseFredInventoryCsv(csv, item.productId, item.seriesId, item.productName) } :
+        { ok: false, requestedProductId: item.productId, reason: "FRED mirror unavailable" };
+    }));
+    context = buildEiaContext(fredLegs, now, now, "EIA Weekly Petroleum Status Report (public FRED series mirror)");
+  }
+  return context.available ? { success: true as const, data: context } : { success: false as const, error: context.reason };
+}
+
+function utcMonth(date: Date): string {
+  return `${date.getUTCFullYear()}${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+export async function fetchTreasuryYields(fetchImpl: typeof fetch = fetch) {
+  const now = new Date();
+  const thisMonth = utcMonth(now);
+  const previousMonth = utcMonth(new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)));
+  const base = "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=";
+  const [nominalCurrent, nominalPrevious, realCurrent, realPrevious] = await Promise.all([
+    fetchText(base + "daily_treasury_yield_curve&field_tdr_date_value_month=" + thisMonth, "text/xml", fetchImpl),
+    fetchText(base + "daily_treasury_yield_curve&field_tdr_date_value_month=" + previousMonth, "text/xml", fetchImpl),
+    fetchText(base + "daily_treasury_real_yield_curve&field_tdr_date_value_month=" + thisMonth, "text/xml", fetchImpl),
+    fetchText(base + "daily_treasury_real_yield_curve&field_tdr_date_value_month=" + previousMonth, "text/xml", fetchImpl),
+  ]);
+  let context = buildTreasuryContext(
+    [nominalCurrent?.includes("<entry>") ? nominalCurrent : undefined, nominalPrevious?.includes("<entry>") ? nominalPrevious : undefined],
+    [realCurrent?.includes("<entry>") ? realCurrent : undefined, realPrevious?.includes("<entry>") ? realPrevious : undefined],
+    Date.now(),
+  );
+  if (!context.available || !context.latest.real || !context.previous?.real) {
+    const end = new Date().toISOString().slice(0, 10);
+    const start = new Date(Date.now() - 45 * 86400000).toISOString().slice(0, 10);
+    const fred = async (series: string) => fetchText("https://fred.stlouisfed.org/graph/fredgraph.csv?id=" + series + "&cosd=" + start + "&coed=" + end, "text/csv", fetchImpl, 5000);
+    const [dgs2, dgs10, dfii10] = await Promise.all([fred("DGS2"), fred("DGS10"), fred("DFII10")]);
+    context = applyFredYieldFallback(context, dgs2, dgs10, dfii10, Date.now());
+  }
+  return context.available ? { success: true as const, data: context } : { success: false as const, error: context.reason };
+}
