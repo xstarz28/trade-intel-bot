@@ -1127,6 +1127,11 @@ export default function Dashboard() {
         <div className="mb-5">
           <AccountMigrationPanel />
         </div>
+        {historyError && (
+          <p className="mb-4 text-xs text-destructive">
+            Analysis history is temporarily unavailable: {historyError}
+          </p>
+        )}
         {workspaceMode === "investor" && investorTab === "portfolio" ? (
           <InvestorWorkspace />
         ) : workspaceMode === "investor" && investorTab === "intelligence" ? (
