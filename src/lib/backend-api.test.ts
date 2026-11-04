@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BackendApiError,
   createAnonymousBackendSession,
+  exportBackendAccount,
   getBackendSession,
   listBackendAnalyses,
   logoutBackendSession,
@@ -69,6 +70,23 @@ describe("self-hosted backend API client", () => {
     ).resolves.toEqual({ item: { _id: "analysis-1" } });
     expect(fetcher.mock.calls[1][0]).toBe("/api/v1/analyses");
     expect(fetcher.mock.calls[1][1]).toEqual(expect.objectContaining({ method: "POST" }));
+  });
+
+  it("exports account data through the authenticated backend endpoint", async () => {
+    const payload = {
+      format: "trade-intel-account-export" as const,
+      version: 1 as const,
+      exportedAt: "2026-11-04T00:00:00.000Z",
+      account: { id: "user-1", name: "Trader", email: null, isAnonymous: true, role: "user" },
+      data: { journal: [] },
+      counts: { journal: 0 },
+    };
+    const fetcher = vi.fn().mockResolvedValue(response(200, payload));
+    await expect(exportBackendAccount(fetcher)).resolves.toEqual(payload);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/account/export",
+      expect.objectContaining({ credentials: "include", cache: "no-store" }),
+    );
   });
 
   it("logs out through the backend session endpoint", async () => {
