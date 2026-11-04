@@ -13,6 +13,9 @@ import {
   listBackendAnalyses,
   logoutBackendSession,
   saveBackendAnalysis,
+  fetchBackendCotPositioning,
+  fetchBackendEiaInventory,
+  fetchBackendTreasuryYields,
 } from "./backend-api";
 
 afterEach(() => vi.restoreAllMocks());
@@ -76,6 +79,27 @@ describe("self-hosted backend API client", () => {
     ).resolves.toEqual({ item: { _id: "analysis-1" } });
     expect(fetcher.mock.calls[1][0]).toBe("/api/v1/analyses");
     expect(fetcher.mock.calls[1][1]).toEqual(expect.objectContaining({ method: "POST" }));
+  });
+
+  it("fetches COT, EIA, and Treasury intelligence through self-hosted provider routes", async () => {
+    const cot = { success: true, data: { available: true, netNonCommercial: 1200 } };
+    const eia = { success: true, data: { available: true, crude: { change: -2.1 } } };
+    const treasury = { success: true, data: { available: true, twoYear: 4.1, tenYear: 4.3 } };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(200, cot))
+      .mockResolvedValueOnce(response(200, eia))
+      .mockResolvedValueOnce(response(200, treasury));
+
+    await expect(fetchBackendCotPositioning("EUR/USD", fetcher)).resolves.toEqual(cot);
+    await expect(fetchBackendEiaInventory(fetcher)).resolves.toEqual(eia);
+    await expect(fetchBackendTreasuryYields(fetcher)).resolves.toEqual(treasury);
+
+    expect(fetcher.mock.calls.map(([url, init]) => [url, init?.method, init?.body])).toEqual([
+      ["/api/v1/intelligence/cot", "POST", JSON.stringify({ instrument: "EUR/USD" })],
+      ["/api/v1/intelligence/eia", "POST", "{}"],
+      ["/api/v1/intelligence/treasury", "POST", "{}"],
+    ]);
+    expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
   });
 
   it("exports account data through the authenticated backend endpoint", async () => {
