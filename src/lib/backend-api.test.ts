@@ -16,6 +16,7 @@ import {
   fetchBackendCotPositioning,
   fetchBackendEiaInventory,
   fetchBackendTreasuryYields,
+  fetchBackendFxRate,
 } from "./backend-api";
 
 afterEach(() => vi.restoreAllMocks());
@@ -100,6 +101,27 @@ describe("self-hosted backend API client", () => {
       ["/api/v1/intelligence/treasury", "POST", "{}"],
     ]);
     expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
+  });
+
+  it("fetches dated FX reference snapshots through the authenticated backend", async () => {
+    const result = {
+      success: true,
+      direct: {
+        pair: "EUR/USD",
+        rate: 1.08,
+        timestamp: 1,
+        source: "Frankfurter daily reference (2026-11-04)",
+        maxAgeMs: 345600000,
+      },
+      inverse: null,
+    };
+    const fetcher = vi.fn().mockResolvedValue(response(200, result));
+    await expect(fetchBackendFxRate("EUR", "USD", fetcher)).resolves.toEqual(result);
+    expect(fetcher).toHaveBeenCalledWith("/api/v1/intelligence/fx-rate", expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+      body: JSON.stringify({ from: "EUR", to: "USD" }),
+    }));
   });
 
   it("exports account data through the authenticated backend endpoint", async () => {
