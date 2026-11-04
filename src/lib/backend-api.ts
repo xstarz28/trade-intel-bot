@@ -501,3 +501,126 @@ export function resetBackendNotificationPreferences(fetchImpl?: typeof fetch) {
     "/api/v1/notification-preferences", { method: "DELETE" }, fetchImpl,
   );
 }
+
+
+export interface BackendHistorySnapshot {
+  _id: string;
+  positionId: string;
+  instrument: string;
+  side: string;
+  timestamp: number;
+  thesisState: string;
+  evidenceQuality: string;
+  marketRegime: string;
+  h1Trend: string;
+  m15Trend: string;
+  m5Trend: string;
+  mtfAlignment: string;
+  momentum: string;
+  volatility: string;
+  structure: string;
+  supportingCount: number;
+  conflictingCount: number;
+  invalidationCondition: string;
+  watchNext: string;
+  dataAvailability: string;
+}
+
+export interface BackendHistoryEvent {
+  _id: string;
+  positionId: string;
+  instrument: string;
+  side: string;
+  timestamp: number;
+  eventType: string;
+  description: string;
+  previousState: string;
+  currentState: string;
+  category: string;
+  strength: string;
+}
+
+export interface BackendHistoryTimeline {
+  positionId: string;
+  latestSnapshot: BackendHistorySnapshot | null;
+  previousSnapshot: BackendHistorySnapshot | null;
+  events: BackendHistoryEvent[];
+}
+
+export interface BackendRuntimeHealth {
+  _id: string;
+  timestamp: number;
+  overallStatus: string;
+  components: Array<{
+    component: string;
+    status: string;
+    consecutiveFailures: number;
+    message: string;
+    freshness: string;
+  }>;
+  intelligenceCycleStatus: string;
+  alertPipelineStatus: string;
+  persistenceStatus: string;
+  providerAvailability: Record<string, string>;
+  staleComponents: string[];
+  unavailableComponents: string[];
+}
+
+export type SaveBackendRuntimeHealth = Omit<BackendRuntimeHealth, "_id">;
+
+export function saveBackendHistorySnapshot(
+  snapshot: Omit<BackendHistorySnapshot, "_id">,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ id: string; pruned: number }>("/api/v1/history/snapshots", {
+    method: "POST", body: JSON.stringify(snapshot),
+  }, fetchImpl);
+}
+
+export function saveBackendHistoryEvents(
+  input: { positionId: string; instrument: string; side: string; events: Array<Omit<BackendHistoryEvent, "_id" | "positionId" | "instrument" | "side">> },
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ ids: string[]; inserted: number; pruned: number }>(
+    "/api/v1/history/events", { method: "POST", body: JSON.stringify(input) }, fetchImpl,
+  );
+}
+
+export function getBackendHistoryTimeline(positionId: string, fetchImpl?: typeof fetch) {
+  const params = new URLSearchParams({ positionId });
+  return backendRequest<BackendHistoryTimeline>(
+    `/api/v1/history/timeline?${params.toString()}`, {}, fetchImpl,
+  );
+}
+
+export function deleteBackendPositionHistory(positionId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ deleted: number }>(
+    `/api/v1/history/positions/${encodeURIComponent(positionId)}`, { method: "DELETE" }, fetchImpl,
+  );
+}
+
+export function pruneBackendPositionHistory(positionId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ pruned: number }>("/api/v1/history/prune", {
+    method: "POST", body: JSON.stringify({ positionId }),
+  }, fetchImpl);
+}
+
+export function getLatestBackendRuntimeHealth(fetchImpl?: typeof fetch) {
+  return backendRequest<{ item: BackendRuntimeHealth | null }>("/api/v1/runtime-health/latest", {}, fetchImpl);
+}
+
+export function listBackendRuntimeHealth(limit = 20, fetchImpl?: typeof fetch) {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return backendRequest<{ items: BackendRuntimeHealth[] }>(
+    `/api/v1/runtime-health/history?${params.toString()}`, {}, fetchImpl,
+  );
+}
+
+export function saveBackendRuntimeHealth(
+  snapshot: SaveBackendRuntimeHealth,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<{ id: string; deduplicated?: boolean }>("/api/v1/runtime-health", {
+    method: "POST", body: JSON.stringify(snapshot),
+  }, fetchImpl);
+}
