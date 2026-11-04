@@ -215,7 +215,7 @@ describe("self-hosted market analysis engine", () => {
     });
 
     assert.equal(result.success, true);
-    assert.match(requestedUrl, /publicreporting\\.cftc\\.gov\\/resource\\/6dca-aqww\\.json/);
+    assert.match(requestedUrl, /publicreporting\.cftc\.gov\/resource\/6dca-aqww\.json/);
     assert.match(decodeURIComponent(requestedUrl), /EURO FX - CHICAGO MERCANTILE EXCHANGE/);
     assert.equal(result.data.latest.reportDate, "2026-10-27");
     assert.equal(result.data.previous.reportDate, "2026-10-20");
