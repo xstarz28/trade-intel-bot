@@ -6,6 +6,7 @@ import { RiskSizingControl, type RiskSizingInputs } from "@/components/RiskSizin
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
+import { AccountMigrationPanel } from "@/components/AccountMigrationPanel";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
@@ -1093,6 +1094,9 @@ export default function Dashboard() {
 
       {/* Main */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+        <div className="mb-5">
+          <AccountMigrationPanel />
+        </div>
         {workspaceMode === "investor" && investorTab === "portfolio" ? (
           <InvestorWorkspace />
         ) : workspaceMode === "investor" && investorTab === "intelligence" ? (
