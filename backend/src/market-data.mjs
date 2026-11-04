@@ -87,6 +87,9 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
       "/api/v1/intelligence/eia",
       "/api/v1/intelligence/treasury",
       "/api/v1/intelligence/fx-rate",
+      "/api/v1/intelligence/okx-spec",
+      "/api/v1/intelligence/okx-orderbook",
+      "/api/v1/intelligence/okx-futures-open-interest",
       "/api/v1/market-data/analyze",
     ]);
     if(!providerPaths.has(url.pathname)) return false;
@@ -124,6 +127,27 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
           result=await engine.fetchEiaInventory(env.EIA_API_KEY,fetchImpl);
         } else if(url.pathname==="/api/v1/intelligence/treasury") {
           result=await engine.fetchTreasuryYields(fetchImpl);
+        } else if(url.pathname==="/api/v1/intelligence/okx-spec") {
+          const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
+          if(!instrument||instrument.length>80) {
+            json(response,400,{success:false,error:"invalid_instrument"});
+            return true;
+          }
+          result=await engine.fetchOkxInstrumentSpec(instrument,fetchImpl);
+        } else if(url.pathname==="/api/v1/intelligence/okx-orderbook") {
+          const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
+          if(!instrument||instrument.length>80) {
+            json(response,400,{success:false,error:"invalid_instrument"});
+            return true;
+          }
+          result=await engine.fetchOkxOrderBook(instrument,fetchImpl);
+        } else if(url.pathname==="/api/v1/intelligence/okx-futures-open-interest") {
+          const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
+          if(!instrument||instrument.length>80) {
+            json(response,400,{success:false,error:"invalid_instrument"});
+            return true;
+          }
+          result=await engine.fetchOkxFuturesOpenInterest(instrument,fetchImpl);
         } else {
           const from=typeof input.from==="string"?input.from.trim().toUpperCase():"";
           const to=typeof input.to==="string"?input.to.trim().toUpperCase():"";
