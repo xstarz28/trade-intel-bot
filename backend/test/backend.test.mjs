@@ -345,6 +345,62 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("restores a portable export into the active account and remaps record ownership", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const first = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const firstUser = (await first.json()).user;
+        const firstCookie = first.headers.get("set-cookie").split(";")[0];
+        const now = Date.now();
+        database.raw.prepare(
+          "INSERT INTO notification_preferences (id,user_id,updated_at) VALUES (?,?,?)",
+        ).run("pref-import-1", firstUser.id, now);
+
+        const exportResponse = await fetch(`${baseUrl}/api/v1/account/export`, {
+          headers: { Cookie: firstCookie },
+        });
+        assert.equal(exportResponse.status, 200);
+        const exported = await exportResponse.json();
+
+        const second = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const secondUser = (await second.json()).user;
+        const secondCookie = second.headers.get("set-cookie").split(";")[0];
+        const imported = await fetch(`${baseUrl}/api/v1/account/import`, {
+          method: "POST",
+          headers: {
+            Origin: env.APP_ORIGIN,
+            Cookie: secondCookie,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(exported),
+        });
+        assert.equal(imported.status, 200);
+        const result = await imported.json();
+        assert.equal(result.totalInserted, 1);
+        assert.equal(
+          database.raw.prepare("SELECT user_id FROM notification_preferences WHERE id = ?").get("pref-import-1").user_id,
+          secondUser.id,
+        );
+        assert.equal(
+          database.raw.prepare("SELECT COUNT(*) AS count FROM notification_preferences WHERE user_id = ?").get(firstUser.id).count,
+          1,
+        );
+        assert.equal(
+          database.raw.prepare("SELECT COUNT(*) AS count FROM notification_preferences WHERE user_id = ?").get(secondUser.id).count,
+          1,
+        );
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
   it("rejects cross-origin authentication mutations", async () => {
     const database = createTemporaryDatabase();
     try {
