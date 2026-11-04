@@ -554,8 +554,13 @@ export interface BackendRuntimeHealth {
   components: Array<{
     component: string;
     status: string;
+    lastSuccessAt?: number;
+    lastFailureAt?: number;
+    lastAttemptAt?: number;
     consecutiveFailures: number;
     message: string;
+    source?: string;
+    dataAgeMs?: number;
     freshness: string;
   }>;
   intelligenceCycleStatus: string;
