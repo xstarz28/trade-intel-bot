@@ -285,7 +285,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   // DETAIL VIEW
   // ════════════════════════════════════════════════════════════════
 
-  if (view === "detail" && selectedEntry) {
+  if (view === "detail" && selectedEntry && journalEntries.some((entry) => entry.id === selectedEntry.id)) {
     const entry = selectedEntry;
     const snap = entry.analysisSnapshot;
     const validNext = getValidTransitions(entry);
