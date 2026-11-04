@@ -69,15 +69,102 @@ export function NotificationCenter() {
   const { t } = useI18n();
   const [filter, setFilter] = useState<NotificationFilter>("ALL");
   const [showPrefs, setShowPrefs] = useState(false);
-  const notifications = useQuery(api.notifications.getNotifications, { limit: 100 });
-  const unreadCount = useQuery(api.notifications.getUnreadCount);
-  const markRead = useMutation(api.notifications.markNotificationRead);
-  const markAllRead = useMutation(api.notifications.markAllNotificationsRead);
+  const { state: backendState } = useBackendSession();
+  const backendUserId = backendState.status === "authenticated" ? backendState.user.id : null;
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  const [backendItems, setBackendItems] = useState<BackendNotification[]>([]);
+  const [rawPrefs, setRawPrefs] = useState<BackendNotificationPreferences | undefined>();
+  const [backendError, setBackendError] = useState<string | null>(null);
 
-  // Phase 98: Notification preferences
-  const rawPrefs = useQuery(api.notificationPreferences.getPreferences);
-  const savePrefsMut = useMutation(api.notificationPreferences.savePreferences);
-  const resetPrefsMut = useMutation(api.notificationPreferences.resetPreferences);
+  useEffect(() => {
+    if (!backendUserId) return;
+    let active = true;
+    Promise.all([listBackendNotifications(100), getBackendNotificationPreferences()])
+      .then(([notificationResult, preferenceResult]) => {
+        if (!active) return;
+        setBackendItems(notificationResult.items);
+        setRawPrefs(preferenceResult.preferences);
+        setBackendError(null);
+        setLoadedUserId(backendUserId);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setBackendError(cause instanceof BackendApiError
+          ? "Backend notification error: " + cause.code
+          : "Tidak dapat memuat notifikasi dari backend.");
+        setLoadedUserId(backendUserId);
+      });
+    return () => { active = false; };
+  }, [backendUserId]);
+
+  const notifications = useMemo(() => {
+    if (!backendUserId || loadedUserId !== backendUserId) return undefined;
+    return backendItems.map((item) => ({
+      ...item,
+      userId: backendUserId,
+      createdAt: item.timestamp,
+      instrument: item.instrument ?? undefined,
+      positionId: item.positionId ?? undefined,
+      side: item.side ?? undefined,
+      severity: item.severity as NotificationSeverity,
+      category: item.category as NotificationCategory,
+      impact: item.impact as Notification["impact"],
+      source: "CUSTOM_RULE" as const,
+      condition: item.condition as Notification["condition"],
+    })) as Notification[];
+  }, [backendItems, backendUserId, loadedUserId]);
+
+  const unreadCount = notifications?.filter((item) => !item.read).length;
+  const isLoading = backendState.status === "loading" ||
+    (backendUserId !== null && loadedUserId !== backendUserId);
+
+  const persistPreferences = async (updated: NotificationPreferences) => {
+    try {
+      const result = await saveBackendNotificationPreferences(updated);
+      setRawPrefs(result.preferences);
+      setBackendError(null);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menyimpan preferensi: " + cause.code
+        : "Gagal menyimpan preferensi notifikasi.");
+    }
+  };
+
+  const handleMarkRead = async (notificationId: string) => {
+    try {
+      await markBackendNotificationRead(notificationId);
+      setBackendItems((items) => items.map((item) =>
+        item.notificationId === notificationId ? { ...item, read: true } : item,
+      ));
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menandai notifikasi: " + cause.code
+        : "Gagal memperbarui notifikasi.");
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllBackendNotificationsRead();
+      setBackendItems((items) => items.map((item) => ({ ...item, read: true })));
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menandai semua notifikasi: " + cause.code
+        : "Gagal memperbarui notifikasi.");
+    }
+  };
+
+  const handleResetPreferences = async () => {
+    try {
+      const result = await resetBackendNotificationPreferences();
+      setRawPrefs(result.preferences);
+      setBackendError(null);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal reset preferensi: " + cause.code
+        : "Gagal reset preferensi notifikasi.");
+    }
+  };
 
   const prefs: NotificationPreferences = useMemo(() => {
     if (!rawPrefs) return DEFAULT_PREFERENCES;
