@@ -97,6 +97,8 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
       })
       .catch((cause: unknown) => {
         if (!active) return;
+        setEntries([]);
+        setSelectedEntry(null);
         setBackendError(cause instanceof BackendApiError
           ? "Backend journal error: " + cause.code
           : "Tidak dapat memuat jurnal dari backend.");
