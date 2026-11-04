@@ -7,6 +7,7 @@ import type { FxRateSnapshot } from "@/lib/risk";
 import type { OkxSpecData } from "@/lib/risk/okx-spec";
 import type { ExecutionData } from "@/lib/execution-quality";
 import type { CryptoDerivativesData } from "@/lib/data/derivatives-types";
+import type { EconomicCalendarData } from "@/lib/data/calendar-types";
 /**
  * Typed client for the self-hosted Trade Intel API.
  *
@@ -815,6 +816,19 @@ export function fetchBackendFxRate(from: string, to: string, fetchImpl?: typeof 
     method: "POST",
     body: JSON.stringify({ from, to }),
   }, fetchImpl);
+}
+
+/** Fetches relevant upcoming/recent economic events through the self-hosted backend. */
+export function fetchBackendCalendar(
+  instrument: string,
+  instrumentType: string,
+  fetchImpl?: typeof fetch,
+) {
+  return backendRequest<BackendProviderResult<EconomicCalendarData>>(
+    "/api/v1/intelligence/calendar",
+    { method: "POST", body: JSON.stringify({ instrument, instrumentType }) },
+    fetchImpl,
+  );
 }
 
 /** Fetches verified CFTC positioning through the self-hosted backend. */
