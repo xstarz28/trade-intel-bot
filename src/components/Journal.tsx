@@ -244,6 +244,28 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
     return true;
   });
 
+  if (backendState.status !== "authenticated") {
+    return (
+      <Card className="border border-border/50">
+        <CardHeader className="pb-2">
+          <h3 className="text-sm font-mono font-semibold">Trade Journal</h3>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Jurnal tersimpan di backend mandiri. Hubungkan akun backend sebelum membuat atau membaca catatan.
+          </p>
+          {backendState.status === "loading" && <p className="text-xs text-muted-foreground">Memeriksa sesi backend...</p>}
+          {backendState.status === "error" && <p role="alert" className="text-xs text-destructive">Sesi backend tidak dapat diperiksa.</p>}
+          {backendState.status === "anonymous" && (
+            <Button size="sm" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>
+              Hubungkan akun backend
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
   // ════════════════════════════════════════════════════════════════
   // CREATE VIEW
   // ════════════════════════════════════════════════════════════════
@@ -323,6 +345,8 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           </div>
         </CardHeader>
         <CardContent className="space-y-4 text-xs font-mono">
+          {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
+          {saving && <p className="text-[10px] text-muted-foreground">Menyimpan perubahan...</p>}
 
           {/* ── ENGINE SNAPSHOT (read-only) ── */}
           <div>
@@ -476,6 +500,14 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
+        {(loading || saving) && <p className="text-[10px] text-muted-foreground">{loading ? "Memuat jurnal..." : "Menyimpan perubahan..."}</p>}
+        {backendState.user.isAnonymous && (
+          <div className="flex items-center justify-between gap-2 rounded border border-amber-500/20 p-2">
+            <span className="text-[10px] text-muted-foreground">Jurnal berada di sesi tamu backend.</span>
+            <Button size="sm" variant="outline" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>Hubungkan Google</Button>
+          </div>
+        )}
         {/* Quick Stats */}
         <div className="flex flex-wrap gap-2 text-[10px] font-mono">
           <Badge variant="outline" className="border-border/50">total: {entries.length}</Badge>
