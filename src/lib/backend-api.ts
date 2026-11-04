@@ -714,3 +714,46 @@ export function analyzeBackendMarket(
     fetchImpl,
   );
 }
+
+
+export interface BackendSecObservation {
+  ticker: string;
+  cik: string;
+  accessionNumber: string;
+  form: string;
+  filingDate: string;
+  acceptanceDateTime: string | null;
+  fiscalPeriodStart: string;
+  fiscalPeriodEnd: string;
+  fiscalYear: number | null;
+  fiscalPeriod: string | null;
+  eps: number | null;
+  revenue: number | null;
+  epsTag: string | null;
+  revenueTag: string | null;
+  sourceUrl: string;
+  firstObservedAt: number;
+  lastRetrievedAt: number;
+  filingDateSemantics: string;
+}
+
+export function getBackendSecFundamentals(ticker: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ ticker: string; items: BackendSecObservation[] }>(
+    `/api/v1/fundamentals/sec/${encodeURIComponent(ticker.trim().toUpperCase())}`, {}, fetchImpl,
+  );
+}
+
+export function refreshBackendSecFundamentals(ticker: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{
+    success: boolean;
+    status: string;
+    ticker: string;
+    cik: string;
+    observationCount: number;
+    newlyPersistedCount: number;
+    items: BackendSecObservation[];
+  }>(
+    `/api/v1/fundamentals/sec/${encodeURIComponent(ticker.trim().toUpperCase())}`,
+    { method: "POST", body: "{}" }, fetchImpl,
+  );
+}
