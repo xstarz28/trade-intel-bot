@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -234,5 +234,55 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.success, false);
     assert.match(result.error, /No verified CFTC futures contract mapping/);
     assert.equal(providerCalled, false);
+  });
+
+  it("validates and caches dated Frankfurter FX reference observations", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const payload = { base: "EUR", quote: "JPY", date: today, rate: 163.25 };
+    let providerCalls = 0;
+    const fetchImpl = async (input) => {
+      providerCalls += 1;
+      assert.equal(String(input), "https://api.frankfurter.dev/v2/rate/eur/jpy");
+      return new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+
+    const first = await fetchFxReference("EUR", "JPY", fetchImpl);
+    assert.equal(first.success, true);
+    assert.equal(first.direct.pair, "EUR/JPY");
+    assert.equal(first.direct.rate, 163.25);
+    assert.match(first.direct.source, /Frankfurter daily reference/);
+    assert.equal(first.inverse, null);
+
+    const second = await fetchFxReference("EUR", "JPY", async () => {
+      throw new Error("A fresh cached reference should not call the provider again.");
+    });
+    assert.equal(second.success, true);
+    assert.equal(second.direct.rate, 163.25);
+    assert.equal(providerCalls, 1);
+  });
+
+  it("rejects invalid currency pairs and stale Frankfurter observations without inventing a rate", async () => {
+    let providerCalled = false;
+    const invalid = await fetchFxReference("EURO", "USD", async () => {
+      providerCalled = true;
+      throw new Error("Invalid currency codes must not reach the provider.");
+    });
+    assert.equal(invalid.success, false);
+    assert.match(invalid.error, /invalid ISO currency code/);
+    assert.equal(providerCalled, false);
+
+    const staleDate = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const stale = await fetchFxReference("GBP", "CHF", async () => new Response(JSON.stringify({
+      base: "GBP", quote: "CHF", date: staleDate, rate: 1.1,
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    assert.equal(stale.success, false);
+    assert.match(stale.error, /FX_RATE_STALE/);
+    assert.equal(stale.direct, undefined);
   });
 });
