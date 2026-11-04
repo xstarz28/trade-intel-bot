@@ -29,7 +29,7 @@ The repository now contains:
 - a Caddyfile and Docker Compose service with persistent SQLite/Caddy volumes;
 - a backup utility using SQLite's consistent `VACUUM INTO` snapshot.
 
-No public DNS change, domain verification, server provisioning, or production cutover has been performed. The application frontend still contains Convex hooks, so the self-hosted server is not yet a drop-in replacement for the current production site.
+No public DNS change, domain verification, server provisioning, or production cutover has been performed. Browser login and session restoration now run through the self-hosted backend independently of Convex, but the Dashboard analysis/provider actions and position-protection/notification surfaces still contain Convex data hooks. The self-hosted server is therefore not yet a full drop-in replacement for the current production site.
 
 ## Cutover gates
 
