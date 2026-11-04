@@ -39,7 +39,16 @@ async function refreshSecObservationsIfStale(database,ticker,userAgent,fetchImpl
   const pending=secRefreshInflight.get(ticker);
   if(pending) return pending;
   secRefreshAttempts.set(ticker,now);
-  if(secRefreshAttempts.size>5000) for(const [key,attemptedAt] of secRefreshAttempts) if(now-attemptedAt>=SEC_RETRY_INTERVAL_MS) secRefreshAttempts.delete(key);
+  if(secRefreshAttempts.size>5000) {
+    for(const [key,attemptedAt] of secRefreshAttempts) {
+      if(now-attemptedAt>=SEC_RETRY_INTERVAL_MS) secRefreshAttempts.delete(key);
+    }
+    while(secRefreshAttempts.size>5000) {
+      const oldestKey=secRefreshAttempts.keys().next().value;
+      if(oldestKey===undefined) break;
+      secRefreshAttempts.delete(oldestKey);
+    }
+  }
   const task=(async()=>{
     const {fetchSecFundamentalObservations}=await import("../dist/market-data-engine.mjs");
     const result=await fetchSecFundamentalObservations(ticker,userAgent,fetchImpl);
@@ -47,7 +56,10 @@ async function refreshSecObservationsIfStale(database,ticker,userAgent,fetchImpl
     const retrievedAt=Date.now();
     const sql="INSERT INTO sec_edgar_observations (id,ticker,cik,accession_number,form,filing_date,acceptance_date_time,fiscal_period_start,fiscal_period_end,fiscal_year,fiscal_period,eps,revenue,eps_tag,revenue_tag,source_url,first_observed_at,last_retrieved_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(ticker,accession_number) DO UPDATE SET cik=excluded.cik,form=excluded.form,filing_date=excluded.filing_date,acceptance_date_time=excluded.acceptance_date_time,fiscal_period_start=excluded.fiscal_period_start,fiscal_period_end=excluded.fiscal_period_end,fiscal_year=excluded.fiscal_year,fiscal_period=excluded.fiscal_period,eps=excluded.eps,revenue=excluded.revenue,eps_tag=excluded.eps_tag,revenue_tag=excluded.revenue_tag,source_url=excluded.source_url,last_retrieved_at=excluded.last_retrieved_at";
     const insert=database.raw.prepare(sql);
-    for(const o of result.observations) insert.run(randomUUID(),ticker,o.cik,o.accessionNumber,o.form,o.filingDate,o.acceptanceDateTime??null,o.fiscalPeriodStart,o.fiscalPeriodEnd,o.fiscalYear??null,o.fiscalPeriod??null,o.eps??null,o.revenue??null,o.epsTag??null,o.revenueTag??null,o.sourceUrl,retrievedAt,retrievedAt);
+    const persist=database.raw.transaction(()=>{
+      for(const o of result.observations) insert.run(randomUUID(),ticker,o.cik,o.accessionNumber,o.form,o.filingDate,o.acceptanceDateTime??null,o.fiscalPeriodStart,o.fiscalPeriodEnd,o.fiscalYear??null,o.fiscalPeriod??null,o.eps??null,o.revenue??null,o.epsTag??null,o.revenueTag??null,o.sourceUrl,retrievedAt,retrievedAt);
+    });
+    persist();
   })().finally(()=>secRefreshInflight.delete(ticker));
   secRefreshInflight.set(ticker,task);
   return task;
