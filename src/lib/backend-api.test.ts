@@ -397,4 +397,33 @@ describe("self-hosted backend API client", () => {
     }));
   });
 
+
+  it("reads and refreshes SEC filing observations through the authenticated backend", async () => {
+    const observation = {
+      ticker: "MSFT", cik: "0000789019", accessionNumber: "0000789019-26-000001",
+      form: "10-Q", filingDate: "2026-10-28", acceptanceDateTime: null,
+      fiscalPeriodStart: "2026-07-01", fiscalPeriodEnd: "2026-09-30",
+      fiscalYear: 2027, fiscalPeriod: "Q1", eps: 4.2, revenue: 70000000000,
+      epsTag: "EarningsPerShareDiluted", revenueTag: "RevenueFromContractWithCustomerExcludingAssessedTax",
+      sourceUrl: "https://www.sec.gov/Archives/edgar/data/789019/filing", firstObservedAt: 1,
+      lastRetrievedAt: 2, filingDateSemantics: "SEC filing date; not an exact public-availability timestamp",
+    };
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(response(200, { ticker: "MSFT", items: [observation] }))
+      .mockResolvedValueOnce(response(200, {
+        success: true, status: "UPDATED", ticker: "MSFT", cik: "0000789019",
+        observationCount: 1, newlyPersistedCount: 1, items: [observation],
+      }));
+    const { getBackendSecFundamentals, refreshBackendSecFundamentals } = await import("./backend-api");
+    await expect(getBackendSecFundamentals(" msft ", fetcher))
+      .resolves.toEqual({ ticker: "MSFT", items: [observation] });
+    await expect(refreshBackendSecFundamentals("msft", fetcher))
+      .resolves.toMatchObject({ success: true, newlyPersistedCount: 1 });
+    expect(fetcher.mock.calls.map(([url, init]) => [url, init?.method ?? "GET"])).toEqual([
+      ["/api/v1/fundamentals/sec/MSFT", "GET"],
+      ["/api/v1/fundamentals/sec/MSFT", "POST"],
+    ]);
+    expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
+  });
+
 });
