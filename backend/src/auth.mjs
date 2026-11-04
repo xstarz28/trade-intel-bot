@@ -343,7 +343,11 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
       }
       const clientId = env.GOOGLE_CLIENT_ID?.trim();
       if (!clientId || !env.GOOGLE_CLIENT_SECRET?.trim() || !backendOrigin) {
-        sendJson(response, 503, { error: "google_auth_not_configured" });
+        if ((request.headers.accept ?? "").includes("text/html")) {
+          redirect(response, new URL("/auth?error=google_auth_not_configured", appOrigin).toString());
+        } else {
+          sendJson(response, 503, { error: "google_auth_not_configured" });
+        }
         return true;
       }
 
