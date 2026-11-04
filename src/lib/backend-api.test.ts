@@ -3,6 +3,7 @@ import {
   BackendApiError,
   createAnonymousBackendSession,
   exportBackendAccount,
+  importBackendAccount,
   getBackendSession,
   listBackendAnalyses,
   logoutBackendSession,
@@ -86,6 +87,31 @@ describe("self-hosted backend API client", () => {
     expect(fetcher).toHaveBeenCalledWith(
       "/api/v1/account/export",
       expect.objectContaining({ credentials: "include", cache: "no-store" }),
+    );
+  });
+
+  it("restores a typed account export through the authenticated backend endpoint", async () => {
+    const payload = {
+      format: "trade-intel-account-export" as const,
+      version: 1 as const,
+      exportedAt: "2026-11-04T00:00:00.000Z",
+      account: { id: "old-user", name: "Trader", email: null, isAnonymous: true, role: "user" },
+      data: { journal: [] },
+      counts: { journal: 0 },
+    };
+    const result = {
+      success: true,
+      accountId: "current-user",
+      inserted: { journal: 0 },
+      skipped: { journal: 0 },
+      totalInserted: 0,
+      totalSkipped: 0,
+    };
+    const fetcher = vi.fn().mockResolvedValue(response(200, result));
+    await expect(importBackendAccount(payload, fetcher)).resolves.toEqual(result);
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/v1/account/import",
+      expect.objectContaining({ method: "POST", credentials: "include", cache: "no-store" }),
     );
   });
 
