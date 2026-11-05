@@ -10,7 +10,7 @@ const allowedLegacyClientFiles = new Set([
 ]);
 const importPattern = /(?:from\s*|import\s*\(|import\s*)["'](?:convex(?:\/[^"']*)?|@convex-dev\/[^"']*|@\/convex\/[^"']*)["']/g;
 const runtimeSymbolPattern = /\b(?:useConvex|ConvexReactClient|ConvexAuthProvider)\b/g;
-const migrationBoundarySymbolPattern = /\b(?:LegacyConvexMigrationProvider|AccountMigrationPanel)\b/g;
+const migrationBoundaryImportPattern = /(?:from\s*|import\s*\()\s*["']@\/(?:components\/AccountMigrationPanel|lib\/convex-provider)["']/g;
 const errors = [];
 
 function walk(directory) {
@@ -36,13 +36,13 @@ for (const absolutePath of walk(sourceRoot)) {
   importPattern.lastIndex = 0;
   const hasRuntimeSymbol = runtimeSymbolPattern.test(source);
   runtimeSymbolPattern.lastIndex = 0;
-  const hasMigrationBoundarySymbol = migrationBoundarySymbolPattern.test(source);
-  migrationBoundarySymbolPattern.lastIndex = 0;
+  const hasMigrationBoundaryImport = migrationBoundaryImportPattern.test(source);
+  migrationBoundaryImportPattern.lastIndex = 0;
 
   if ((hasRuntimeImport || hasRuntimeSymbol) && !allowedLegacyClientFiles.has(path)) {
     errors.push(`${path}: Convex runtime import/symbol outside the optional legacy migration boundary`);
   }
-  if (hasMigrationBoundarySymbol && path !== "src/pages/Dashboard.tsx") {
+  if (hasMigrationBoundaryImport && path !== "src/pages/Dashboard.tsx") {
     errors.push(`${path}: optional legacy migration UI may only be mounted by Dashboard behind its URL allowlist`);
   }
 }
