@@ -755,7 +755,7 @@ describe("self-hosted backend", () => {
         const response = await fetch(baseUrl + "/api/v1/intelligence/fx-rate", {
           method: "POST",
           headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
-          body: JSON.stringify({ from: "CAD", to: "SGD" }),
+          body: JSON.stringify({ from: "AUD", to: "SEK" }),
         });
         assert.equal(response.status, 503);
         const result = await response.json();
