@@ -252,7 +252,7 @@ export interface CrossAssetContext {
   comparatorMomentum?: "up" | "down" | "flat";
   /** Phase 7C: provenance — comparator series are ACTUAL provider prices. */
   dataKind?: "actual_price";
-  /** Provider that supplied the actual comparator series (e.g. Twelve Data). */
+  /** Exact upstream provider label that supplied the actual comparator series. */
   provider?: string;
 }
 
