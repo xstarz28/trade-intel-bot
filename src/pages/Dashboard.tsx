@@ -480,7 +480,7 @@ export default function Dashboard() {
           updateStep(2, "done");
         }
 
-        // Step 4: Calculating indicators (already done in Convex action)
+        // Step 4: Calculating indicators (already done by the self-hosted backend analysis engine)
         updateStep(3, "active");
         await new Promise((r) => setTimeout(r, 150));
         updateStep(3, "done");
