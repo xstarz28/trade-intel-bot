@@ -27,8 +27,6 @@ jobs:
           ruby -ryaml -e 'ARGV.each { |path| YAML.parse_file(path); puts "Valid YAML: #{path}" }' .github/workflows/*.yml
 
       - name: Typecheck and production build
-        env:
-          VITE_CONVEX_URL: https://hushed-seal-237.convex.cloud
         run: npm run build
       - name: Verify built frontend release artifact provenance
         run: node scripts/verify-frontend-release.mjs --dist dist --expect-commit "$GITHUB_SHA" --expect-branch "$GITHUB_REF_NAME"
