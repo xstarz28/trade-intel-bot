@@ -59,6 +59,12 @@ import { DeFiLlamaAdapter } from "../../src/lib/data/crypto/defillama-adapter";
 import { BinancePublicDerivativesAdapter } from "../../src/lib/data/crypto/binance-derivatives-adapter";
 import { BybitPublicDerivativesAdapter } from "../../src/lib/data/crypto/bybit-derivatives-adapter";
 import { OkxPublicDerivativesAdapter } from "../../src/lib/data/crypto/okx-derivatives-adapter";
+import { TokenomistAdapter, parseTokenomistResult } from "../../src/lib/data/crypto/tokenomist-adapter";
+import { PatternPlusUnlockAdapter } from "../../src/lib/data/crypto/patternplus-unlocks-adapter";
+import { parseCoinGeckoSupplyFallback } from "../../src/lib/data/crypto/coingecko-supply";
+import { getProviderSymbol } from "../../src/lib/data/universal/instruments";
+import type { TokenomicsIntelligence } from "../../src/lib/data/crypto/types";
+
 import type { DerivativesResult, OpenInterestData, FundingRateData, LongShortData, LiquidationData } from "../../src/lib/data/derivatives-types";
 import {
   OKX_SPOT_MARKET_PROVIDER,
@@ -914,6 +920,83 @@ export async function fetchEconomicCalendar(
 const cryptoDerivativesCache = new Map<string, { value: DerivativesResult; expiresAt: number }>();
 const cryptoFundamentalsCache = new Map<string, { value: { success: boolean; data?: Record<string, unknown>; provider?: string; observedAt?: number; error?: string }; expiresAt: number }>();
 
+const tokenomicsCache = new Map<string, { value: TokenomicsIntelligence; expiresAt: number }>();
+
+async function fetchCryptoTokenomics(
+  instrument: string,
+  apiKey: string | undefined,
+  fetchImpl: typeof fetch,
+): Promise<TokenomicsIntelligence> {
+  const key = instrument.trim().toUpperCase();
+  const cached = tokenomicsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  let tokenomistFailure: string | undefined;
+  if (apiKey?.trim()) {
+    try {
+      const result = await new TokenomistAdapter(fetchImpl, apiKey.trim()).fetch(key);
+      if (result?.success && result.data && typeof result.data === "object") {
+        const normalized = parseTokenomistResult(result.data as Record<string, any>, key, result.observedAt ?? Date.now());
+        if (normalized.available) {
+          tokenomicsCache.set(key, { value: normalized, expiresAt: Date.now() + 30 * 60_000 });
+          return normalized;
+        }
+      }
+      tokenomistFailure = result?.error ?? "Tokenomist returned no verified tokenomics.";
+    } catch (error) {
+      tokenomistFailure = error instanceof Error ? error.message : "Tokenomist request failed.";
+    }
+  }
+  try {
+    const fallback = await new PatternPlusUnlockAdapter(fetchImpl).fetch(key);
+    if (fallback.available) {
+      tokenomicsCache.set(key, { value: fallback, expiresAt: Date.now() + 30 * 60_000 });
+      return fallback;
+    }
+    const coinGeckoId = getProviderSymbol(key, "coingecko");
+    if (coinGeckoId) {
+      try {
+        const response = await fetchImpl(
+          "https://api.coingecko.com/api/v3/coins/" + encodeURIComponent(coinGeckoId) +
+            "?localization=false&tickers=false&market_data=true&community_data=false&developer_data=false",
+          { headers: { accept: "application/json" }, signal: AbortSignal.timeout(3000) },
+        );
+        if (response.ok) {
+          const supply = parseCoinGeckoSupplyFallback(await response.json());
+          if (supply) {
+            const value = {
+              ...supply,
+              failureReason: "Supply fallback active. Verified unlock calendar unavailable: " +
+                (fallback.failureReason ?? tokenomistFailure ?? "no dated unlock records returned"),
+            };
+            tokenomicsCache.set(key, { value, expiresAt: Date.now() + 30 * 60_000 });
+            return value;
+          }
+        }
+      } catch {
+        // Preserve the explicit unavailable result below.
+      }
+    }
+    const value = tokenomistFailure
+      ? { ...fallback, failureReason: "Tokenomist unavailable (" + tokenomistFailure + "); " + (fallback.failureReason ?? "PatternPlus has no usable record.") }
+      : fallback;
+    tokenomicsCache.set(key, { value, expiresAt: Date.now() + 30 * 60_000 });
+    return value;
+  } catch (error) {
+    const value: TokenomicsIntelligence = {
+      provider: "PatternPlus",
+      observedAt: Date.now(),
+      freshness: "UNAVAILABLE",
+      quality: "UNAVAILABLE",
+      available: false,
+      failureReason: error instanceof Error ? error.message : "Tokenomics provider unavailable.",
+      availableDatasets: 0,
+      totalDatasets: 2,
+    };
+    tokenomicsCache.set(key, { value, expiresAt: Date.now() + 30 * 60_000 });
+    return value;
+  }
+}
+
 function finiteProviderNumber(value: unknown): number | undefined {
   if (value === null || value === undefined || value === "") return undefined;
   const number = typeof value === "number" ? value : Number(value);
@@ -937,6 +1020,7 @@ export async function fetchCryptoDerivatives(
   instrument: string,
   apiKey: string | undefined,
   fetchImpl: typeof fetch = fetch,
+  tokenomistApiKey?: string,
 ): Promise<DerivativesResult> {
   const normalized = instrument.trim().toUpperCase();
   if (!normalized || normalized.length > 80) return { success: false, error: "A valid crypto instrument is required.", errorCode: "UNSUPPORTED_ASSET" };
@@ -993,8 +1077,10 @@ export async function fetchCryptoDerivatives(
       const availability = { openInterest: Boolean(openInterest), fundingRate: Boolean(fundingRate), longShort: Boolean(longShort), liquidations: Boolean(liquidations) };
       const available = Object.values(availability).filter(Boolean).length;
       if (available > 0) {
+        const tokenomics = await tokenomicsPromise;
         const value: DerivativesResult = {
           success: true,
+          tokenomics,
           data: {
             provider: "coinglass", symbol, timestamp: Date.now(), freshness: "realtime",
             ...(openInterest ? { openInterest } : {}), ...(fundingRate ? { fundingRate } : {}),
@@ -1018,8 +1104,9 @@ export async function fetchCryptoDerivatives(
   const settled = await Promise.allSettled(adapters.map((adapter) => adapter.fetch(normalized)));
   const match = settled.find((item) => item.status === "fulfilled" && item.value);
   const data = match?.status === "fulfilled" ? match.value : null;
-  if (!data) return { success: false, error: "CoinGlass and public derivatives providers returned no usable data for the exact instrument.", errorCode: "NO_DATA" };
-  const value: DerivativesResult = { success: true, data };
+  const tokenomics = await tokenomicsPromise;
+  if (!data) return { success: tokenomics.available, tokenomics, error: "CoinGlass and public derivatives providers returned no usable data for the exact instrument.", errorCode: "NO_DATA" };
+  const value: DerivativesResult = { success: true, data, tokenomics };
   cryptoDerivativesCache.set(normalized, { value, expiresAt: Date.now() + 60_000 });
   return value;
 }
