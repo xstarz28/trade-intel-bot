@@ -4,6 +4,7 @@ services:
       context: ..
       dockerfile: backend/Dockerfile
       args:
+        VITE_LEGACY_CONVEX_URL: ${VITE_LEGACY_CONVEX_URL:-}
         XSTARZ_BUILD_COMMIT: ${XSTARZ_BUILD_COMMIT:-}
         XSTARZ_BUILD_REF: ${XSTARZ_BUILD_REF:-}
         XSTARZ_BUILD_WORKTREE_CLEAN: ${XSTARZ_BUILD_WORKTREE_CLEAN:-false}
