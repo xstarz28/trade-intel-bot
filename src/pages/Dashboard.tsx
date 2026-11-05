@@ -30,8 +30,6 @@ import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
 import { buildHistoricalContextSummaries, buildPersistedContextSummaries, resolveHistoricalDecision } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
-import { api } from "@/convex/_generated/api";
-import { useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
@@ -202,8 +200,6 @@ export default function Dashboard() {
       active = false;
     };
   }, []);
-  // Legacy Convex actions remain only for provider legs not yet extracted.
-  const fetchMarketData = useAction(api.marketData.fetchMarketData);
 
   const handleSignOut = async () => {
     await signOut();
@@ -269,26 +265,16 @@ export default function Dashboard() {
         let defiFundamentalsResult: any = null;
         let calendarResult: any = null;
         try {
-          // The self-hosted engine owns spot/FX/equity/commodity/index market data.
-          // Keep the legacy provider only for derivative contracts until the backend
-          // has an exact-contract OHLCV implementation; never substitute spot candles.
-          const usesLegacyDerivativeMarket =
-            input.instrumentType === "crypto" &&
-            (input.instrument.toUpperCase().endsWith("-SWAP") || /-[0-9]{6}$/.test(input.instrument.toUpperCase()));
+          // All asset classes, including literal OKX perpetual and dated-futures
+          // contracts, are acquired by the self-hosted engine. Derivatives are
+          // never remapped to spot instruments when their exact contract fails.
           const marketPromise: Promise<MarketDataResult | BackendMarketAnalysisResult> =
-            usesLegacyDerivativeMarket
-              ? fetchMarketData({
-                  instrument: input.instrument,
-                  instrumentType: input.instrumentType,
-                  timeframe: input.timeframe,
-                  tradingStyle: input.tradingStyle,
-                })
-              : analyzeBackendMarket({
-                  instrument: input.instrument,
-                  instrumentType: input.instrumentType,
-                  timeframe: input.timeframe,
-                  tradingStyle: input.tradingStyle,
-                });
+            analyzeBackendMarket({
+              instrument: input.instrument,
+              instrumentType: input.instrumentType,
+              timeframe: input.timeframe,
+              tradingStyle: input.tradingStyle,
+            });
 
           // Build fetch promises
           const fetchPromises: Promise<any>[] = [
