@@ -945,7 +945,7 @@ export async function fetchCryptoDerivatives(
   if (cached) cryptoDerivativesCache.delete(normalized);
 
   if (apiKey?.trim()) {
-    const symbol = normalized.split("/")[0].replace(/-SWAP$/, "").replace(/-[0-9]{6}$/, "");
+    const symbol = normalized.split("/")[0].replace(/-SWAP$/, "").replace(/-[0-9]{6}$/, "").replace(/-(USDT|USDC|USD|BTC|ETH)$/, "");
     try {
       const [oiRaw, fundingRaw, longShortRaw, liquidationRaw] = await Promise.allSettled([
         fetchCoinGlassJson("/futures/open-interest/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey.trim(), fetchImpl),
