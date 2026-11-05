@@ -3,6 +3,11 @@ services:
     build:
       context: ..
       dockerfile: backend/Dockerfile
+      args:
+        XSTARZ_BUILD_COMMIT: ${XSTARZ_BUILD_COMMIT:-unknown}
+        XSTARZ_BUILD_REF: ${XSTARZ_BUILD_REF:-unknown}
+        XSTARZ_BUILD_WORKTREE_CLEAN: ${XSTARZ_BUILD_WORKTREE_CLEAN:-false}
+        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-unknown}
     env_file:
       - .env
     environment:
