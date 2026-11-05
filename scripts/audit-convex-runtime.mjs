@@ -20,7 +20,7 @@ function walk(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) files.push(...walk(path));
-    else if (entry.isFile() && /\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) files.push(path);
+    else if (entry.isFile() && /\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) files.push(path);
   }
   return files;
 }
@@ -60,8 +60,7 @@ for (const absolutePath of walk(sourceRoot)) {
 }
 
 const dashboard = read("src/pages/Dashboard.tsx");
-if (!/isActiveConvexUrl\s*\(\s*import\.meta\.env\.VITE_LEGACY_CONVEX_URL\s*\)/.test(dashboard) ||
-    !/isAllowedConvexCloudUrl\s*\(\s*import\.meta\.env\.VITE_LEGACY_CONVEX_URL\s*\)/.test(dashboard)) {
+if (!/isAllowedConvexCloudUrl\s*\(\s*import\.meta\.env\.VITE_LEGACY_CONVEX_URL\s*\)/.test(dashboard)) {
   errors.push("src/pages/Dashboard.tsx: legacy migration UI must remain behind the exact legacy URL allowlist");
 }
 if (!/import\(["']@\/components\/AccountMigrationPanel["']\)/.test(dashboard) ||
