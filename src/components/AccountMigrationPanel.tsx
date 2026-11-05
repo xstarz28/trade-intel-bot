@@ -24,8 +24,11 @@ export function AccountMigrationPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
+    totalSource: number;
     totalInserted: number;
     totalSkipped: number;
+    reconciled: boolean;
+    sourceCounts: Record<string, number>;
     inserted: Record<string, number>;
     skipped: Record<string, number>;
   } | null>(null);
@@ -134,14 +137,33 @@ export function AccountMigrationPanel() {
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
 
         {result && (
-          <div role="status" className="rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3">
+          <div
+            role={result.reconciled ? "status" : "alert"}
+            className={result.reconciled
+              ? "rounded-md border border-emerald-500/20 bg-emerald-500/5 p-3"
+              : "rounded-md border border-destructive/30 bg-destructive/5 p-3"}
+          >
             <div className="mb-1 flex items-center gap-2 text-sm font-medium">
-              <CheckCircle2 className="size-4 text-emerald-500" />
-              Transfer data selesai
+              <CheckCircle2 className={result.reconciled ? "size-4 text-emerald-500" : "size-4 text-destructive"} />
+              {result.reconciled ? "Transfer data berhasil direkonsiliasi" : "Rekonsiliasi data gagal"}
             </div>
             <p className="text-xs text-muted-foreground">
-              {result.totalInserted} record dipindahkan; {result.totalSkipped} record dilewati karena sudah ada atau memiliki konflik unik.
+              Sumber: {result.totalSource} record · masuk: {result.totalInserted} · dilewati: {result.totalSkipped}
             </p>
+            {Object.entries(result.sourceCounts).some(([, count]) => count > 0) && (
+              <div className="mt-2 space-y-1 border-t border-border/50 pt-2">
+                {Object.entries(result.sourceCounts)
+                  .filter(([, count]) => count > 0)
+                  .map(([table, count]) => (
+                    <div key={table} className="flex justify-between gap-3 text-[11px] text-muted-foreground">
+                      <span>{table}</span>
+                      <span className="font-mono tabular-nums">
+                        {result.inserted[table] ?? 0} masuk / {result.skipped[table] ?? 0} dilewati dari {count}
+                      </span>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         )}
 
