@@ -52,6 +52,7 @@ import type {
 } from "../../src/lib/data/market-types";
 import {
   fetchYahooFinanceCandles,
+  fetchYahooFinanceQuote,
   resolveYahooFinanceComparatorSymbols,
   resolveYahooFinanceMarketSymbol,
 } from "../../src/lib/data/providers/yahoo-finance";
@@ -69,6 +70,7 @@ import type { DerivativesResult, OpenInterestData, FundingRateData, LongShortDat
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
+  toOkxSpotInstrument,
 } from "../../src/lib/data/crypto/okx-spot-market-adapter";
 
 export interface MarketAnalysisRequest {
@@ -109,11 +111,11 @@ export interface MarketAnalysisResult {
 }
 
 const INDEX_SYMBOLS: Record<string, string> = {
-  SPX: "^GSPC", "S&P500": "^GSPC", GSPC: "^GSPC",
-  NDX: "^NDX", NASDAQ100: "^NDX", "NASDAQ-100": "^NDX",
+  SPX: "^GSPC", "S&P500": "^GSPC", GSPC: "^GSPC", US500: "^GSPC",
+  NDX: "^NDX", NASDAQ100: "^NDX", "NASDAQ-100": "^NDX", US100: "^IXIC",
   IXIC: "^IXIC", NASDAQ: "^IXIC",
-  DJI: "^DJI", DOWJONES: "^DJI",
-  RUT: "^RUT", VIX: "^VIX",
+  DJI: "^DJI", DOWJONES: "^DJI", US30: "^DJI",
+  RUT: "^RUT", VIX: "^VIX", DXY: "DX-Y.NYB", US10Y: "^TNX", US2Y: "^IRX",
   FTSE: "^FTSE", DAX: "^GDAXI", N225: "^N225", NIKKEI: "^N225",
   HSI: "^HSI", JKSE: "^JKSE", IHSG: "^JKSE",
 };
@@ -273,10 +275,11 @@ function inferInstrumentType(instrumentInput: string): MarketAnalysisRequest["in
   const instrument = instrumentInput.trim().toUpperCase();
   if (instrument.endsWith("-SWAP") || /-[0-9]{6}$/.test(instrument) ||
       /^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|AVAX|DOT|LINK|LTC|BCH|TRX|TON)[/-]/.test(instrument) ||
+      /^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|AVAX|DOT|LINK|LTC|BCH|TRX|TON)(USDT|USDC|USD|BTC|ETH)$/.test(instrument) ||
       /\/(USDT|USDC|USD|BTC|ETH)$/.test(instrument)) return "crypto";
-  if (/^[A-Z]{3}\/[A-Z]{3}$/.test(instrument) || /^[A-Z]{6}$/.test(instrument)) return "forex";
-  if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER|CL|NG)/.test(instrument)) return "commodity";
+  if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER|COPPER|CL|NG)/.test(instrument)) return "commodity";
   if (INDEX_SYMBOLS[instrument]) return "indices";
+  if (/^[A-Z]{3}\/[A-Z]{3}$/.test(instrument) || /^[A-Z]{6}$/.test(instrument)) return "forex";
   return "stock";
 }
 
@@ -1229,4 +1232,246 @@ export async function fetchTreasuryYields(fetchImpl: typeof fetch = fetch) {
     context = applyFredYieldFallback(context, dgs2, dgs10, dfii10, Date.now());
   }
   return context.available ? { success: true as const, data: context } : { success: false as const, error: context.reason };
+}
+
+
+export interface LiveMarketQuoteResult {
+  instrument: string;
+  assetClass: string;
+  price: number;
+  bid?: number;
+  ask?: number;
+  change24h?: number;
+  volume24h?: number;
+  timestamp: number;
+  provider: string;
+  primaryProvider: string;
+  fallbackUsed: boolean;
+  fallbackReason?: string;
+  sourceMode: "LIVE" | "STALE" | "UNAVAILABLE";
+  success: boolean;
+  error?: string;
+}
+
+const LIVE_QUOTE_CACHE_TTL_MS = 10_000;
+const liveQuoteCache = new Map<string, { value: LiveMarketQuoteResult; expiresAt: number }>();
+const liveQuoteInflight = new Map<string, Promise<LiveMarketQuoteResult>>();
+
+function liveQuoteFresh(timestamp: number, now = Date.now()): boolean {
+  const age = now - timestamp;
+  return Number.isFinite(timestamp) && timestamp > 0 && age >= -30_000 && age <= 60_000;
+}
+
+function normalizeLiveOkxInstrument(instrument: string): string | null {
+  const value = instrument.trim().toUpperCase().replace(/\s/g, "");
+  if (value.endsWith("-SWAP") || /-[0-9]{6}$/.test(value)) return value;
+  if (/^[A-Z0-9]{2,20}-[A-Z0-9]{2,20}$/.test(value)) return value;
+  if (/^[A-Z0-9]{2,20}(USDT|USDC|USD)$/.test(value)) {
+    const quote = value.endsWith("USDT") ? "USDT" : value.endsWith("USDC") ? "USDC" : "USD";
+    return value.slice(0, -quote.length) + "-" + quote;
+  }
+  return toOkxSpotInstrument(value);
+}
+
+async function fetchExactOkxLiveQuote(
+  instId: string,
+  fetchImpl: typeof fetch,
+): Promise<{ price: number; timestamp: number; bid?: number; ask?: number; change24h?: number; volume24h?: number }> {
+  const response = await fetchImpl(
+    "https://www.okx.com/api/v5/market/ticker?instId=" + encodeURIComponent(instId),
+    { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4_000) },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || String(payload.code) !== "0" || !Array.isArray(payload.data)) {
+    throw new Error("OKX exact-instrument ticker unavailable for " + instId + ": " + String(payload?.msg ?? response.statusText));
+  }
+  const row = payload.data.find((item: unknown) =>
+    Boolean(item) && typeof item === "object" && String((item as Record<string, unknown>).instId ?? "") === instId
+  ) as Record<string, unknown> | undefined;
+  if (!row) throw new Error("OKX did not return the exact requested instrument " + instId);
+  const price = finiteProviderNumber(row.last);
+  const timestamp = finiteProviderNumber(row.ts);
+  if (price === undefined || price <= 0 || timestamp === undefined || timestamp <= 0) {
+    throw new Error("OKX returned an invalid or un-timestamped quote for " + instId);
+  }
+  const rawBid = finiteProviderNumber(row.bidPx);
+  const rawAsk = finiteProviderNumber(row.askPx);
+  const bid = rawBid !== undefined && rawBid > 0 ? rawBid : undefined;
+  const ask = rawAsk !== undefined && rawAsk > 0 ? rawAsk : undefined;
+  const crossedSpread = bid !== undefined && ask !== undefined && bid > ask;
+  const open24h = finiteProviderNumber(row.open24h);
+  const volume24h = finiteProviderNumber(row.vol24h);
+  return {
+    price,
+    timestamp,
+    ...(!crossedSpread && bid !== undefined ? { bid } : {}),
+    ...(!crossedSpread && ask !== undefined ? { ask } : {}),
+    ...(open24h !== undefined && open24h > 0 ? { change24h: ((price - open24h) / open24h) * 100 } : {}),
+    ...(volume24h !== undefined && volume24h >= 0 ? { volume24h } : {}),
+  };
+}
+
+async function fetchExactBinanceSpotFallback(
+  instrument: string,
+  fetchImpl: typeof fetch,
+): Promise<{ price: number; timestamp: number; bid?: number; ask?: number; change24h?: number; volume24h?: number }> {
+  const normalized = instrument.trim().toUpperCase().replace("/", "-");
+  const match = normalized.match(/^([A-Z0-9]{2,20})-USDT$/);
+  if (!match) throw new Error("Binance fallback is restricted to the exact USDT spot pair");
+  const symbol = match[1] + "USDT";
+  const response = await fetchImpl(
+    "https://api.binance.com/api/v3/ticker/24hr?symbol=" + encodeURIComponent(symbol),
+    { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4_000) },
+  );
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || String(payload.symbol ?? "") !== symbol) {
+    throw new Error("Binance exact spot fallback unavailable for " + symbol);
+  }
+  const price = finiteProviderNumber(payload.lastPrice);
+  const timestamp = finiteProviderNumber(payload.closeTime);
+  if (price === undefined || price <= 0 || timestamp === undefined || timestamp <= 0) {
+    throw new Error("Binance returned an invalid or un-timestamped exact spot quote for " + symbol);
+  }
+  const rawBid = finiteProviderNumber(payload.bidPrice);
+  const rawAsk = finiteProviderNumber(payload.askPrice);
+  const bid = rawBid !== undefined && rawBid > 0 ? rawBid : undefined;
+  const ask = rawAsk !== undefined && rawAsk > 0 ? rawAsk : undefined;
+  const crossedSpread = bid !== undefined && ask !== undefined && bid > ask;
+  const change24h = finiteProviderNumber(payload.priceChangePercent);
+  const volume24h = finiteProviderNumber(payload.volume);
+  return {
+    price,
+    timestamp,
+    ...(!crossedSpread && bid !== undefined ? { bid } : {}),
+    ...(!crossedSpread && ask !== undefined ? { ask } : {}),
+    ...(change24h !== undefined ? { change24h } : {}),
+    ...(volume24h !== undefined && volume24h >= 0 ? { volume24h } : {}),
+  };
+}
+
+async function fetchLiveQuoteUncached(
+  instrumentInput: string,
+  fetchImpl: typeof fetch,
+): Promise<LiveMarketQuoteResult> {
+  const instrument = instrumentInput.trim().toUpperCase();
+  const instrumentType = inferInstrumentType(instrument);
+  const assetClass = ["DXY", "VIX", "US10Y", "US2Y"].includes(instrument) ? "macro" : instrumentType;
+  const now = Date.now();
+
+  if (instrumentType === "crypto") {
+    const instId = normalizeLiveOkxInstrument(instrument);
+    if (!instId) {
+      return {
+        instrument, assetClass, price: 0, timestamp: now, provider: "OKX",
+        primaryProvider: "OKX", fallbackUsed: false, sourceMode: "UNAVAILABLE",
+        success: false, error: "No exact OKX instrument mapping exists; no spot or correlated substitute was used.",
+      };
+    }
+    try {
+      const quote = await fetchExactOkxLiveQuote(instId, fetchImpl);
+      return {
+        instrument, assetClass, ...quote, provider: "OKX", primaryProvider: "OKX",
+        fallbackUsed: false, sourceMode: liveQuoteFresh(quote.timestamp, now) ? "LIVE" : "STALE",
+        success: true,
+      };
+    } catch (primaryError) {
+      const primaryMessage = primaryError instanceof Error ? primaryError.message : "OKX quote unavailable";
+      // Binance fallback is allowed only for the exact USDT spot pair. Never
+      // route a perpetual or dated futures contract through a spot ticker.
+      if (!instrument.endsWith("-SWAP") && !/-[0-9]{6}$/.test(instrument) &&
+          /(?:\/|-)USDT$/.test(instrument)) {
+        try {
+          const quote = await fetchExactBinanceSpotFallback(instrument, fetchImpl);
+          return {
+            instrument, assetClass, ...quote, provider: "Binance Spot", primaryProvider: "OKX",
+            fallbackUsed: true, fallbackReason: primaryMessage,
+            sourceMode: liveQuoteFresh(quote.timestamp, now) ? "LIVE" : "STALE",
+            success: true,
+          };
+        } catch (fallbackError) {
+          const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Binance fallback unavailable";
+          return {
+            instrument, assetClass, price: 0, timestamp: now, provider: "OKX/Binance",
+            primaryProvider: "OKX", fallbackUsed: true, fallbackReason: primaryMessage,
+            sourceMode: "UNAVAILABLE", success: false,
+            error: primaryMessage + "; exact Binance fallback: " + fallbackMessage,
+          };
+        }
+      }
+      return {
+        instrument, assetClass, price: 0, timestamp: now, provider: "OKX",
+        primaryProvider: "OKX", fallbackUsed: false, sourceMode: "UNAVAILABLE",
+        success: false, error: primaryMessage,
+      };
+    }
+  }
+
+  const yahooSymbol = resolveYahooSymbol(instrumentType, instrument);
+  if (!yahooSymbol) {
+    return {
+      instrument, assetClass, price: 0, timestamp: now, provider: "Yahoo Finance",
+      primaryProvider: "Yahoo Finance", fallbackUsed: false, sourceMode: "UNAVAILABLE",
+      success: false, error: "No exact Yahoo Finance quote mapping exists for this instrument.",
+    };
+  }
+  try {
+    const quote = await fetchYahooFinanceQuote(yahooSymbol, fetchImpl);
+    return {
+      instrument, assetClass, ...quote, provider: "Yahoo Finance", primaryProvider: "Yahoo Finance",
+      fallbackUsed: false, sourceMode: liveQuoteFresh(quote.timestamp, now) ? "LIVE" : "STALE",
+      success: true,
+    };
+  } catch (error) {
+    return {
+      instrument, assetClass, price: 0, timestamp: now, provider: "Yahoo Finance",
+      primaryProvider: "Yahoo Finance", fallbackUsed: false, sourceMode: "UNAVAILABLE",
+      success: false, error: error instanceof Error ? error.message : "Yahoo Finance quote unavailable",
+    };
+  }
+}
+
+async function fetchLiveQuoteCached(
+  instrument: string,
+  fetchImpl: typeof fetch,
+): Promise<LiveMarketQuoteResult> {
+  const key = instrument.trim().toUpperCase();
+  const now = Date.now();
+  const cached = liveQuoteCache.get(key);
+  if (cached && cached.expiresAt > now) return { ...cached.value };
+  const pending = liveQuoteInflight.get(key);
+  if (pending) return { ...(await pending) };
+  const request = fetchLiveQuoteUncached(key, fetchImpl);
+  liveQuoteInflight.set(key, request);
+  try {
+    const value = await request;
+    liveQuoteCache.set(key, {
+      value,
+      expiresAt: Date.now() + (value.success ? LIVE_QUOTE_CACHE_TTL_MS : 5_000),
+    });
+    if (liveQuoteCache.size > 5000) {
+      for (const [cacheKey, entry] of liveQuoteCache) {
+        if (Date.now() >= entry.expiresAt) liveQuoteCache.delete(cacheKey);
+      }
+      while (liveQuoteCache.size > 5000) {
+        const oldestKey = liveQuoteCache.keys().next().value;
+        if (oldestKey === undefined) break;
+        liveQuoteCache.delete(oldestKey);
+      }
+    }
+    return { ...value };
+  } finally {
+    if (liveQuoteInflight.get(key) === request) liveQuoteInflight.delete(key);
+  }
+}
+
+/** Fetches exact, provider-timestamped live quotes through the backend provider fabric. */
+export async function fetchMarketQuotesBatch(
+  instruments: string[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<LiveMarketQuoteResult[]> {
+  const normalized = instruments.map((instrument) => instrument.trim().toUpperCase());
+  if (normalized.some((instrument) => !instrument || instrument.length > 80)) {
+    throw new Error("A live quote batch contains an invalid instrument");
+  }
+  return Promise.all(normalized.map((instrument) => fetchLiveQuoteCached(instrument, fetchImpl)));
 }
