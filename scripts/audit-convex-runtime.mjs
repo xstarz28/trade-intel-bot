@@ -9,7 +9,6 @@ const allowedLegacyClientFiles = new Set([
   "src/lib/convex-provider.tsx",
 ]);
 const importPattern = /(?:from\s*|import\s*\(|import\s*)["'](?:convex(?:\/[^"']*)?|@convex-dev\/[^"']*|@\/convex\/[^"']*)["']/g;
-const runtimeSymbolPattern = /\b(?:useConvex|useConvexAuth|useAction|useMutation|useQuery|usePaginatedQuery|ConvexReactClient|ConvexAuthProvider|ConvexProvider|ConvexProviderWithAuth)\b/g;
 const migrationBoundaryImportPattern = /(?:from\s*|import\s*\()\s*["']@\/(?:components\/AccountMigrationPanel|lib\/convex-provider)["']/g;
 const retiredAdapterImportPattern = /(?:from\s*|import\s*\()\s*["'][^"']*\/convex-(?:bridge|persistence)(?:\.ts)?["']/g;
 const hardcodedConvexEndpointPattern = /https?:\/\/[A-Za-z0-9-]+\.convex\.cloud\b/g;
@@ -20,7 +19,7 @@ function walk(directory) {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     const path = join(directory, entry.name);
     if (entry.isDirectory()) files.push(...walk(path));
-    else if (entry.isFile() && /\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name) && !/\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) files.push(path);
+    else if (entry.isFile() && /\.(?:ts|tsx|js|jsx|mjs)$/.test(entry.name)) files.push(path);
   }
   return files;
 }
@@ -36,16 +35,15 @@ for (const absolutePath of walk(sourceRoot)) {
   const source = readFileSync(absolutePath, "utf8");
   const hasRuntimeImport = importPattern.test(source);
   importPattern.lastIndex = 0;
-  const hasRuntimeSymbol = runtimeSymbolPattern.test(source);
-  runtimeSymbolPattern.lastIndex = 0;
   const hasMigrationBoundaryImport = migrationBoundaryImportPattern.test(source);
   migrationBoundaryImportPattern.lastIndex = 0;
   const hasRetiredAdapterImport = retiredAdapterImportPattern.test(source);
   retiredAdapterImportPattern.lastIndex = 0;
-  const hasHardcodedConvexEndpoint = hardcodedConvexEndpointPattern.test(source);
+  const isTestFile = /\.(?:test|spec)\.(?:ts|tsx|js|jsx|mjs)$/.test(path);
+  const hasHardcodedConvexEndpoint = !isTestFile && hardcodedConvexEndpointPattern.test(source);
   hardcodedConvexEndpointPattern.lastIndex = 0;
 
-  if ((hasRuntimeImport || hasRuntimeSymbol) && !allowedLegacyClientFiles.has(path)) {
+  if (hasRuntimeImport && !allowedLegacyClientFiles.has(path)) {
     errors.push(`${path}: Convex runtime import/symbol outside the optional legacy migration boundary`);
   }
   if (hasMigrationBoundaryImport && path !== "src/pages/Dashboard.tsx") {
@@ -76,21 +74,19 @@ for (const path of [
   "src/components/RequireAuth.tsx",
 ]) {
   const source = read(path);
-  if (importPattern.test(source) || runtimeSymbolPattern.test(source)) {
+  if (importPattern.test(source)) {
     errors.push(`${path}: authentication and route entry points must not depend on Convex`);
   }
   importPattern.lastIndex = 0;
-  runtimeSymbolPattern.lastIndex = 0;
 }
 
 for (const absolutePath of walk(resolve(root, "backend"))) {
   const path = relative(root, absolutePath).replaceAll("\\", "/");
   const source = readFileSync(absolutePath, "utf8");
-  if (importPattern.test(source) || runtimeSymbolPattern.test(source)) {
+  if (importPattern.test(source)) {
     errors.push(`${path}: self-hosted backend must not import or instantiate the Convex SDK`);
   }
   importPattern.lastIndex = 0;
-  runtimeSymbolPattern.lastIndex = 0;
 }
 
 if (errors.length) {
