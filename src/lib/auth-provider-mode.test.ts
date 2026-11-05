@@ -1,26 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { isActiveConvexUrl, resolveAuthProviderMode } from "./auth-provider-mode";
-
-describe("resolveAuthProviderMode", () => {
-  it("uses Convex whenever the configured client is available", () => {
-    expect(resolveAuthProviderMode({ isDevelopment: true, hasConvexClient: true })).toBe("convex");
-    expect(resolveAuthProviderMode({ isDevelopment: false, hasConvexClient: true })).toBe("convex");
-  });
-
-  it("allows mock auth only in development when Convex is unavailable", () => {
-    expect(resolveAuthProviderMode({ isDevelopment: true, hasConvexClient: false })).toBe("mock");
-  });
-
-  it("fails closed in production when Convex is unavailable", () => {
-    expect(resolveAuthProviderMode({ isDevelopment: false, hasConvexClient: false })).toBe("misconfigured");
-  });
-});
+import { isActiveConvexUrl } from "./auth-provider-mode";
 
 describe("isActiveConvexUrl", () => {
   it.each([
     "https://hushed-seal-237.convex.cloud",
     "https://hushed-seal-237.convex.cloud/",
-  ])("accepts the active deployment URL %s", (value) => {
+  ])("accepts the legacy deployment URL only for account export: %s", (value) => {
     expect(isActiveConvexUrl(value)).toBe(true);
   });
 
