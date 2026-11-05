@@ -51,6 +51,12 @@ jobs:
           ref: ${{ inputs.ref }}
           fetch-depth: 1
 
+      - name: Resolve exact checked-out deployment commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+
       - name: Package exact source revision without secrets or local build artifacts
         shell: bash
         run: |
@@ -77,7 +83,7 @@ jobs:
           scp -P "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
             -o StrictHostKeyChecking=yes -o BatchMode=yes \
             "$RUNNER_TEMP/trade-intel-release.tar.gz" \
-            "$SSH_USER@$SSH_HOST:/tmp/trade-intel-${GITHUB_SHA}.tar.gz"
+            "$SSH_USER@$SSH_HOST:/tmp/trade-intel-${DEPLOY_SHA}.tar.gz"
 
       - name: Backup database, deploy exact revision and rollback on failed health check
         shell: bash
@@ -85,7 +91,7 @@ jobs:
           set -euo pipefail
           ssh -p "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
             -o StrictHostKeyChecking=yes -o BatchMode=yes \
-            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$GITHUB_SHA' bash -s" <<'REMOTE'
+            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
           RELEASE_DIR="$APP_DIR/releases/$SHA"
           ARCHIVE="/tmp/trade-intel-$SHA.tar.gz"
