@@ -1,11 +1,18 @@
-import { mkdirSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 const source=resolve(process.env.DB_PATH??"backend/data/trade-intel.sqlite");
 const destination=process.argv[2];
 if(!destination) {
-  throw new Error("Usage: node backend/backup.mjs /absolute/path/to/backup.sqlite");
+  throw new Error("Usage: node backend/backup.mjs /absolute/path/to/backup.sqlite [--if-exists]");
+}
+if(!existsSync(source)) {
+  if(process.argv.includes("--if-exists")) {
+    console.info("No existing SQLite database to back up; fresh deployment.");
+    process.exit(0);
+  }
+  throw new Error("Source SQLite database does not exist: " + source);
 }
 const target=resolve(destination);
 if(target===source) throw new Error("Backup destination must differ from the live database.");
