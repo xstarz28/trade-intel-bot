@@ -7,13 +7,14 @@ const configured = {
   GOOGLE_CLIENT_SECRET: "gocspx-abcdefghijklmnop",
   APP_ORIGIN: "https://xstarzganaliys.com",
   PUBLIC_BASE_URL: "https://xstarzganaliys.com",
+  DOMAIN: "xstarzganaliys.com",
 };
 
 test("reports missing self-hosted OAuth variable names without values", () => {
   const result = classifyGoogleAuthConfig({});
   assert.equal(result.state, "NOT_CONFIGURED");
   assert.deepEqual(result.missing, [
-    "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APP_ORIGIN", "PUBLIC_BASE_URL",
+    "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APP_ORIGIN", "PUBLIC_BASE_URL", "DOMAIN",
   ]);
 });
 
@@ -49,6 +50,24 @@ test("requires frontend and backend origins to match for host-only cookies", () 
   });
   assert.equal(result.state, "INVALID");
   assert.ok(result.invalid.some((entry) => entry.includes("must match")));
+});
+
+test("rejects a Caddy domain that differs from the canonical application origin", () => {
+  const result = classifyGoogleAuthConfig({
+    ...configured,
+    DOMAIN: "other.example.com",
+  });
+  assert.equal(result.state, "INVALID");
+  assert.ok(result.invalid.some((entry) => entry.includes("DOMAIN must match APP_ORIGIN")));
+});
+
+test("rejects a DOMAIN value containing a URL scheme or port", () => {
+  const result = classifyGoogleAuthConfig({
+    ...configured,
+    DOMAIN: "https://xstarzganaliys.com:443",
+  });
+  assert.equal(result.state, "INVALID");
+  assert.ok(result.invalid.some((entry) => entry.includes("hostname without scheme")));
 });
 
 test("keeps INVALID precedence when required fields are also missing", () => {
