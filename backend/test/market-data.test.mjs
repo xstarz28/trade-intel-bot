@@ -646,6 +646,31 @@ describe("self-hosted live protection quote provider", () => {
     assert.equal(JSON.stringify(quote).includes(secret), false);
   });
 
+  it("does not reuse a public quote cache entry when TwelveData credentials are configured", async () => {
+    const instrument = "NZD/CHF";
+    const now = Date.now();
+    await fetchMarketQuotesBatch([instrument], async () =>
+      new Response(JSON.stringify(yahooQuotePayload(now)), {
+        status: 200, headers: { "content-type": "application/json" },
+      }));
+
+    let twelveDataCalls = 0;
+    const [quote] = await fetchMarketQuotesBatch([instrument], async (input) => {
+      twelveDataCalls += 1;
+      assert.match(String(input), /api\.twelvedata\.com\/quote/);
+      return new Response(JSON.stringify({
+        close: "0.52",
+        timestamp: String(Math.floor(now / 1000)),
+        bid: "0.5199",
+        ask: "0.5201",
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }, "test-twelve-data-secret");
+
+    assert.equal(twelveDataCalls, 1);
+    assert.equal(quote.provider, "TwelveData");
+    assert.equal(quote.price, 0.52);
+  });
+
   it("falls back to provider-timestamped Yahoo quotes when TwelveData is unavailable", async () => {
     const now = Date.now();
     const [quote] = await fetchMarketQuotesBatch(["GBP/JPY"], async (input) => {
