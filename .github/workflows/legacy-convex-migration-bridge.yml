@@ -1,0 +1,39 @@
+name: One-time legacy Convex account migration bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type ENABLE-ONE-TIME-LEGACY-EXPORT to deploy the migration-only auth redirect and account export query
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-legacy-export:
+    if: ${{ inputs.confirmation == 'ENABLE-ONE-TIME-LEGACY-EXPORT' }}
+    name: Deploy additive legacy account export bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify one-time deployment credential
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+            echo "::error::CONVEX_DEPLOY_KEY is missing. Add the legacy production deployment key only for this one-time export bridge."
+            exit 1
+          fi
+      - name: Deploy the migration-only auth redirect and user-scoped export query
+        run: npx convex deploy
