@@ -63,7 +63,7 @@ import { OkxPublicDerivativesAdapter } from "../../src/lib/data/crypto/okx-deriv
 import { TokenomistAdapter, parseTokenomistResult } from "../../src/lib/data/crypto/tokenomist-adapter";
 import { PatternPlusUnlockAdapter } from "../../src/lib/data/crypto/patternplus-unlocks-adapter";
 import { parseCoinGeckoSupplyFallback } from "../../src/lib/data/crypto/coingecko-supply";
-import { getProviderSymbol } from "../../src/lib/data/universal/instruments";
+import { getProviderSymbol, resolveInstrument } from "../../src/lib/data/universal/instruments";
 import type { TokenomicsIntelligence } from "../../src/lib/data/crypto/types";
 
 import type { DerivativesResult, OpenInterestData, FundingRateData, LongShortData, LiquidationData } from "../../src/lib/data/derivatives-types";
@@ -273,12 +273,25 @@ async function fetchCandles(
 
 function inferInstrumentType(instrumentInput: string): MarketAnalysisRequest["instrumentType"] {
   const instrument = instrumentInput.trim().toUpperCase();
-  if (instrument.endsWith("-SWAP") || /-[0-9]{6}$/.test(instrument) ||
-      /^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|AVAX|DOT|LINK|LTC|BCH|TRX|TON)[/-]/.test(instrument) ||
-      /^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|AVAX|DOT|LINK|LTC|BCH|TRX|TON)(USDT|USDC|USD|BTC|ETH)$/.test(instrument) ||
-      /\/(USDT|USDC|USD|BTC|ETH)$/.test(instrument)) return "crypto";
+  if (instrument.endsWith("-SWAP") || /-[0-9]{6}$/.test(instrument)) return "crypto";
+
+  const registered = resolveInstrument(instrument);
+  if (registered?.assetClass === "crypto") return "crypto";
+  if (registered?.assetClass === "forex") return "forex";
+  if (registered?.assetClass === "commodity") return "commodity";
+  if (registered?.assetClass === "equity") return "stock";
+  if (registered?.assetClass === "indices") return "indices";
+
+  // Resolve metals and energy before generic six-letter FX symbols (XAUUSD,
+  // for example, is a commodity and must never be routed as forex).
   if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER|COPPER|CL|NG)/.test(instrument)) return "commodity";
   if (INDEX_SYMBOLS[instrument]) return "indices";
+
+  // USD-quoted FX pairs are not crypto. Crypto USD aliases are limited to
+  // recognized base assets; USDT/USDC pairs may use any canonical ticker.
+  if (/^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|AVAX|DOT|LINK|LTC|BCH|TRX|TON)[/-](USD|USDT|USDC|BTC|ETH)$/.test(instrument) ||
+      /^[A-Z0-9]{2,20}[/-](USDT|USDC|BTC|ETH)$/.test(instrument) ||
+      /^[A-Z0-9]{2,20}(USDT|USDC)$/.test(instrument)) return "crypto";
   if (/^[A-Z]{3}\/[A-Z]{3}$/.test(instrument) || /^[A-Z]{6}$/.test(instrument)) return "forex";
   return "stock";
 }
