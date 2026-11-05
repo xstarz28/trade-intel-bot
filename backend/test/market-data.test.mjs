@@ -526,6 +526,46 @@ describe("self-hosted live protection quote provider", () => {
     assert.match(requested[0], /okx\.com\/api\/v5\/market\/ticker/);
   });
 
+  it("preserves the exact USD quote currency for BTC/USD", async () => {
+    const requested = [];
+    const now = Date.now();
+    const [quote] = await fetchMarketQuotesBatch(["BTC/USD"], async (input) => {
+      const url = String(input);
+      requested.push(url);
+      return new Response(JSON.stringify({
+        code: "0",
+        data: [{
+          instId: "BTC-USD",
+          last: "65000",
+          bidPx: "64999",
+          askPx: "65001",
+          open24h: "64000",
+          vol24h: "100",
+          ts: String(now),
+        }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    assert.equal(requested.length, 1);
+    assert.match(requested[0], /instId=BTC-USD/);
+    assert.doesNotMatch(requested[0], /BTC-USDT/);
+    assert.equal(quote.price, 65000);
+    assert.equal(quote.success, true);
+  });
+
+  it("does not substitute the 13-week T-bill series for the US 2-year yield", async () => {
+    const requested = [];
+    const [quote] = await fetchMarketQuotesBatch(["US2Y"], async (input) => {
+      requested.push(String(input));
+      throw new Error("No external request should be made for an unverified mapping");
+    });
+
+    assert.equal(requested.length, 0);
+    assert.equal(quote.success, false);
+    assert.equal(quote.sourceMode, "UNAVAILABLE");
+    assert.match(quote.error ?? "", /\^IRX 13-week T-bill series is not a valid substitute/);
+  });
+
   it("uses exact Yahoo tickers for FX, metals, equities, indices, and macro context", async () => {
     const requested = [];
     const instruments = ["EUR/USD", "XAU/USD", "AAPL", "DXY", "US10Y", "WTI"];
