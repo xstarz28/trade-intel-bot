@@ -1362,9 +1362,73 @@ async function fetchExactBinanceSpotFallback(
   };
 }
 
+const twelveDataQuoteBudget = { windowStartedAt: 0, requests: 0 };
+const TWELVE_DATA_QUOTE_WINDOW_MS = 60_000;
+const TWELVE_DATA_QUOTE_MAX_REQUESTS = 8;
+
+function reserveTwelveDataQuoteRequest(now = Date.now()): boolean {
+  if (now - twelveDataQuoteBudget.windowStartedAt >= TWELVE_DATA_QUOTE_WINDOW_MS) {
+    twelveDataQuoteBudget.windowStartedAt = now;
+    twelveDataQuoteBudget.requests = 0;
+  }
+  if (twelveDataQuoteBudget.requests >= TWELVE_DATA_QUOTE_MAX_REQUESTS) return false;
+  twelveDataQuoteBudget.requests += 1;
+  return true;
+}
+
+function normalizeTwelveDataQuoteSymbol(instrument: string): string {
+  const normalized = instrument.trim().toUpperCase().replace(/-/g, "/");
+  if (/^[A-Z]{6}$/.test(normalized)) return normalized.slice(0, 3) + "/" + normalized.slice(3);
+  if (normalized === "XAUUSD" || normalized === "GOLD") return "XAU/USD";
+  if (normalized === "XAGUSD" || normalized === "SILVER") return "XAG/USD";
+  return normalized;
+}
+
+async function fetchTwelveDataLiveQuote(
+  instrument: string,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+): Promise<{ price: number; timestamp: number; bid?: number; ask?: number; change24h?: number; volume24h?: number }> {
+  const symbol = normalizeTwelveDataQuoteSymbol(instrument);
+  const url = "https://api.twelvedata.com/quote?symbol=" + encodeURIComponent(symbol) +
+    "&apikey=" + encodeURIComponent(apiKey);
+  const response = await fetchImpl(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(6_000),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload || typeof payload !== "object" || Array.isArray(payload)) {
+    throw new Error("TwelveData quote request failed with HTTP " + response.status);
+  }
+  const row = payload as Record<string, unknown>;
+  if (row.code || row.status === "error") throw new Error("TwelveData returned an unsuccessful quote response");
+  const price = finiteProviderNumber(row.close);
+  const rawTimestamp = finiteProviderNumber(row.timestamp);
+  if (price === undefined || price <= 0 || rawTimestamp === undefined || rawTimestamp <= 0) {
+    throw new Error("TwelveData returned no valid provider-timestamped quote");
+  }
+  const timestamp = rawTimestamp < 1_000_000_000_000 ? rawTimestamp * 1000 : rawTimestamp;
+  const rawBid = finiteProviderNumber(row.bid);
+  const rawAsk = finiteProviderNumber(row.ask);
+  const bid = rawBid !== undefined && rawBid > 0 ? rawBid : undefined;
+  const ask = rawAsk !== undefined && rawAsk > 0 ? rawAsk : undefined;
+  const crossedSpread = bid !== undefined && ask !== undefined && bid > ask;
+  const change24h = finiteProviderNumber(row.percent_change ?? row.change_percent);
+  const volume24h = finiteProviderNumber(row.volume);
+  return {
+    price,
+    timestamp,
+    ...(!crossedSpread && bid !== undefined ? { bid } : {}),
+    ...(!crossedSpread && ask !== undefined ? { ask } : {}),
+    ...(change24h !== undefined ? { change24h } : {}),
+    ...(volume24h !== undefined && volume24h >= 0 ? { volume24h } : {}),
+  };
+}
+
 async function fetchLiveQuoteUncached(
   instrumentInput: string,
   fetchImpl: typeof fetch,
+  twelveDataApiKey?: string,
 ): Promise<LiveMarketQuoteResult> {
   const instrument = instrumentInput.trim().toUpperCase();
   const instrumentType = inferInstrumentType(instrument);
@@ -1419,26 +1483,74 @@ async function fetchLiveQuoteUncached(
     }
   }
 
+  let twelveDataObservation: Awaited<ReturnType<typeof fetchTwelveDataLiveQuote>> | undefined;
+  let twelveDataFailure: string | undefined;
+  const useTwelveData = (instrumentType === "forex" || instrumentType === "commodity") &&
+    Boolean(twelveDataApiKey?.trim());
+  if (useTwelveData) {
+    if (reserveTwelveDataQuoteRequest()) {
+      try {
+        twelveDataObservation = await fetchTwelveDataLiveQuote(instrument, twelveDataApiKey!.trim(), fetchImpl);
+        if (liveQuoteFresh(twelveDataObservation.timestamp, now)) {
+          return {
+            instrument, assetClass, ...twelveDataObservation, provider: "TwelveData",
+            primaryProvider: "TwelveData", fallbackUsed: false, sourceMode: "LIVE", success: true,
+          };
+        }
+        twelveDataFailure = "TwelveData returned a stale provider timestamp";
+      } catch (error) {
+        twelveDataFailure = error instanceof Error ? error.message : "TwelveData quote unavailable";
+      }
+    } else {
+      twelveDataFailure = "TwelveData per-minute quote budget exhausted";
+    }
+  }
+
   const yahooSymbol = resolveYahooSymbol(instrumentType, instrument);
   if (!yahooSymbol) {
+    if (twelveDataObservation) {
+      return {
+        instrument, assetClass, ...twelveDataObservation, provider: "TwelveData",
+        primaryProvider: "TwelveData", fallbackUsed: false, sourceMode: "STALE", success: true,
+      };
+    }
     return {
-      instrument, assetClass, price: 0, timestamp: now, provider: "Yahoo Finance",
-      primaryProvider: "Yahoo Finance", fallbackUsed: false, sourceMode: "UNAVAILABLE",
-      success: false, error: "No exact Yahoo Finance quote mapping exists for this instrument.",
+      instrument, assetClass, price: 0, timestamp: now, provider: useTwelveData ? "TwelveData" : "Yahoo Finance",
+      primaryProvider: useTwelveData ? "TwelveData" : "Yahoo Finance", fallbackUsed: false, sourceMode: "UNAVAILABLE",
+      success: false, error: "No exact provider quote mapping exists for this instrument.",
     };
   }
   try {
     const quote = await fetchYahooFinanceQuote(yahooSymbol, fetchImpl);
+    if (twelveDataObservation && twelveDataObservation.timestamp > quote.timestamp) {
+      return {
+        instrument, assetClass, ...twelveDataObservation, provider: "TwelveData",
+        primaryProvider: "TwelveData", fallbackUsed: false, sourceMode: "STALE", success: true,
+      };
+    }
     return {
-      instrument, assetClass, ...quote, provider: "Yahoo Finance", primaryProvider: "Yahoo Finance",
-      fallbackUsed: false, sourceMode: liveQuoteFresh(quote.timestamp, now) ? "LIVE" : "STALE",
+      instrument, assetClass, ...quote, provider: "Yahoo Finance",
+      primaryProvider: useTwelveData ? "TwelveData" : "Yahoo Finance",
+      fallbackUsed: Boolean(useTwelveData),
+      ...(twelveDataFailure ? { fallbackReason: twelveDataFailure } : {}),
+      sourceMode: liveQuoteFresh(quote.timestamp, now) ? "LIVE" : "STALE",
       success: true,
     };
   } catch (error) {
+    if (twelveDataObservation) {
+      return {
+        instrument, assetClass, ...twelveDataObservation, provider: "TwelveData",
+        primaryProvider: "TwelveData", fallbackUsed: false, sourceMode: "STALE", success: true,
+      };
+    }
+    const yahooFailure = error instanceof Error ? error.message : "Yahoo Finance quote unavailable";
     return {
-      instrument, assetClass, price: 0, timestamp: now, provider: "Yahoo Finance",
-      primaryProvider: "Yahoo Finance", fallbackUsed: false, sourceMode: "UNAVAILABLE",
-      success: false, error: error instanceof Error ? error.message : "Yahoo Finance quote unavailable",
+      instrument, assetClass, price: 0, timestamp: now, provider: useTwelveData ? "TwelveData/Yahoo Finance" : "Yahoo Finance",
+      primaryProvider: useTwelveData ? "TwelveData" : "Yahoo Finance",
+      fallbackUsed: Boolean(useTwelveData),
+      ...(twelveDataFailure ? { fallbackReason: twelveDataFailure } : {}),
+      sourceMode: "UNAVAILABLE", success: false,
+      error: twelveDataFailure ? twelveDataFailure + "; Yahoo Finance: " + yahooFailure : yahooFailure,
     };
   }
 }
@@ -1446,6 +1558,7 @@ async function fetchLiveQuoteUncached(
 async function fetchLiveQuoteCached(
   instrument: string,
   fetchImpl: typeof fetch,
+  twelveDataApiKey?: string,
 ): Promise<LiveMarketQuoteResult> {
   const key = instrument.trim().toUpperCase();
   const now = Date.now();
@@ -1453,7 +1566,7 @@ async function fetchLiveQuoteCached(
   if (cached && cached.expiresAt > now) return { ...cached.value };
   const pending = liveQuoteInflight.get(key);
   if (pending) return { ...(await pending) };
-  const request = fetchLiveQuoteUncached(key, fetchImpl);
+  const request = fetchLiveQuoteUncached(key, fetchImpl, twelveDataApiKey);
   liveQuoteInflight.set(key, request);
   try {
     const value = await request;
@@ -1481,10 +1594,11 @@ async function fetchLiveQuoteCached(
 export async function fetchMarketQuotesBatch(
   instruments: string[],
   fetchImpl: typeof fetch = fetch,
+  twelveDataApiKey?: string,
 ): Promise<LiveMarketQuoteResult[]> {
   const normalized = instruments.map((instrument) => instrument.trim().toUpperCase());
   if (normalized.some((instrument) => !instrument || instrument.length > 80)) {
     throw new Error("A live quote batch contains an invalid instrument");
   }
-  return Promise.all(normalized.map((instrument) => fetchLiveQuoteCached(instrument, fetchImpl)));
+  return Promise.all(normalized.map((instrument) => fetchLiveQuoteCached(instrument, fetchImpl, twelveDataApiKey)));
 }
