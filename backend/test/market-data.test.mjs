@@ -359,7 +359,8 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.data.liquidations.totalVolume, 150);
     const coinGlassRequests = requested.filter((url) => url.startsWith("https://open-api-v4.coinglass.com/api/"));
     assert.equal(coinGlassRequests.length, 4);
-    assert.ok(coinGlassRequests.every((url) => new URL(url).searchParams.get("symbol") === "BTC"));
+    assert.ok(coinGlassRequests.filter((url) => !url.includes("global-long-short")).every((url) => new URL(url).searchParams.get("symbol") === "BTC"));
+    assert.equal(new URL(coinGlassRequests.find((url) => url.includes("global-long-short"))).searchParams.get("symbol"), "BTCUSDT");
   });
 
   it("does not request DeFiLlama data for unsupported instruments", async () => {
