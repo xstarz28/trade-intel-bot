@@ -1,89 +1,17 @@
-name: Production deploy
+name: Retired - Convex production deploy
 
-# Convex production deployment is owner-controlled and must never run as a side effect of merging code.
 on:
   workflow_dispatch:
-    inputs:
-      ref:
-        description: "Branch, tag or SHA to deploy"
-        required: false
-        type: string
-      confirm:
-        description: "Type DEPLOY_PROD to confirm a manual production deploy"
-        required: false
-        type: string
 
 permissions:
   contents: read
 
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
 jobs:
-  deploy:
-    name: Deploy Convex production
+  retired:
+    name: Convex production deployment is retired
     runs-on: ubuntu-latest
-    timeout-minutes: 25
-    environment: production
-    env:
-      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
-      CONVEX_DEPLOYMENT: ${{ vars.CONVEX_DEPLOYMENT }}
-      VITE_CONVEX_URL: ${{ vars.VITE_CONVEX_URL }}
-      XSTARZ_DEPLOYMENT_ENV: ${{ vars.XSTARZ_DEPLOYMENT_ENV }}
     steps:
-      - name: Require confirmation for manual deploys
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+      - name: Refuse legacy deployment
         run: |
-          if [ "${{ inputs.confirm }}" != "DEPLOY_PROD" ]; then
-            echo "::error::Manual production deploy requires DEPLOY_PROD."
-            exit 1
-          fi
-
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ inputs.ref || github.ref }}
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps --no-audit --no-fund
-
-      - name: Verify production identity
-        env:
-          EXPECTED_DEPLOYMENT: prod:xstarz-production:xstarz-analysis
-          EXPECTED_URL: https://hushed-seal-237.convex.cloud
-        run: |
-          set -euo pipefail
-          test -n "${CONVEX_DEPLOY_KEY:-}" || { echo "::error::CONVEX_DEPLOY_KEY missing"; exit 1; }
-          test "${CONVEX_DEPLOYMENT:-}" = "${EXPECTED_DEPLOYMENT}" || { echo "::error::Wrong CONVEX_DEPLOYMENT"; exit 1; }
-          test "${VITE_CONVEX_URL:-}" = "${EXPECTED_URL}" || { echo "::error::Wrong VITE_CONVEX_URL"; exit 1; }
-
-      - name: Set production site URL
-        run: |
-          set -euo pipefail
-          npx convex env set SITE_URL 'https://xstarzanalysis.vercel.app'
-
-      - name: Sync optional provider credentials to Convex production
-        env:
-          COINGLASS_API_KEY: ${{ secrets.COINGLASS_API_KEY }}
-          TOKENOMIST_API_KEY: ${{ secrets.TOKENOMIST_API_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -n "${COINGLASS_API_KEY:-}" ]; then
-            npx convex env set COINGLASS_API_KEY "$COINGLASS_API_KEY"
-            echo "::notice::CoinGlass API key synchronized to Convex production."
-          else
-            echo "::warning::COINGLASS_API_KEY GitHub Actions secret is missing; CoinGlass will remain unavailable until configured."
-          fi
-          if [ -n "${TOKENOMIST_API_KEY:-}" ]; then
-            npx convex env set TOKENOMIST_API_KEY "$TOKENOMIST_API_KEY"
-            echo "::notice::Tokenomist API key synchronized to Convex production."
-          else
-            echo "::warning::TOKENOMIST_API_KEY GitHub Actions secret is missing; Tokenomist will remain unavailable until configured."
-          fi
-
-      - name: Build and deploy backend
-        run: npx convex deploy --yes --typecheck disable --cmd "npm run build" --cmd-url-env-var-name VITE_CONVEX_URL
+          echo "::error::Convex production deployment is retired. Deploy only through the self-hosted backend after host, secrets, backup and DNS acceptance are configured."
+          exit 1
