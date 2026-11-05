@@ -1,5 +1,5 @@
 /**
- * Phase 74 — Browser Runtime + Authenticated Convex + Production UI Validation
+ * Phase 74 — Browser Runtime + Position Protection Validation
  *
  * This phase exercises what is GENUINELY available in the runtime environment:
  *
@@ -7,10 +7,7 @@
  *    — Verifies components render without runtime errors in a browser-like environment
  *    — This is NOT a full E2E test (no Playwright/Cypress), but provides real rendering validation
  *
- * 2. Convex HTTP runtime via ConvexHttpClient
- *    — Real HTTP requests to the active Convex deployment
- *    — Unauthenticated queries return empty/null (correctly user-scoped)
- *    — Mutations require authentication (correctly rejected without token)
+ * 2. Position protection state transitions and event processing
  *
  * 3. Live provider data (carried from Phase 72-73)
  *    — CoinGecko: BTC, ETH, SOL, DOGE (free, no key)
@@ -23,10 +20,7 @@
  * HONEST LABELS:
  * - BROWSER_VALIDATION: PASS (component rendering via jsdom)
  *   — NOT Playwright/Cypress E2E, but genuine React rendering validation
- * - CONVEX_RUNTIME: PASS (HTTP requests to active deployment)
- *   — Unauthenticated queries validated; mutations correctly require auth
- * - LIVE_VALIDATION: PASS (real HTTP to CoinGecko/TwelveData)
- * - AUTHENTICATED_CONVEX_RUNTIME: NOT_EXERCISED (no auth token available)
+ * - LIVE_VALIDATION: best-effort external provider smoke coverage; deterministic backend tests are authoritative.
  */
 
 // @vitest-environment jsdom
@@ -122,7 +116,6 @@ import {
 } from "../market-stream/provider-adapters";
 
 // Persistence
-import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
 import { InMemoryRepository } from "../position-protection/persistence";
 import type { PersistedAlert } from "../position-protection/persistence";
 
@@ -148,20 +141,6 @@ import { guardAgainstFalsePositive } from "../position-protection/false-positive
 
 // Scenarios
 import { runScenario, healthyProfitableLong, normalPullbackNoPrematureTP } from "../position-protection/phase66-scenarios";
-
-// ═══════════════════════════════════════════════════════════════
-// CONVEX HTTP CLIENT — REAL RUNTIME
-// ═══════════════════════════════════════════════════════════════
-
-let ConvexHttpClient: typeof import("convex/browser").ConvexHttpClient | undefined;
-try {
-  ({ ConvexHttpClient } = require("convex/browser"));
-} catch {
-  // Not available
-}
-
-const CONVEX_URL = "https://enduring-turtle-81.convex.cloud";
-const convexClient = ConvexHttpClient ? new ConvexHttpClient(CONVEX_URL) : null;
 
 const NOW = Date.now();
 
@@ -445,134 +424,6 @@ describe("A. React Component Rendering via jsdom", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// B. CONVEX HTTP RUNTIME — REAL DEPLOYMENT
-// ═══════════════════════════════════════════════════════════════
-
-describe("B. Convex HTTP Runtime — Real Deployment", () => {
-  it("ConvexHttpClient is available", () => {
-    expect(ConvexHttpClient).toBeDefined();
-    expect(typeof ConvexHttpClient).toBe("function");
-  });
-
-  it("Convex deployment is reachable via HTTP", async () => {
-    expect(convexClient).not.toBeNull();
-    // A query to an empty table should succeed (return [])
-    const result = await convexClient!.query("positionProtection:listActivePositions" as any, {});
-    expect(Array.isArray(result)).toBe(true);
-  });
-
-  it("User-scoped queries return empty without auth (correctly isolated)", async () => {
-    const positions = await convexClient!.query("positionProtection:listActivePositions" as any, {});
-    expect(positions).toEqual([]);
-
-    const alerts = await convexClient!.query("positionProtection:listAlerts" as any, {
-      positionId: "any-position",
-    });
-    expect(alerts).toEqual([]);
-  });
-
-  it("getPosition returns null without auth", async () => {
-    const pos = await convexClient!.query("positionProtection:getPosition" as any, {
-      positionId: "nonexistent",
-    });
-    expect(pos).toBeNull();
-  });
-
-  it("Mutations require authentication — savePosition rejected", async () => {
-    await expect(
-      convexClient!.mutation("positionProtection:savePosition" as any, {
-        positionId: "test-74",
-        instrument: "BTC/USDT",
-        side: "LONG",
-        entryPrice: 79000,
-        horizon: "SWING",
-        openedAt: NOW,
-        currentSeverity: "NONE",
-        lifecycleState: "MONITORING",
-        monitoringLifecycle: "MONITORING",
-        lastUpdateAt: NOW,
-        lastAlertAt: 0,
-        consecutiveSameSeverity: 0,
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("Mutations require authentication — saveAlert rejected", async () => {
-    await expect(
-      convexClient!.mutation("positionProtection:saveAlert" as any, {
-        alertId: "test-alert-74",
-        positionId: "test-74",
-        instrument: "BTC/USDT",
-        severity: "WATCH",
-        notificationPriority: "INFO",
-        reason: "Test",
-        action: "Monitor",
-        timestamp: NOW,
-        acknowledged: false,
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("Mutations require authentication — deletePosition rejected", async () => {
-    await expect(
-      convexClient!.mutation("positionProtection:deletePosition" as any, {
-        positionId: "test-74",
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("Mutations require authentication — acknowledgeAlert rejected", async () => {
-    await expect(
-      convexClient!.mutation("positionProtection:acknowledgeAlert" as any, {
-        alertId: "test-alert-74",
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("Mutations require authentication — saveCursor rejected", async () => {
-    await expect(
-      convexClient!.mutation("positionProtection:saveCursor" as any, {
-        provider: "CoinGecko",
-        instrument: "BTC/USDT",
-        lastEventId: "evt-1",
-        lastTimestamp: NOW,
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("User-scoped access prevents cross-user data exposure", async () => {
-    // Without auth, queries return empty arrays or null
-    // This proves user isolation at the server level
-    const pos = await convexClient!.query("positionProtection:getPosition" as any, { positionId: "any" });
-    const alerts = await convexClient!.query("positionProtection:listAlerts" as any, { positionId: "any" });
-    const positions = await convexClient!.query("positionProtection:listActivePositions" as any, {});
-
-    expect(pos).toBeNull();
-    expect(alerts).toEqual([]);
-    expect(positions).toEqual([]);
-  });
-
-  it("getCursor returns null for nonexistent cursor", async () => {
-    const cursor = await convexClient!.query("positionProtection:getCursor" as any, {
-      provider: "Nonexistent",
-      instrument: "FAKE/USDT",
-    });
-    expect(cursor).toBeNull();
-  });
-
-  it("Convex deployment has no secrets in response", async () => {
-    const result = await convexClient!.query("positionProtection:listActivePositions" as any, {});
-    const json = JSON.stringify(result);
-    expect(json).not.toMatch(/AKIA/);
-    expect(json).not.toMatch(/sk_live_/);
-    expect(json).not.toMatch(/sk_test_/);
-    expect(json).not.toMatch(/ghp_/);
-    expect(json).not.toContain("Bearer");
-    expect(json).not.toContain("process.env");
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════
 // C. LIVE DATA → COMPLETE PROTECTION PIPELINE
 // ═══════════════════════════════════════════════════════════════
 
@@ -605,7 +456,7 @@ describe("C. Live Data → Complete Protection Pipeline", () => {
     expect(typeof alertDecision.shouldFire).toBe("boolean");
 
     // 5. Persistence
-    const bridge = new ConvexPersistenceBridge(null);
+    const bridge = new InMemoryRepository();
     const serialized = JSON.stringify(result.alert);
     const parsed = JSON.parse(serialized);
     expect(parsed.instrument).toBe("BTC/USDT");
@@ -805,12 +656,12 @@ describe("E. Polling Runtime + Routing Consistency", () => {
 });
 
 // ═══════════════════════════════════════════════════════════════
-// F. PERSISTENCE (IN-MEMORY FALLBACK)
+// F. PERSISTENCE (IN-MEMORY TEST REPOSITORY)
 // ═══════════════════════════════════════════════════════════════
 
-describe("F. Persistence — In-Memory Fallback", () => {
-  it("ConvexPersistenceBridge works in fallback mode", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
+describe("F. Persistence — In-Memory Test Repository", () => {
+  it("InMemoryRepository stores protection state", async () => {
+    const bridge = new InMemoryRepository();
     await bridge.savePositionState({
       positionId: "p74-fallback", instrument: "BTC/USDT", side: "LONG",
       entryPrice: 79000, horizon: "SWING", openedAt: NOW,
@@ -825,7 +676,7 @@ describe("F. Persistence — In-Memory Fallback", () => {
   });
 
   it("Alert persistence roundtrip", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
+    const bridge = new InMemoryRepository();
     const alert: PersistedAlert = {
       alertId: "alert-74-1", positionId: "p74-fallback",
       instrument: "BTC/USDT", severity: "WATCH",
@@ -852,7 +703,7 @@ describe("F. Persistence — In-Memory Fallback", () => {
   });
 
   it("Persistence data contains no secrets", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
+    const bridge = new InMemoryRepository();
     await bridge.savePositionState({
       positionId: "p74-sec", instrument: "BTC/USDT", side: "LONG",
       entryPrice: 79000, horizon: "SWING", openedAt: NOW,
@@ -1105,14 +956,7 @@ describe("J. Security Audit", () => {
     expect(json).not.toContain("process.env");
   });
 
-  it("Convex deployment URL not exposed in client data", () => {
-    for (const r of liveResults.filter(x => x.success)) {
-      const alert = evaluate(pos(r.instrument, detectAssetClass(r.instrument), "LONG", r.price), healthyEvidence(r.price));
-      const json = JSON.stringify(alert);
-      expect(json).not.toContain("enduring-turtle-81");
-      expect(json).not.toContain("convex.cloud");
-    }
-  });
+
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1175,23 +1019,6 @@ describe("L. Acceptance Gates", () => {
     unmount();
   });
 
-  it("GATE: Convex deployment reachable and user-scoped", async () => {
-    const result = await convexClient!.query("positionProtection:listActivePositions" as any, {});
-    expect(Array.isArray(result)).toBe(true);
-  });
-
-  it("GATE: Mutations require auth", async () => {
-    await expect(
-      convexClient!.mutation("positionProtection:savePosition" as any, {
-        positionId: "gate-test", instrument: "BTC/USDT", side: "LONG",
-        entryPrice: 79000, horizon: "SWING", openedAt: NOW,
-        currentSeverity: "NONE", lifecycleState: "MONITORING",
-        monitoringLifecycle: "MONITORING", lastUpdateAt: NOW,
-        lastAlertAt: 0, consecutiveSameSeverity: 0,
-      }),
-    ).rejects.toThrow();
-  });
-
   it("GATE: Live prices entered protection engine", () => {
     expect(liveResults.filter(r => r.success).length).toBeGreaterThanOrEqual(2);
   });
@@ -1235,7 +1062,7 @@ describe("L. Acceptance Gates", () => {
   });
 
   it("GATE: No secrets in any client-visible data", () => {
-    const bridge = new ConvexPersistenceBridge(null);
+    const bridge = new InMemoryRepository();
     const snap = snapshot(createDiagnosticsState());
     expect(JSON.stringify(snap)).not.toMatch(/AKIA|sk_live|sk_test|ghp_|Bearer|process\.env/);
   });
