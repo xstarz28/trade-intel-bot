@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -284,6 +284,41 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(stale.success, false);
     assert.match(stale.error, /FX_RATE_STALE/);
     assert.equal(stale.direct, undefined);
+  });
+
+  it("fetches CoinGlass derivatives through backend-owned credentials and normalizes real datasets", async () => {
+    const requested = [];
+    const fetchImpl = async (input) => {
+      const url = String(input);
+      requested.push(url);
+      const payload = url.includes("open-interest")
+        ? { code: "0", data: [{ exchange: "All", open_interest_usd: "1000000", open_interest_change_percent_1h: "2.5", open_interest_change_percent_24h: "4" }] }
+        : url.includes("funding-rate")
+          ? { code: "0", data: [{ symbol: "BTC", stablecoin_margin_list: [{ exchange: "Binance", funding_rate: "0.01", funding_rate_interval: 8 }] }] }
+          : url.includes("global-long-short")
+            ? { code: "0", data: [{ global_account_long_short_ratio: "1.2" }] }
+            : { code: "0", data: [{ aggregated_long_liquidation_usd: "100", aggregated_short_liquidation_usd: "50" }] };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const result = await fetchCryptoDerivatives("BTC/USDT", "server-only-test-key", fetchImpl);
+    assert.equal(result.success, true);
+    assert.equal(result.data.provider, "coinglass");
+    assert.equal(result.data.openInterest.current, 1_000_000);
+    assert.equal(result.data.fundingRate.currentRate, 0.0001);
+    assert.equal(result.data.longShort.accountRatio, 1.2);
+    assert.equal(result.data.liquidations.totalVolume, 150);
+    assert.equal(requested.length, 4);
+    assert.ok(requested.every((url) => url.startsWith("https://open-api-v4.coinglass.com/api/")));
+  });
+
+  it("does not request DeFiLlama data for unsupported instruments", async () => {
+    let called = false;
+    const result = await fetchCryptoFundamentals("AAPL", async () => {
+      called = true;
+      throw new Error("unsupported instruments must not trigger provider calls");
+    });
+    assert.equal(result.success, false);
+    assert.equal(called, false);
   });
 
   it("fetches only exact OKX instrument metadata and rejects mismatched contract rows", async () => {
