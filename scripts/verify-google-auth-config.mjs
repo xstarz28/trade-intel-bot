@@ -65,7 +65,7 @@ export function classifyGoogleAuthConfig(env = process.env) {
   }
 
   const domain = env.DOMAIN?.trim().toLowerCase() ?? "";
-  if (domain && !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$/.test(domain)) {
+  if (domain && !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/.test(domain)) {
     invalid.push("DOMAIN must be a hostname without scheme, path, port, or credentials");
   }
   if (domain && appOrigin && domain !== appOrigin.hostname.toLowerCase()) {
