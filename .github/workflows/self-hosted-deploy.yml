@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: self-hosted-production-deploy
@@ -32,6 +33,7 @@ jobs:
       SSH_PRIVATE_KEY: ${{ secrets.SELF_HOSTED_SSH_PRIVATE_KEY }}
       SSH_KNOWN_HOSTS: ${{ secrets.SELF_HOSTED_SSH_KNOWN_HOSTS }}
       CONFIRM_DEPLOY: ${{ inputs.confirm }}
+      GH_TOKEN: ${{ github.token }}
       SSH_PORT: ${{ vars.SELF_HOSTED_SSH_PORT || '22' }}
       APP_DIR: ${{ vars.SELF_HOSTED_APP_DIR || '/opt/trade-intel' }}
     steps:
@@ -59,6 +61,29 @@ jobs:
           test -z "$(git status --porcelain)" || { echo "::error::Refusing to deploy a dirty source checkout."; exit 1; }
           echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
           echo "DEPLOY_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
+      - name: Require successful CI for the exact deployment commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs="$(curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$DEPLOY_SHA&per_page=100")"
+          for required in "CI" "Backend Foundation CI"; do
+            latest="$(printf '%s' "$runs" | jq -c --arg name "$required" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last // empty')"
+            if [ -z "$latest" ]; then
+              echo "::error::No '$required' workflow run exists for $DEPLOY_SHA."
+              exit 1
+            fi
+            status="$(printf '%s' "$latest" | jq -r '.status')"
+            conclusion="$(printf '%s' "$latest" | jq -r '.conclusion // empty')"
+            if [ "$status" != "completed" ] || [ "$conclusion" != "success" ]; then
+              echo "::error::'$required' is not green for $DEPLOY_SHA (status=$status, conclusion=${conclusion:-pending})."
+              exit 1
+            fi
+            echo "'$required' passed for $DEPLOY_SHA."
+          done
 
       - name: Package exact source revision without secrets or local build artifacts
         shell: bash
