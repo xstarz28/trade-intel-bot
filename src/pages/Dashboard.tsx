@@ -996,7 +996,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchIntelligence, fetchDerivatives, fetchDeFiLlamaFundamentals, updateStep, riskSizingInputs, t],
+    [updateStep, riskSizingInputs, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
