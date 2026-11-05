@@ -2683,12 +2683,12 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
   if (macro && macro.confidence !== "unavailable") {
     parts.push(`Macro context (${macro.confidence} confidence): ${macro.summary}`);
     if (actualDxy) {
-      parts.push("USD strength context: ACTUAL DXY price data in use (Twelve Data) \u2014 news-derived proxy redundant and excluded from scoring.");
+      parts.push(`USD strength context: ACTUAL DXY price data in use (${actualDxyProvider}) — news-derived proxy redundant and excluded from scoring.`);
     } else if (macro.dxyTrend && (input.instrumentType === "forex" || input.instrumentType === "commodity")) {
       parts.push(`USD strength context: ${macro.dxyTrend} (NEWS-derived proxy, not actual DXY price data).`);
     }
   } else if (actualDxy) {
-    parts.push("USD strength context: ACTUAL DXY price data in use (Twelve Data) \u2014 news-derived proxy redundant and excluded from scoring.");
+    parts.push(`USD strength context: ACTUAL DXY price data in use (${actualDxyProvider}) — news-derived proxy redundant and excluded from scoring.`);
   }
 
   // Honest unavailability notes for asset classes without real providers.
