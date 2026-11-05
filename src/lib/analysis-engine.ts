@@ -2671,6 +2671,9 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     input.technicalData?.crossAsset?.available === true &&
     input.technicalData.crossAsset.dataKind === "actual_price" &&
     /DXY/i.test(input.technicalData.crossAsset.comparatorSymbol);
+  const actualDxyProvider = actualDxy
+    ? input.technicalData?.crossAsset?.provider?.trim() || "verified market-data provider"
+    : "";
   if (macro && macro.confidence !== "unavailable") {
     parts.push(`Macro context (${macro.confidence} confidence): ${macro.summary}`);
     if (actualDxy) {
