@@ -4,7 +4,7 @@
  * Abstract storage interface for position monitoring state, alerts,
  * and event cursors. Storage-agnostic — core engine remains decoupled.
  *
- * Future Convex integration should implement this interface.
+ * The self-hosted backend adapter implements durable persistence; core engine state remains storage-agnostic.
  */
 
 import type { AlertSeverity, MonitoringState } from "./types";
