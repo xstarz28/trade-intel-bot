@@ -633,22 +633,22 @@ export function PositionProtectionDashboard() {
         if (backendData) {
           // Reconstruct authoritative timeline from backend
           const persistedSnapshots: PersistedSnapshot[] = [];
-          if (convData.latestSnapshot) persistedSnapshots.push(convData.latestSnapshot);
-          if (convData.previousSnapshot) persistedSnapshots.push(convData.previousSnapshot);
-          const persistedEvents: PersistedEvent[] = convData.events ?? [];
-          const convTimeline = reconstructTimeline(persistedSnapshots, persistedEvents);
+          if (backendData.latestSnapshot) persistedSnapshots.push(backendData.latestSnapshot);
+          if (backendData.previousSnapshot) persistedSnapshots.push(backendData.previousSnapshot);
+          const persistedEvents: PersistedEvent[] = backendData.events ?? [];
+          const backendTimeline = reconstructTimeline(persistedSnapshots, persistedEvents);
 
           // Merge: local optimistic + backend authoritative
-          const mergedLatest = mergeSnapshots(localTimeline.latestSnapshot, convTimeline.latestSnapshot);
-          const mergedPrevious = mergeSnapshots(localTimeline.previousSnapshot, convTimeline.previousSnapshot);
-          const mergedEvents = mergeTimelineEvents(localTimeline.events, convTimeline.events);
+          const mergedLatest = mergeSnapshots(localTimeline.latestSnapshot, backendTimeline.latestSnapshot);
+          const mergedPrevious = mergeSnapshots(localTimeline.previousSnapshot, backendTimeline.previousSnapshot);
+          const mergedEvents = mergeTimelineEvents(localTimeline.events, backendTimeline.events);
 
           next.set(posId, {
             positionId: posId,
             latestSnapshot: mergedLatest,
             previousSnapshot: mergedPrevious,
             events: mergedEvents,
-            summary: localTimeline.summary ?? convTimeline.summary,
+            summary: localTimeline.summary ?? backendTimeline.summary,
           });
         } else {
           // No backend data yet — use local optimistic timeline
