@@ -99,6 +99,7 @@ jobs:
           sha256sum "$RUNNER_TEMP/trade-intel-release.tar.gz"
 
       - name: Configure pinned SSH transport
+        id: configure_ssh
         shell: bash
         run: |
           set -euo pipefail
@@ -225,7 +226,7 @@ jobs:
             "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' rm -f '$APP_DIR/shared/rollback-$DEPLOY_SHA'"
 
       - name: Roll back release if public HTTPS verification fails
-        if: failure() && env.CONFIRM_DEPLOY == 'DEPLOY_SELF_HOSTED' && env.SSH_HOST != '' && env.SSH_USER != '' && env.SSH_PRIVATE_KEY != '' && env.SSH_KNOWN_HOSTS != ''
+        if: failure() && steps.configure_ssh.outcome == 'success' && env.CONFIRM_DEPLOY == 'DEPLOY_SELF_HOSTED'
         shell: bash
         run: |
           set -euo pipefail
