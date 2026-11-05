@@ -1,7 +1,7 @@
 /**
  * Phase 80 — OHLCV Data Hook
  *
- * Fetches real OHLCV candle data from the Convex fetchOHLCVCandles action.
+ * Fetches real OHLCV candle data through the authenticated self-hosted backend API.
  * Maintains per-instrument candle history for M5/M15/H1 analysis.
  *
  * Rate-limit safe: staggered fetching, deduplication, bounded history.
