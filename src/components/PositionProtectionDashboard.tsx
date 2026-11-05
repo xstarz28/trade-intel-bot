@@ -503,7 +503,8 @@ export function PositionProtectionDashboard() {
 
   // ─── Self-hosted historical timeline reads ──
   const positionIds = useMemo(() => positions.map(p => p.position.positionId), [positions]);
-  const [convTimelines, setConvTimelines] = useState<Map<string, any>>(new Map());
+  const [backendTimelines, setBackendTimelines] = useState<Map<string, any>>(new Map());
+  const visibleBackendTimelines = positionIds.length > 0 ? backendTimelines : new Map<string, any>();
 
   useEffect(() => {
     let cancelled = false;
@@ -517,10 +518,9 @@ export function PositionProtectionDashboard() {
           next.set(ids[index], result.value);
         }
       });
-      setConvTimelines(next);
+      setBackendTimelines(next);
     };
     if (positionIds.length > 0) void loadTimelines();
-    else setConvTimelines(new Map());
     const interval = window.setInterval(() => {
       if (positionIds.length > 0) void loadTimelines();
     }, 30_000);
@@ -551,7 +551,7 @@ export function PositionProtectionDashboard() {
   const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
   const healthSnapshot = useMemo(() => buildSnapshotFromBuffer(healthBufferRef.current, Date.now()), [intelligenceMap]);
 
-  // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
+  // ─── Phase 91: Build Historical Timelines (backend-first merge) ──
   useEffect(() => {
     if (intelligenceMap.size === 0) return;
 
@@ -588,7 +588,7 @@ export function PositionProtectionDashboard() {
         const lastId = lastPersistedRef.current.get(posId) ?? null;
         const stale = isSnapshotStale(snapshot, lastId);
 
-        // Persist meaningful changes to Convex (fire-and-forget)
+        // Persist meaningful changes to the self-hosted backend (fire-and-forget)
         if (decision.shouldPersistSnapshot && !stale) {
           lastPersistedRef.current.set(posId, snapshotIdentity(snapshot));
           saveBackendHistoricalSnapshot(snapshotToArgs(snapshot) as unknown as Record<string, unknown>).then(() => {
@@ -628,17 +628,17 @@ export function PositionProtectionDashboard() {
         // Phase 91: Build local timeline (optimistic layer)
         const localTimeline = buildTimeline(existing, snapshot);
 
-        // Phase 91: Merge with Convex data if available
-        const convData = convTimelines.get(posId);
-        if (convData) {
-          // Reconstruct authoritative timeline from Convex
+        // Phase 91: Merge with backend data if available
+        const backendData = visibleBackendTimelines.get(posId);
+        if (backendData) {
+          // Reconstruct authoritative timeline from backend
           const persistedSnapshots: PersistedSnapshot[] = [];
           if (convData.latestSnapshot) persistedSnapshots.push(convData.latestSnapshot);
           if (convData.previousSnapshot) persistedSnapshots.push(convData.previousSnapshot);
           const persistedEvents: PersistedEvent[] = convData.events ?? [];
           const convTimeline = reconstructTimeline(persistedSnapshots, persistedEvents);
 
-          // Merge: local optimistic + Convex authoritative
+          // Merge: local optimistic + backend authoritative
           const mergedLatest = mergeSnapshots(localTimeline.latestSnapshot, convTimeline.latestSnapshot);
           const mergedPrevious = mergeSnapshots(localTimeline.previousSnapshot, convTimeline.previousSnapshot);
           const mergedEvents = mergeTimelineEvents(localTimeline.events, convTimeline.events);
@@ -651,13 +651,13 @@ export function PositionProtectionDashboard() {
             summary: localTimeline.summary ?? convTimeline.summary,
           });
         } else {
-          // No Convex data yet — use local optimistic timeline
+          // No backend data yet — use local optimistic timeline
           next.set(posId, localTimeline);
         }
       }
       return next;
     });
-  }, [intelligenceMap, convTimelines]);
+  }, [intelligenceMap, visibleBackendTimelines]);
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ────────────
 
@@ -665,7 +665,7 @@ export function PositionProtectionDashboard() {
     if (intelligenceMap.size === 0) return;
     if (!alertRules || alertRules.length === 0) return;
 
-    // Cast Convex records to AlertRule[] (scope/type fields are stored as strings)
+    // Cast backend records to AlertRule[] (scope/type fields are stored as strings)
     const typedRules = alertRules as unknown as import("@/lib/position-protection/alert-rule-engine").AlertRule[];
 
     const now = Date.now();
@@ -713,7 +713,7 @@ export function PositionProtectionDashboard() {
       message: `${typedRules.length} rules evaluated, ${result.notifications.length} notifications generated`,
     });
 
-    // Persist notifications to Convex (fire-and-forget, rate-limit safe)
+    // Persist notifications to backend (fire-and-forget, rate-limit safe)
     for (const notif of result.notifications) {
       createBackendNotification({
         notificationId: notif.notificationId,
