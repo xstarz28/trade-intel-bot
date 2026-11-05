@@ -256,6 +256,14 @@ describe("self-hosted backend", () => {
         assert.ok(setCookie);
         const cookiePair = setCookie.split(";")[0];
 
+        const repeatedSignIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookiePair },
+        });
+        assert.equal(repeatedSignIn.status, 200);
+        assert.equal((await repeatedSignIn.json()).user.id, signedIn.user.id);
+        assert.equal(database.raw.prepare("SELECT COUNT(*) AS count FROM users").get().count, 1);
+
         const session = await fetch(`${baseUrl}/api/v1/auth/session`, {
           headers: { Origin: env.APP_ORIGIN, Cookie: cookiePair },
         });
