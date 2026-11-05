@@ -510,11 +510,6 @@ export function PositionProtectionDashboard() {
   const positionIds = useMemo(() => positions.map(p => p.position.positionId), [positions]);
   type BackendTimeline = Awaited<ReturnType<typeof getBackendHistoricalTimeline>>;
   const [backendTimelines, setBackendTimelines] = useState<Map<string, BackendTimeline>>(new Map());
-  const visibleBackendTimelines = useMemo(
-    () => positionIds.length > 0 ? backendTimelines : new Map<string, BackendTimeline>(),
-    [positionIds.length, backendTimelines],
-  );
-
   useEffect(() => {
     let cancelled = false;
     const loadTimelines = async () => {
@@ -638,7 +633,7 @@ export function PositionProtectionDashboard() {
         const localTimeline = buildTimeline(existing, snapshot);
 
         // Phase 91: Merge with backend data if available
-        const backendData = visibleBackendTimelines.get(posId);
+        const backendData = positionIds.length > 0 ? backendTimelines.get(posId) : undefined;
         if (backendData) {
           // Reconstruct authoritative timeline from backend
           const persistedSnapshots: PersistedSnapshot[] = [];
