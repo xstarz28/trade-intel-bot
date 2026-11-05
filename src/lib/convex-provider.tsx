@@ -1,5 +1,6 @@
 import React, { useMemo } from "react";
-import { ConvexAuthProvider, ConvexReactClient } from "convex/react";
+import { ConvexReactClient } from "convex/react";
+import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { isActiveConvexUrl } from "@/lib/auth-provider-mode";
 import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 
