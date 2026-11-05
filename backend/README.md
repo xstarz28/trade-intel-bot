@@ -78,7 +78,7 @@ No managed cloud database or application-hosting subscription is required. Publi
 5. From `backend/`, run:
 
 ```sh
-docker compose up --build -d
+docker compose -p trade-intel up --build -d
 ```
 
 The Node service listens only inside the Docker network. Caddy obtains and renews the HTTPS certificate and forwards requests to the application. The same hostname serves both the frontend and `/api/v1/*`; no separate API subdomain or cross-origin cookie configuration is needed.
