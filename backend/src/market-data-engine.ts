@@ -262,6 +262,57 @@ async function fetchCandles(
   return fetchYahooFinanceCandles(symbol,timeframe,count,fetchImpl);
 }
 
+
+function inferInstrumentType(instrumentInput: string): MarketAnalysisRequest["instrumentType"] {
+  const instrument = instrumentInput.trim().toUpperCase();
+  if (instrument.endsWith("-SWAP") || /-[0-9]{6}$/.test(instrument) ||
+      /^(BTC|ETH|SOL|XRP|BNB|ADA|DOGE|AVAX|DOT|LINK|LTC|BCH|TRX|TON)[/-]/.test(instrument) ||
+      /\/(USDT|USDC|USD|BTC|ETH)$/.test(instrument)) return "crypto";
+  if (/^[A-Z]{3}\/[A-Z]{3}$/.test(instrument) || /^[A-Z]{6}$/.test(instrument)) return "forex";
+  if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER|CL|NG)/.test(instrument)) return "commodity";
+  if (INDEX_SYMBOLS[instrument]) return "indices";
+  return "stock";
+}
+
+/** Fetches a bounded batch of real OHLCV candles through the backend provider fabric. */
+export async function fetchMarketCandlesBatch(
+  instruments: string[],
+  timeframes: string[],
+  outputsize: number,
+  fetchImpl: typeof fetch = fetch,
+) {
+  const okx = new OkxSpotMarketAdapter(fetchImpl);
+  const requests = instruments.flatMap((instrument) => timeframes.map((timeframe) => ({ instrument, timeframe })));
+  return Promise.all(requests.map(async ({ instrument, timeframe }) => {
+    try {
+      const instrumentType = inferInstrumentType(instrument);
+      const candles = await fetchCandles({
+        instrument: instrument.trim().toUpperCase(),
+        instrumentType,
+        timeframe: timeframe.trim().toUpperCase(),
+      }, timeframe.trim().toUpperCase(), Math.min(300, Math.max(20, Math.floor(outputsize))), okx, fetchImpl);
+      return {
+        instrument: instrument.trim().toUpperCase(),
+        timeframe: timeframe.trim().toUpperCase(),
+        success: true,
+        candles,
+        provider: instrumentType === "crypto"
+          ? (instrument.toUpperCase().endsWith("-SWAP") ? "OKX perpetual" :
+             /-[0-9]{6}$/.test(instrument.toUpperCase()) ? "OKX dated futures" : "OKX spot")
+          : "Yahoo Finance",
+      };
+    } catch (error) {
+      return {
+        instrument: instrument.trim().toUpperCase(),
+        timeframe: timeframe.trim().toUpperCase(),
+        success: false,
+        candles: [],
+        error: error instanceof Error ? error.message : "OHLCV provider request failed",
+      };
+    }
+  }));
+}
+
 async function calculate(request:MarketAnalysisRequest,fetchImpl:typeof fetch):Promise<MarketAnalysisResult> {
   const symbol=request.instrument.trim().toUpperCase();
   const now=Date.now();
