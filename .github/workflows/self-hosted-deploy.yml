@@ -154,7 +154,7 @@ jobs:
             docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" run --rm --no-deps api \
               node backend/backup.mjs "/data/backups/predeploy-$SHA.sqlite" --if-exists
           fi
-          printf '%s\\n' "$PREVIOUS" > "$ROLLBACK_FILE"
+          printf '%s\n' "$PREVIOUS" > "$ROLLBACK_FILE"
           chmod 600 "$ROLLBACK_FILE"
 
           ln -sfn "$RELEASE_DIR" "$APP_DIR/current.next"
@@ -216,8 +216,16 @@ jobs:
           echo "::error::Host deployment completed, but xstarzganaliys.com is not publicly healthy. Check DNS, firewall ports 80/443 and Caddy logs."
           exit 1
 
+      - name: Clear successful deployment rollback marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' rm -f '$APP_DIR/shared/rollback-$DEPLOY_SHA'"
+
       - name: Roll back release if public HTTPS verification fails
-        if: failure()
+        if: failure() && env.CONFIRM_DEPLOY == 'DEPLOY_SELF_HOSTED' && env.SSH_HOST != '' && env.SSH_USER != '' && env.SSH_PRIVATE_KEY != '' && env.SSH_KNOWN_HOSTS != ''
         shell: bash
         run: |
           set -euo pipefail
