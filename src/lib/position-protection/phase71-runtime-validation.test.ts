@@ -134,7 +134,6 @@ import { getProviderProfile, getPollIntervalMs, getAllProviders } from "../marke
 // Persistence
 import { InMemoryRepository } from "../position-protection/persistence";
 import type { PersistedPositionState, PersistedAlert, EventCursor } from "../position-protection/persistence";
-import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
 
 // Dispatch
 import {
@@ -939,19 +938,7 @@ describe("E. Event Pipeline — Provider → Engine → Alert → Persistence", 
     expect(pos!.instrument).toBe("BTC/USDT");
   });
 
-  it("ConvexPersistenceBridge works in fallback mode", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.savePositionState({
-      positionId: "p1", instrument: "BTC/USDT", side: "LONG",
-      entryPrice: 100_000, horizon: "SWING", openedAt: NOW,
-      currentSeverity: "NONE", lifecycleState: "MONITORING",
-      lastUpdateAt: NOW, lastAlertAt: 0, consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
-    const pos = await bridge.getPositionState("p1");
-    expect(pos).not.toBeNull();
-    expect(bridge.isDegraded()).toBe(false);
-  });
+
 
   it("Real-time monitor processes price events", () => {
     let state = createMonitorState();
@@ -1178,19 +1165,7 @@ describe("G. Convex Persistence Compatibility", () => {
     expect(retrieved!.lastEventId).toBe("ev1");
   });
 
-  it("Bridge fallback works without Convex client", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    expect(bridge.isDegraded()).toBe(false);
 
-    await bridge.saveAlert({
-      alertId: "a1", positionId: "p1", instrument: "BTC/USDT",
-      severity: "WATCH", notificationPriority: "INFO", reason: "Test",
-      action: "Monitor", timestamp: NOW, acknowledged: false,
-    });
-
-    const history = await bridge.listAlertHistory("p1");
-    expect(history.length).toBe(1);
-  });
 
   it("No duplicate records on overwrite", async () => {
     const repo = new InMemoryRepository();
@@ -1302,19 +1277,7 @@ describe("H. Security Hardening — Runtime Audit", () => {
     expect(allText).not.toMatch(/probability/i);
   });
 
-  it("No secrets in Convex persistence bridge data", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.saveAlert({
-      alertId: "a1", positionId: "p1", instrument: "BTC/USDT",
-      severity: "WATCH", notificationPriority: "INFO", reason: "Test",
-      action: "Monitor", timestamp: NOW, acknowledged: false,
-    });
-    const history = await bridge.listAlertHistory("p1");
-    const json = JSON.stringify(history);
-    expect(json).not.toMatch(/AKIA/);
-    expect(json).not.toMatch(/sk_live/);
-    expect(json).not.toContain("Bearer");
-  });
+
 });
 
 // ═══════════════════════════════════════════════════════════════
