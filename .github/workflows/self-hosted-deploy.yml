@@ -133,11 +133,21 @@ jobs:
             echo "Missing $APP_DIR/shared/backend.env; configure the production environment file once on the host."
             exit 1
           }
+          chmod 600 "$APP_DIR/shared/backend.env"
           tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
           test "$(cat "$RELEASE_DIR/.deploy-commit")" = "$SHA"
           test "$(cat "$RELEASE_DIR/.deploy-epoch")" = "$EPOCH"
           [[ "$EPOCH" =~ ^[0-9]+$ ]]
           ln -sfn "$APP_DIR/shared/backend.env" "$RELEASE_DIR/backend/.env"
+
+          # Build and validate the exact release before switching the live symlink.
+          # This keeps the previous release serving traffic if OAuth or compose config is invalid.
+          cd "$RELEASE_DIR/backend"
+          docker compose -p trade-intel config --quiet
+          XSTARZ_BUILD_COMMIT="$SHA" XSTARZ_BUILD_REF="$SHA" \
+            XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$EPOCH" \
+            docker compose -p trade-intel build api
+          docker compose -p trade-intel run --rm --no-deps api node scripts/verify-google-auth-config.mjs
 
           if [ -n "$PREVIOUS" ]; then
             docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" run --rm --no-deps api \
@@ -147,9 +157,7 @@ jobs:
           ln -sfn "$RELEASE_DIR" "$APP_DIR/current.next"
           mv -Tf "$APP_DIR/current.next" "$APP_DIR/current"
           cd "$APP_DIR/current/backend"
-          if ! XSTARZ_BUILD_COMMIT="$SHA" XSTARZ_BUILD_REF="$SHA" \
-              XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$EPOCH" \
-              docker compose -p trade-intel up --build -d --remove-orphans; then
+          if ! docker compose -p trade-intel up -d --remove-orphans; then
             if [ -n "$PREVIOUS" ]; then
               PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
               PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
