@@ -358,6 +358,37 @@ describe("scoreFundamentals (via breakdown)", () => {
     expect(result.fundamentalSummary).not.toContain("(Twelve Data)");
   });
 
+  it("does not treat a DXY futures proxy as the cash dollar index", () => {
+    const macroData = {
+      provider: "test", timestamp: Date.now(),
+      indicators: [{ name: "context", relevance: "low" as const, sentiment: "neutral" as const }],
+      summary: "test", confidence: "medium" as const, dxyTrend: "rising" as const,
+    };
+    const result = runAnalysis(baseInput({
+      instrumentType: "forex",
+      instrument: "EUR/USD",
+      macroData,
+      technicalData: {
+        crossAsset: {
+          comparatorSymbol: "DXY futures proxy (DX=F)",
+          providerSymbol: "DX=F",
+          timeframe: "D1",
+          available: true,
+          correlation: -0.82,
+          sampleSize: 40,
+          directionalContext: "inverse",
+          comparatorMomentum: "up",
+          dataKind: "actual_price",
+          provider: "yahoo-finance-public",
+        },
+      } as AnalysisInput["technicalData"],
+    }));
+
+    expect(result.breakdown.fundamental).toBe(-1);
+    expect(result.fundamentalSummary).toContain("DXY futures proxy");
+    expect(result.fundamentalSummary).not.toContain("ACTUAL DXY price data in use");
+  });
+
   it("scores -1 for dovish forex news", () => {
     const result = runAnalysis(
       baseInput({
