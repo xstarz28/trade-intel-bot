@@ -286,6 +286,33 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(stale.direct, undefined);
   });
 
+  it("analyzes literal OKX perpetual and dated futures contracts without spot substitution", async () => {
+    for (const instrument of ["BTC-USDT-SWAP", "BTC-USDT-261225"]) {
+      const now = Date.now();
+      const requested = [];
+      const fetchImpl = async (input) => {
+        const url = String(input);
+        requested.push(url);
+        if (url.includes("/api/v5/market/candles")) {
+          const rows = okxCandles(now).map((c) => [
+            String(c[0]), c[1], c[2], c[3], c[4], c[5], "0", "0", "1",
+          ]);
+          return new Response(JSON.stringify({ code: "0", data: rows }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ code: "51001", msg: "instrument not found" }), { status: 404 });
+      };
+      const result = await analyzeMarket({
+        instrument, instrumentType: "crypto", timeframe: "H1",
+      }, fetchImpl);
+      assert.equal(result.success, true, instrument);
+      assert.equal(result.data.instrument, instrument);
+      assert.equal(result.data.provider, instrument.endsWith("-SWAP") ? "okx-perpetual-public" : "okx-dated-futures-public");
+      assert.equal(result.data.candles.length, 210);
+      assert.ok(requested.some((url) => url.includes("instId=" + encodeURIComponent(instrument))));
+      assert.ok(requested.every((url) => !url.includes("BTC-USDT&")));
+    }
+  });
+
   it("fetches CoinGlass derivatives through backend-owned credentials and normalizes real datasets", async () => {
     const requested = [];
     const fetchImpl = async (input) => {
