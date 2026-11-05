@@ -25,6 +25,23 @@ jobs:
       - name: Validate GitHub Actions workflow YAML
         run: |
           ruby -ryaml -e 'ARGV.each { |path| YAML.parse_file(path); puts "Valid YAML: #{path}" }' .github/workflows/*.yml
+      - name: Syntax-check self-hosted deployment shell steps
+        run: |
+          ruby -ryaml -rtempfile -ropen3 -e '
+            workflow = YAML.load_file(".github/workflows/self-hosted-deploy.yml")
+            workflow.fetch("jobs").each do |job_name, job|
+              job.fetch("steps", []).each_with_index do |step, index|
+                source = step["run"]
+                next unless source
+                Tempfile.create(["self-hosted-deploy-step", ".sh"]) do |file|
+                  file.write(source)
+                  file.flush
+                  _stdout, stderr, status = Open3.capture3("bash", "-n", file.path)
+                  abort("#{job_name} step #{step["name"] || index}: #{stderr}") unless status.success?
+                end
+              end
+            end
+          '
       - name: Enforce Convex-independent application runtime
         run: npm run audit:convex-runtime
 
