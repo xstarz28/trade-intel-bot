@@ -822,6 +822,33 @@ export function fetchBackendFxRate(from: string, to: string, fetchImpl?: typeof 
   }, fetchImpl);
 }
 
+export interface BackendLiveQuoteResult {
+  instrument: string;
+  assetClass: string;
+  price: number;
+  bid?: number;
+  ask?: number;
+  change24h?: number;
+  volume24h?: number;
+  timestamp: number;
+  provider: string;
+  primaryProvider: string;
+  fallbackUsed: boolean;
+  fallbackReason?: string;
+  sourceMode: "LIVE" | "STALE" | "UNAVAILABLE";
+  success: boolean;
+  error?: string;
+}
+
+/** Fetches provider-timestamped live quotes through the authenticated self-hosted backend. */
+export function fetchBackendLiveProtectionQuotes(instruments: string[], fetchImpl?: typeof fetch) {
+  return backendRequest<{ results: BackendLiveQuoteResult[] }>(
+    "/api/v1/market-data/quotes",
+    { method: "POST", body: JSON.stringify({ instruments }) },
+    fetchImpl,
+  ).then((result) => result.results);
+}
+
 /** Fetches real OHLCV candles through the self-hosted provider fabric. */
 export function fetchBackendCandles(input: {
   instruments: string[];
