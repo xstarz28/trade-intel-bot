@@ -167,7 +167,7 @@ function resolveAlphaVantageNewsQuery(
       : "financial_markets";
     return { params: { topics: topic }, relatedSymbol: "" };
   }
-  const topic = /DXY|USD|US\\d+Y|FED|RATE|YIELD/.test(symbol)
+  const topic = /DXY|USD|US\d+Y|FED|RATE|YIELD/.test(symbol)
     ? "economy_monetary"
     : /DEFICIT|BUDGET|TAX/.test(symbol)
       ? "economy_fiscal"
