@@ -88,6 +88,9 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
       "/api/v1/intelligence/treasury",
       "/api/v1/intelligence/fx-rate",
       "/api/v1/intelligence/calendar",
+      "/api/v1/intelligence/alpha-vantage",
+      "/api/v1/intelligence/derivatives",
+      "/api/v1/intelligence/defi-fundamentals",
       "/api/v1/intelligence/okx-spec",
       "/api/v1/intelligence/okx-orderbook",
       "/api/v1/intelligence/okx-futures-open-interest",
@@ -128,6 +131,28 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
           result=await engine.fetchEiaInventory(env.EIA_API_KEY,fetchImpl);
         } else if(url.pathname==="/api/v1/intelligence/treasury") {
           result=await engine.fetchTreasuryYields(fetchImpl);
+        } else if(url.pathname==="/api/v1/intelligence/alpha-vantage") {
+          const instrument=typeof input.instrument==="string"?input.instrument.trim().toUpperCase():"";
+          const instrumentType=typeof input.instrumentType==="string"?input.instrumentType.trim():"";
+          if(!/^[A-Z0-9.-]{1,15}$/.test(instrument)||instrumentType!=="stock") {
+            json(response,400,{success:false,error:"unsupported_alpha_vantage_instrument"});
+            return true;
+          }
+          result=await engine.fetchAlphaVantageIntelligence(instrument,env.ALPHA_VANTAGE_API_KEY,fetchImpl);
+        } else if(url.pathname==="/api/v1/intelligence/derivatives") {
+          const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
+          if(!instrument||instrument.length>80) {
+            json(response,400,{success:false,error:"invalid_instrument"});
+            return true;
+          }
+          result=await engine.fetchCryptoDerivatives(instrument,env.COINGLASS_API_KEY,fetchImpl);
+        } else if(url.pathname==="/api/v1/intelligence/defi-fundamentals") {
+          const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
+          if(!instrument||instrument.length>80) {
+            json(response,400,{success:false,error:"invalid_instrument"});
+            return true;
+          }
+          result=await engine.fetchCryptoFundamentals(instrument,fetchImpl);
         } else if(url.pathname==="/api/v1/intelligence/calendar") {
           const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
           const instrumentType=typeof input.instrumentType==="string"?input.instrumentType.trim():"";
