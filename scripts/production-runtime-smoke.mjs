@@ -2,11 +2,12 @@ import { chromium } from "playwright";
 import { access } from "node:fs/promises";
 import { extractForecastStatus } from "./forecast-contract-validation.mjs";
 
-const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzanalysis.vercel.app";
+const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzganaliys.com";
 const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
 
-if (!/^https:\/\/xstarzanalysis\.vercel\.app\/?$/i.test(url)) {
-  throw new Error(`Refusing non-official runtime target; only https://xstarzanalysis.vercel.app is allowed: ${url}`);
+const targetUrl = new URL(url);
+if (targetUrl.origin !== "https://xstarzganaliys.com" || !["", "/"].includes(targetUrl.pathname) || targetUrl.search || targetUrl.hash) {
+  throw new Error(`Refusing non-canonical runtime target; only https://xstarzganaliys.com is allowed: ${url}`);
 }
 
 const browser = await chromium.launch({ headless: true });
