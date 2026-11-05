@@ -412,6 +412,7 @@ describe("self-hosted backend", () => {
         for (let attempt = 0; attempt < 21; attempt += 1) {
           responses.push(await fetch(`${baseUrl}/api/v1/auth/google`, {
             headers: { Accept: "application/json" },
+            redirect: "manual",
           }));
         }
 
