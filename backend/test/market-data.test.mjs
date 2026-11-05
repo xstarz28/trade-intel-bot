@@ -568,7 +568,7 @@ describe("self-hosted live protection quote provider", () => {
 
   it("uses exact Yahoo tickers for FX, metals, equities, indices, and macro context", async () => {
     const requested = [];
-    const instruments = ["EUR/USD", "XAU/USD", "AAPL", "DXY", "US10Y", "WTI"];
+    const instruments = ["EUR/USD", "XAU/USD", "AAPL", "DXY", "US10Y", "US100", "WTI"];
     const results = await fetchMarketQuotesBatch(instruments, async (input) => {
       const url = new URL(String(input));
       requested.push(decodeURIComponent(url.pathname.split("/").pop() ?? ""));
@@ -577,15 +577,28 @@ describe("self-hosted live protection quote provider", () => {
       });
     });
 
-    assert.deepEqual(requested.sort(), ["EURUSD=X", "XAUUSD=X", "AAPL", "DX-Y.NYB", "^TNX", "CL=F"].sort());
+    assert.deepEqual(requested.sort(), ["EURUSD=X", "XAUUSD=X", "AAPL", "DX-Y.NYB", "^TNX", "^NDX", "CL=F"].sort());
     assert.deepEqual(results.map((item) => item.instrument), instruments);
     assert.equal(results[0].assetClass, "forex");
     assert.equal(results[1].assetClass, "commodity");
     assert.equal(results[2].assetClass, "stock");
     assert.equal(results[3].assetClass, "macro");
     assert.equal(results[4].assetClass, "macro");
-    assert.equal(results[5].assetClass, "commodity");
+    assert.equal(results[5].assetClass, "indices");
+    assert.equal(results[6].assetClass, "commodity");
     assert.ok(results.every((item) => item.success && item.sourceMode === "LIVE"));
+  });
+
+  it("fails closed for the unverified US 2-year yield ticker", async () => {
+    let providerCalled = false;
+    const [quote] = await fetchMarketQuotesBatch(["US2Y"], async () => {
+      providerCalled = true;
+      throw new Error("An unverified macro ticker must not reach a provider.");
+    });
+    assert.equal(quote.success, false);
+    assert.equal(quote.assetClass, "macro");
+    assert.equal(quote.sourceMode, "UNAVAILABLE");
+    assert.equal(providerCalled, false);
   });
 
   it("marks provider observations stale from the provider timestamp and rejects unsupported symbols", async () => {
