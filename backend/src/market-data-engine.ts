@@ -1600,5 +1600,12 @@ export async function fetchMarketQuotesBatch(
   if (normalized.some((instrument) => !instrument || instrument.length > 80)) {
     throw new Error("A live quote batch contains an invalid instrument");
   }
-  return Promise.all(normalized.map((instrument) => fetchLiveQuoteCached(instrument, fetchImpl, twelveDataApiKey)));
+  const results: LiveMarketQuoteResult[] = [];
+  for (let offset = 0; offset < normalized.length; offset += 8) {
+    const batch = normalized.slice(offset, offset + 8);
+    results.push(...await Promise.all(batch.map((instrument) =>
+      fetchLiveQuoteCached(instrument, fetchImpl, twelveDataApiKey)
+    )));
+  }
+  return results;
 }
