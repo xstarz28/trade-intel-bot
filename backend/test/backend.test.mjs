@@ -559,7 +559,7 @@ describe("self-hosted backend", () => {
     const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
     try {
       await withServer(database, async (baseUrl) => {
-        for (const path of ["/api/v1/intelligence/cot", "/api/v1/intelligence/eia", "/api/v1/intelligence/treasury", "/api/v1/intelligence/fx-rate", "/api/v1/intelligence/okx-spec", "/api/v1/intelligence/okx-orderbook", "/api/v1/intelligence/okx-futures-open-interest"]) {
+        for (const path of ["/api/v1/intelligence/cot", "/api/v1/intelligence/eia", "/api/v1/intelligence/treasury", "/api/v1/intelligence/fx-rate", "/api/v1/intelligence/okx-spec", "/api/v1/intelligence/okx-orderbook", "/api/v1/intelligence/okx-futures-open-interest", "/api/v1/intelligence/alpha-vantage", "/api/v1/intelligence/derivatives", "/api/v1/intelligence/defi-fundamentals"]) {
           const response = await fetch(baseUrl + path, {
             method: "POST",
             headers: { Origin: env.APP_ORIGIN, "Content-Type": "application/json" },
