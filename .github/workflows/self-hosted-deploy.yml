@@ -128,6 +128,7 @@ jobs:
           RELEASE_DIR="$APP_DIR/releases/$SHA"
           ARCHIVE="/tmp/trade-intel-$SHA.tar.gz"
           PREVIOUS="$(readlink -f "$APP_DIR/current" 2>/dev/null || true)"
+          ROLLBACK_FILE="$APP_DIR/shared/rollback-$SHA"
           mkdir -p "$RELEASE_DIR" "$APP_DIR/shared"
           test -f "$APP_DIR/shared/backend.env" || {
             echo "Missing $APP_DIR/shared/backend.env; configure the production environment file once on the host."
@@ -153,6 +154,8 @@ jobs:
             docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" run --rm --no-deps api \
               node backend/backup.mjs "/data/backups/predeploy-$SHA.sqlite" --if-exists
           fi
+          printf '%s\\n' "$PREVIOUS" > "$ROLLBACK_FILE"
+          chmod 600 "$ROLLBACK_FILE"
 
           ln -sfn "$RELEASE_DIR" "$APP_DIR/current.next"
           mv -Tf "$APP_DIR/current.next" "$APP_DIR/current"
@@ -212,3 +215,55 @@ jobs:
           done
           echo "::error::Host deployment completed, but xstarzganaliys.com is not publicly healthy. Check DNS, firewall ports 80/443 and Caddy logs."
           exit 1
+
+      - name: Roll back release if public HTTPS verification fails
+        if: failure()
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          ROLLBACK_FILE="$APP_DIR/shared/rollback-$SHA"
+          if [ ! -f "$ROLLBACK_FILE" ]; then
+            echo "No pending release rollback marker; no production symlink was switched."
+            exit 0
+          fi
+          PREVIOUS="$(cat "$ROLLBACK_FILE")"
+          CURRENT="$(readlink -f "$APP_DIR/current" 2>/dev/null || true)"
+          RELEASE="$APP_DIR/releases/$SHA"
+          if [ "$CURRENT" != "$RELEASE" ]; then
+            rm -f "$ROLLBACK_FILE"
+            echo "The failed deployment already rolled back or never switched the live release."
+            exit 0
+          fi
+          if [ -z "$PREVIOUS" ] || [ ! -d "$PREVIOUS" ]; then
+            echo "::warning::No previous self-hosted release exists; automatic rollback is unavailable for this first cutover."
+            rm -f "$ROLLBACK_FILE"
+            exit 0
+          fi
+          PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
+          PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
+          ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
+          mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
+          cd "$APP_DIR/current/backend"
+          XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA" \
+            XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH" \
+            docker compose -p trade-intel up --build -d --remove-orphans
+          healthy=false
+          for attempt in $(seq 1 30); do
+            if docker compose -p trade-intel exec -T api node -e \
+              "fetch('http://127.0.0.1:8787/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              healthy=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$healthy" != true ]; then
+            echo "::error::Previous release was restored but failed its readiness check."
+            exit 1
+          fi
+          rm -f "$ROLLBACK_FILE"
+          echo "Previous self-hosted release $PREVIOUS_SHA restored and healthy."
+          REMOTE
