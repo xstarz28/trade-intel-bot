@@ -275,17 +275,17 @@ function inferInstrumentType(instrumentInput: string): MarketAnalysisRequest["in
   const instrument = instrumentInput.trim().toUpperCase();
   if (instrument.endsWith("-SWAP") || /-[0-9]{6}$/.test(instrument)) return "crypto";
 
+  // Explicit metal/energy aliases take precedence over generic six-letter
+  // currency-pair heuristics (XAUUSD is a commodity, not forex).
+  if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER|COPPER|CL|NG)/.test(instrument)) return "commodity";
+  if (INDEX_SYMBOLS[instrument]) return "indices";
+
   const registered = resolveInstrument(instrument);
   if (registered?.assetClass === "crypto") return "crypto";
   if (registered?.assetClass === "forex") return "forex";
   if (registered?.assetClass === "commodity") return "commodity";
   if (registered?.assetClass === "equity") return "stock";
   if (registered?.assetClass === "indices") return "indices";
-
-  // Resolve metals and energy before generic six-letter FX symbols (XAUUSD,
-  // for example, is a commodity and must never be routed as forex).
-  if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER|COPPER|CL|NG)/.test(instrument)) return "commodity";
-  if (INDEX_SYMBOLS[instrument]) return "indices";
 
   // USD-quoted FX pairs are not crypto. Crypto USD aliases are limited to
   // recognized base assets; USDT/USDC pairs may use any canonical ticker.
