@@ -46,5 +46,12 @@ jobs:
             echo "::error::CONVEX_DEPLOY_KEY is missing. Add the legacy production deployment key only for this one-time export bridge."
             exit 1
           fi
+          case "$CONVEX_DEPLOY_KEY" in
+            prod:*) ;;
+            *)
+              echo "::error::The legacy export bridge requires a production Convex deployment key; refusing to deploy to a development deployment."
+              exit 1
+              ;;
+          esac
       - name: Deploy the migration-only auth redirect and user-scoped export query
         run: npx convex deploy
