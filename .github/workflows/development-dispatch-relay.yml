@@ -1,155 +1,18 @@
-# Phase 309 — the dispatch RELAY.
-#
-# WHY THIS EXISTS
-# ---------------
-# The repository's automation identity may call `repository dispatch` but is
-# refused `workflow dispatch` (HTTP 403 on /dispatches, proven live in phase
-# 309). The development deploy and runtime smoke workflows are deliberately
-# workflow_dispatch-only bodies — a deploy or a smoke is a DECISION, never a
-# side effect. This relay preserves that property while making the decision
-# dispatchable by the automation identity:
-#
-# · It receives a repository_dispatch event whose `event_type` names the
-#   target workflow and whose `client_payload` carries the SAME inputs the
-#   manual dispatch would carry.
-# · It re-issues the call as a REAL `gh workflow run` (workflow_dispatch) from
-#   the default branch, using the runner's GITHUB_TOKEN with `actions: write`.
-# · It invents NOTHING: every `-f` flag is copied verbatim from the payload;
-#   flags the payload omits are not sent at all (the target workflow's own
-#   defaults then apply, exactly as with a manual dispatch).
-# · The target workflows gate their jobs to `workflow_dispatch`, so a
-#   repository dispatch event can never run a deploy or a smoke directly —
-#   only this relay's explicit re-issue can.
-# · It never targets production: there is no production relay type, and the
-#   deploy workflow's own guard still refuses anything not pinned to the
-#   development source branch and unconfirmed with DEPLOY_DEV.
-#
-# CREDENTIALS: only the runner's own GITHUB_TOKEN (actions: write, scoped to
-# this repository). No deploy keys, no provider secrets.
-
-name: Development dispatch relay
+name: Retired - Convex development dispatch relay
 
 on:
   repository_dispatch:
-    types:
-      - development-deploy-relay
-      - development-auth-verify-relay
-      - development-publish-frontend-relay
-      - development-runtime-smoke-relay
-      - production-deploy-relay
+    types: [development-deploy]
 
 permissions:
   contents: read
-  actions: write
-
-concurrency:
-  group: development-dispatch-relay
-  cancel-in-progress: false
 
 jobs:
-  relay:
-    name: Re-issue the dispatch as an explicit workflow_dispatch
+  retired:
+    name: Legacy Convex dispatch is retired
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Relay to the requested workflow
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # The relay job checks nothing out, so gh cannot infer the repository
-          # from a git remote — pin it explicitly.
-          GH_REPO: ${{ github.repository }}
-          EVENT_TYPE: ${{ github.event.action }}
-          PAYLOAD_JSON: ${{ toJSON(github.event.client_payload) }}
+      - name: Refuse legacy dispatch
         run: |
-          set -euo pipefail
-          echo "event_type=${EVENT_TYPE}"
-          echo "payload=${PAYLOAD_JSON}"
-
-          # payload field: `jq -r --arg k KEY '.[$k] // empty'` — empty stays
-          # empty and is NOT forwarded (the target workflow's own defaults
-          # apply, byte-for-byte the semantics of a manual dispatch).
-          field() {
-            jq -r --arg k "$1" '.[$k] // empty' <<<"${PAYLOAD_JSON}"
-          }
-
-          case "${EVENT_TYPE}" in
-            development-deploy-relay)
-              REF="$(field ref)"
-              CONFIRM="$(field confirm)"
-              if [ -z "${REF}" ] || [ -z "${CONFIRM}" ]; then
-                echo "::error::relay refused: both ref and confirm are required"
-                exit 1
-              fi
-              if [ "${CONFIRM}" != "DEPLOY_DEV" ]; then
-                echo "::error::relay refused: confirm must be exactly DEPLOY_DEV"
-                exit 1
-              fi
-              gh workflow run development-deploy.yml --ref main -f "ref=${REF}" -f "confirm=${CONFIRM}"
-              echo "relayed: development-deploy.yml (ref=${REF})"
-              ;;
-            development-runtime-smoke-relay)
-              REF="$(field ref)"
-              ARGS=(--ref main)
-              [ -n "${REF}" ] && ARGS+=(-f "ref=${REF}")
-              for KEY in domains max_attempts exact_instruments probe_limit pacing_window_ms pacing_limit pacing_max_wait_ms target_url; do
-                VALUE="$(field "${KEY}")"
-                if [ -n "${VALUE}" ]; then
-                  ARGS+=(-f "${KEY}=${VALUE}")
-                fi
-              done
-              gh workflow run development-runtime-smoke.yml "${ARGS[@]}"
-              echo "relayed: development-runtime-smoke.yml ${ARGS[*]}"
-              ;;
-            development-auth-verify-relay)
-              REF="$(field ref)"
-              ARGS=(--ref main)
-              [ -n "${REF}" ] && ARGS+=(-f "ref=${REF}")
-              gh workflow run development-auth-verify.yml "${ARGS[@]}"
-              echo "relayed: development-auth-verify.yml ${ARGS[*]}"
-              ;;
-            production-deploy-relay)
-              # Production re-issue, added for the owner-directed production
-              # activation. Still a DECISION: the payload must carry the exact
-              # confirm token and the source ref; the production workflow's own
-              # guard remains the authority on what may be deployed.
-              REF="$(field ref)"
-              CONFIRM="$(field confirm)"
-              if [ -z "${REF}" ] || [ -z "${CONFIRM}" ]; then
-                echo "::error::relay refused: both ref and confirm are required"
-                exit 1
-              fi
-              if [ "${CONFIRM}" != "DEPLOY_PROD" ]; then
-                echo "::error::relay refused: confirm must be exactly DEPLOY_PROD"
-                exit 1
-              fi
-              gh workflow run production-deploy.yml --ref main -f "ref=${REF}" -f "confirm=${CONFIRM}"
-              echo "relayed: production-deploy.yml (ref=${REF})"
-              ;;
-            development-publish-frontend-relay)
-              REF="$(field ref)"
-              CONFIRM="$(field confirm)"
-              MODE="$(field mode)"
-              if [ -z "${REF}" ] || [ -z "${CONFIRM}" ]; then
-                echo "::error::relay refused: both ref and confirm are required"
-                exit 1
-              fi
-              if [ "${CONFIRM}" != "PUBLISH_FRONTEND" ]; then
-                echo "::error::relay refused: confirm must be exactly PUBLISH_FRONTEND"
-                exit 1
-              fi
-              ARGS=(--ref main -f "ref=${REF}" -f "confirm=${CONFIRM}")
-              [ -n "${MODE}" ] && ARGS+=(-f "mode=${MODE}")
-              for KEY in artifact_commit host_url build_convex_url; do
-                VALUE="$(field "${KEY}")"
-                if [ -n "${VALUE}" ]; then
-                  ARGS+=(-f "${KEY}=${VALUE}")
-                fi
-              done
-              gh workflow run publish-development-frontend.yml "${ARGS[@]}"
-              echo "relayed: publish-development-frontend.yml ${ARGS[*]}"
-              ;;
-            *)
-              echo "::error::unknown relay event type: ${EVENT_TYPE}"
-              exit 1
-              ;;
-          esac
+          echo "::error::The Convex development dispatch relay is retired."
+          exit 1
