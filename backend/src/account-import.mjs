@@ -144,20 +144,39 @@ export function createAccountImportHandler({ database, env = process.env }) {
           const statementCache = new Map();
           inserted[table] = 0;
           skipped[table] = 0;
+          const findById = raw.prepare(`SELECT * FROM ${table} WHERE id = ?`);
           for (const row of rows) {
             const names = [...Object.keys(row), "user_id"];
             const uniqueNames = [...new Set(names)];
             const safeColumns = uniqueNames.filter((name) => columns.has(name));
+            const values = safeColumns.map((name) => name === "user_id" ? user.id : row[name]);
+            const existing = findById.get(row.id);
+            if (existing) {
+              const sameOwner = existing.user_id === user.id;
+              const samePayload = safeColumns.every((name, index) => existing[name] === values[index]);
+              if (!sameOwner || !samePayload) {
+                throw Object.assign(new Error(`Conflicting imported record in ${table}`), {
+                  status: 409,
+                  code: "account_import_record_conflict",
+                });
+              }
+              skipped[table] += 1;
+              continue;
+            }
             let statement = statementCache.get(safeColumns.join(","));
             if (!statement) {
               const sql = `INSERT OR IGNORE INTO ${table} (${safeColumns.join(",")}) VALUES (${safeColumns.map(() => "?").join(",")})`;
               statement = raw.prepare(sql);
               statementCache.set(safeColumns.join(","), statement);
             }
-            const values = safeColumns.map((name) => name === "user_id" ? user.id : row[name]);
             const result = statement.run(...values);
             if (result.changes === 1) inserted[table] += 1;
-            else skipped[table] += 1;
+            else {
+              throw Object.assign(new Error(`Conflicting unique key in ${table}`), {
+                status: 409,
+                code: "account_import_record_conflict",
+              });
+            }
           }
         }
         raw.exec("COMMIT");
