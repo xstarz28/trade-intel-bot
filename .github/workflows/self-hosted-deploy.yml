@@ -56,15 +56,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          test -z "$(git status --porcelain)" || { echo "::error::Refusing to deploy a dirty source checkout."; exit 1; }
           echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "DEPLOY_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
 
       - name: Package exact source revision without secrets or local build artifacts
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/deploy-meta"
+          printf '%s\n' "$DEPLOY_SHA" > "$RUNNER_TEMP/deploy-meta/.deploy-commit"
+          printf '%s\n' "$DEPLOY_EPOCH" > "$RUNNER_TEMP/deploy-meta/.deploy-epoch"
           tar -czf "$RUNNER_TEMP/trade-intel-release.tar.gz" \
             --exclude=.git --exclude=node_modules --exclude=dist \
-            --exclude=backend/.env --exclude=.env --exclude='*.sqlite' .
+            --exclude=backend/.env --exclude=.env --exclude='*.sqlite' . \
+            -C "$RUNNER_TEMP/deploy-meta" .deploy-commit .deploy-epoch
           sha256sum "$RUNNER_TEMP/trade-intel-release.tar.gz"
 
       - name: Configure pinned SSH transport
@@ -92,7 +98,7 @@ jobs:
           set -euo pipefail
           ssh -p "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
             -o StrictHostKeyChecking=yes -o BatchMode=yes \
-            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' bash -s" <<'REMOTE'
+            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' EPOCH='$DEPLOY_EPOCH' bash -s" <<'REMOTE'
           set -euo pipefail
           RELEASE_DIR="$APP_DIR/releases/$SHA"
           ARCHIVE="/tmp/trade-intel-$SHA.tar.gz"
@@ -103,6 +109,9 @@ jobs:
             exit 1
           }
           tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
+          test "$(cat "$RELEASE_DIR/.deploy-commit")" = "$SHA"
+          test "$(cat "$RELEASE_DIR/.deploy-epoch")" = "$EPOCH"
+          [[ "$EPOCH" =~ ^[0-9]+$ ]]
           ln -sfn "$APP_DIR/shared/backend.env" "$RELEASE_DIR/backend/.env"
 
           if [ -n "$PREVIOUS" ]; then
@@ -113,12 +122,18 @@ jobs:
           ln -sfn "$RELEASE_DIR" "$APP_DIR/current.next"
           mv -Tf "$APP_DIR/current.next" "$APP_DIR/current"
           cd "$APP_DIR/current/backend"
-          if ! docker compose -p trade-intel up --build -d --remove-orphans; then
+          if ! XSTARZ_BUILD_COMMIT="$SHA" XSTARZ_BUILD_REF="$SHA" \
+              XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$EPOCH" \
+              docker compose -p trade-intel up --build -d --remove-orphans; then
             if [ -n "$PREVIOUS" ]; then
+              PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
+              PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
               ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
               mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
               cd "$APP_DIR/current/backend"
-              docker compose -p trade-intel up --build -d --remove-orphans || true
+              XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA" \
+                XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH" \
+                docker compose -p trade-intel up --build -d --remove-orphans || true
             fi
             exit 1
           fi
@@ -137,8 +152,12 @@ jobs:
             if [ -n "$PREVIOUS" ]; then
               ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
               mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
+              PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
+              PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
               cd "$APP_DIR/current/backend"
-              docker compose -p trade-intel up --build -d --remove-orphans || true
+              XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA" \
+                XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH" \
+                docker compose -p trade-intel up --build -d --remove-orphans || true
             fi
             exit 1
           fi
