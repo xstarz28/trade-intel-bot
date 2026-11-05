@@ -353,7 +353,7 @@ export interface TechnicalData {
   mtf?: MtfContext;
 }
 
-/** What the Convex action returns. */
+/** Normalized result returned by the self-hosted market-analysis API. */
 export interface MarketDataResult {
   success: boolean;
   data?: MarketData;
