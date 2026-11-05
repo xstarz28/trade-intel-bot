@@ -510,7 +510,10 @@ export function PositionProtectionDashboard() {
   const positionIds = useMemo(() => positions.map(p => p.position.positionId), [positions]);
   type BackendTimeline = Awaited<ReturnType<typeof getBackendHistoricalTimeline>>;
   const [backendTimelines, setBackendTimelines] = useState<Map<string, BackendTimeline>>(new Map());
-  const visibleBackendTimelines = positionIds.length > 0 ? backendTimelines : new Map<string, BackendTimeline>();
+  const visibleBackendTimelines = useMemo(
+    () => positionIds.length > 0 ? backendTimelines : new Map<string, BackendTimeline>(),
+    [positionIds.length, backendTimelines],
+  );
 
   useEffect(() => {
     let cancelled = false;
