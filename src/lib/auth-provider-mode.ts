@@ -1,20 +1,14 @@
-export type AuthProviderMode = "convex" | "mock" | "misconfigured";
+const LEGACY_CONVEX_URL = "https://hushed-seal-237.convex.cloud";
 
-const ACTIVE_CONVEX_URL = "https://hushed-seal-237.convex.cloud";
-
-export function resolveAuthProviderMode(input: {
-  isDevelopment: boolean;
-  hasConvexClient: boolean;
-}): AuthProviderMode {
-  if (input.hasConvexClient) return "convex";
-  return input.isDevelopment ? "mock" : "misconfigured";
-}
-
+/**
+ * Identifies the one legacy Convex deployment that may be used only for
+ * explicit account export. It is not an application-authentication setting.
+ */
 export function isActiveConvexUrl(value: unknown): value is string {
   if (typeof value !== "string") return false;
   try {
     const url = new URL(value.trim());
-    return url.origin === ACTIVE_CONVEX_URL &&
+    return url.origin === LEGACY_CONVEX_URL &&
       (url.pathname === "/" || url.pathname === "") &&
       !url.username &&
       !url.password &&
