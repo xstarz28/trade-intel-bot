@@ -121,7 +121,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
       const input=await readBody(request);
       if(url.pathname==="/api/v1/market-data/quotes") {
         const instruments=input.instruments;
-        if(!Array.isArray(instruments)||instruments.length<1||instruments.length>20||
+        if(!Array.isArray(instruments)||instruments.length<1||instruments.length>50||
           instruments.some(value=>typeof value!=="string"||!value.trim()||value.length>80)) {
           json(response,400,{success:false,error:"invalid_live_quote_batch_request"});
           return true;
