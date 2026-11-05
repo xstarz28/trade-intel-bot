@@ -39,6 +39,10 @@ export function AccountMigrationPanel() {
     skipped: Record<string, number>;
   } | null>(null);
 
+  const pendingGuestRecordCount = pendingGuestExport
+    ? Object.values(pendingGuestExport.counts).reduce((sum, count) => sum + count, 0)
+    : 0;
+
   if (backendState.status === "error" && backendState.error instanceof BackendApiError && backendState.error.status === 404) {
     return null;
   }
@@ -235,15 +239,18 @@ export function AccountMigrationPanel() {
               ID akun: <span className="font-mono">{pendingGuestExport.account.id}</span>
             </p>
             <p className="text-[11px] text-muted-foreground">
-              Record sumber: {Object.values(pendingGuestExport.counts).reduce((sum, count) => sum + count, 0)}
+              Record sumber: {pendingGuestRecordCount}
               {" · "}
               {Object.entries(pendingGuestExport.counts).filter(([, count]) => count > 0).map(([table, count]) => `${table}: ${count}`).join(" · ") || "belum ada record"}
             </p>
             <p className="text-[11px] text-muted-foreground">
-              Jika ini sesi tamu baru yang kosong, batalkan lalu masuk dengan Google akun lama. Tidak ada data yang diimpor sebelum konfirmasi ini.
+              {pendingGuestRecordCount === 0
+                ? "Tidak ada record pada akun ini. Jangan impor sesi kosong; masuk dengan Google akun lama lalu ulangi ekspor."
+                : "Pastikan ID dan jumlah record benar-benar milik akun lama. Jika sesi ini baru dibuat dan kosong, batalkan lalu masuk dengan Google akun lama."}
+              {" "}Tidak ada data yang diimpor sebelum konfirmasi ini.
             </p>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" disabled={busy} onClick={() => void handleGuestImport()}>
+              <Button size="sm" disabled={busy || pendingGuestRecordCount === 0} onClick={() => void handleGuestImport()}>
                 {busy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ShieldCheck className="mr-2 size-3.5" />}
                 Konfirmasi akun tamu & impor
               </Button>
