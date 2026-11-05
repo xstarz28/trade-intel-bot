@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -284,6 +284,28 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(stale.success, false);
     assert.match(stale.error, /FX_RATE_STALE/);
     assert.equal(stale.direct, undefined);
+  });
+
+  it("fetches batch OHLCV from the self-hosted engine with exact contract identity", async () => {
+    const now = Date.now();
+    const requested = [];
+    const fetchImpl = async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.includes("/api/v5/market/candles")) {
+        return new Response(JSON.stringify({ code: "0", data: okxCandles(now).map((c) => [
+          String(c[0]), c[1], c[2], c[3], c[4], c[5], "0", "0", "1",
+        ]) }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    };
+    const results = await fetchMarketCandlesBatch(["BTC-USDT-SWAP"], ["H1", "M15"], 50, fetchImpl);
+    assert.equal(results.length, 2);
+    assert.ok(results.every((result) => result.success));
+    assert.ok(results.every((result) => result.instrument === "BTC-USDT-SWAP"));
+    assert.deepEqual(results.map((result) => result.timeframe), ["H1", "M15"]);
+    assert.ok(results.every((result) => result.candles.length === 50));
+    assert.ok(requested.every((url) => url.includes("instId=BTC-USDT-SWAP")));
   });
 
   it("analyzes literal OKX perpetual and dated futures contracts without spot substitution", async () => {
