@@ -127,7 +127,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
           return true;
         }
         const engine=await import("../dist/market-data-engine.mjs");
-        const results=await engine.fetchMarketQuotesBatch(instruments,fetchImpl);
+        const results=await engine.fetchMarketQuotesBatch(instruments,fetchImpl,env.TWELVE_DATA_API_KEY);
         json(response,200,{results});
         return true;
       }
