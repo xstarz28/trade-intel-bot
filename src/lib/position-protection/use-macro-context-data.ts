@@ -58,7 +58,7 @@ export function useMacroContextData(
     let cancelled = false;
     fetchBackendTreasuryYields()
       .then((result) => {
-        if (!cancelled && result.success) setTreasuryData(result.data);
+        if (!cancelled && result.success) setTreasuryData(result.data ?? null);
       })
       .catch(() => { /* provider failure → treasuryData stays null */ });
     return () => { cancelled = true; };
