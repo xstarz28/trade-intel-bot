@@ -48,6 +48,9 @@ function wirePage(targetPage) {
     if (/\/api\/v1\/auth\//i.test(req.url())) {
       authTraffic.push({ type: "request", method: req.method(), url: req.url() });
     }
+    if (/convex\.(cloud|site)/i.test(req.url())) {
+      convexTraffic.push({ type: "request", url: req.url() });
+    }
   });
   targetPage.on("response", (res) => {
     if (/\/api\/v1\/auth\//i.test(res.url())) {
