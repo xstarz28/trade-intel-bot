@@ -640,7 +640,7 @@ export function PositionProtectionDashboard() {
           // Reconstruct authoritative timeline from backend
           const persistedSnapshots: PersistedSnapshot[] = [];
           if (backendData.latestSnapshot) persistedSnapshots.push(backendData.latestSnapshot as unknown as PersistedSnapshot);
-          if (backendData.previousSnapshot) persistedSnapshots.push(backendData.previousSnapshot);
+          if (backendData.previousSnapshot) persistedSnapshots.push(backendData.previousSnapshot as unknown as PersistedSnapshot);
           const persistedEvents = (backendData.events ?? []) as unknown as PersistedEvent[];
           const backendTimeline = reconstructTimeline(persistedSnapshots, persistedEvents);
 
