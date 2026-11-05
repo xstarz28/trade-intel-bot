@@ -835,7 +835,7 @@ export interface BackendLiveQuoteResult {
   primaryProvider: string;
   fallbackUsed: boolean;
   fallbackReason?: string;
-  sourceMode: "LIVE" | "STALE" | "UNAVAILABLE";
+  sourceMode: "LIVE" | "SIMULATED" | "STALE" | "UNAVAILABLE";
   success: boolean;
   error?: string;
 }
