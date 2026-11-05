@@ -102,6 +102,7 @@ import {
   listBackendAlertRules,
   saveBackendRuntimeHealth,
   createBackendNotification,
+  type BackendAlertRule,
 } from "@/lib/backend-api";
 import {
   decidePersistence,
@@ -418,7 +419,7 @@ export function PositionProtectionDashboard() {
           const result = await fetchBackendAlphaVantage(instrument.split("/")[0], instrumentType);
           if (cancelled) break;
 
-          const articles = result?.sentiment?.articles ?? [];
+          const articles = result && "sentiment" in result ? result.sentiment?.articles ?? [] : [];
           const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
             id: `av-${instrument}-${i}`,
             timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
@@ -454,7 +455,7 @@ export function PositionProtectionDashboard() {
 
     fetchNews();
     return () => { cancelled = true; };
-  }, [userPositions, fetchIntelligence]);
+  }, [userPositions]);
 
   // Build the user intelligence feed
   const userFeed: FeedType | null = useMemo(() => {
@@ -533,7 +534,7 @@ export function PositionProtectionDashboard() {
   const lastPersistedRef = useRef<Map<string, string>>(new Map());
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ──────────────
-  const [alertRules, setAlertRules] = useState<Record<string, unknown>[] | undefined>(undefined);
+  const [alertRules, setAlertRules] = useState<BackendAlertRule[] | undefined>(undefined);
   useEffect(() => {
     let cancelled = false;
     const loadRules = () => listBackendAlertRules()
