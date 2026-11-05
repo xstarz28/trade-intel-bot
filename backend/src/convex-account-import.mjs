@@ -130,6 +130,7 @@ export function normalizeConvexAccountExport(input, targetUser) {
   }
 
   const data = {};
+  const counts = {};
   let totalRows = 0;
   for (const table of TABLES) {
     const rows = input.data[table] ?? [];
@@ -141,11 +142,21 @@ export function normalizeConvexAccountExport(input, targetUser) {
       throw Object.assign(new Error("Convex account export row limit exceeded"), { status: 413 });
     }
     data[snakeCase(table)] = rows.map((row) => mapRow(table, row));
+    counts[snakeCase(table)] = rows.length;
+    if (input.counts !== undefined &&
+        (!input.counts || typeof input.counts !== "object" ||
+         Array.isArray(input.counts) || input.counts[table] !== rows.length)) {
+      throw Object.assign(new Error(`Convex export count mismatch for ${table}`), {
+        status: 400,
+        code: "convex_export_count_mismatch",
+      });
+    }
   }
 
   return {
     format: "trade-intel-account-export",
     version: 1,
     data,
+    counts,
   };
 }
