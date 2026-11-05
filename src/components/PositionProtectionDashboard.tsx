@@ -6,7 +6,7 @@
  * - Real-time monitoring panels per position
  * - Alert history
  * - Toast notifications on state transitions
- * - Persistence via Convex
+ * - Persistence via the self-hosted backend
  *
  * INFORMATIONAL_ONLY — never executes trades.
  */
@@ -93,8 +93,16 @@ import {
   classifyNewsFreshness,
   type NewsItem,
 } from "@/lib/position-protection/news-intelligence";
-import { useQuery, useAction, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import {
+  fetchBackendAlphaVantage,
+  getBackendHistoricalTimeline,
+  saveBackendHistoricalSnapshot,
+  saveBackendHistoricalEvents,
+  deleteBackendHistoricalTimeline,
+  listBackendAlertRules,
+  saveBackendRuntimeHealth,
+  createBackendNotification,
+} from "@/lib/backend-api";
 import {
   decidePersistence,
   snapshotToArgs,
@@ -383,11 +391,7 @@ export function PositionProtectionDashboard() {
     }
   }, [livePrices]);
 
-  // ─── Phase 90: Convex Historical Intelligence Persistence ──
-  const saveSnapshotMut = useMutation(api.historicalIntelligence.saveSnapshot);
-  const saveEventsMut = useMutation(api.historicalIntelligence.saveEvents);
-  const deleteHistoryMut = useMutation(api.historicalIntelligence.deleteHistoryForPosition);
-  const pruneHistoryMut = useMutation(api.historicalIntelligence.pruneHistory);
+  // Historical persistence is handled by the authenticated self-hosted API.
 
   // ─── Shared Macro Context Data ───────────────────────────
   // Treasury yields + economic calendar are fetched once per mounted
@@ -395,9 +399,8 @@ export function PositionProtectionDashboard() {
   // mutually exclusive tabs — no duplicate fetches can occur).
   const { treasuryData, calendarData, userPositions } = useMacroContextData(positions);
 
-  // Fetch news for each unique instrument via Convex action
+  // Fetch news/fundamental intelligence through the self-hosted backend.
   const [feedNews, setFeedNews] = useState<Map<string, NewsItem[]>>(new Map());
-  const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
 
   // Fetch news for user's instruments (rate-limit safe: one at a time)
   useEffect(() => {
@@ -412,10 +415,7 @@ export function PositionProtectionDashboard() {
         try {
           const assetClass = userPositions.find(p => p.instrument === instrument)?.assetClass ?? "crypto";
           const instrumentType = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
-          const result = await fetchIntelligence({
-            instrument: instrument.split("/")[0],
-            instrumentType: instrumentType as any,
-          });
+          const result = await fetchBackendAlphaVantage(instrument.split("/")[0], instrumentType);
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
@@ -500,54 +500,54 @@ export function PositionProtectionDashboard() {
     });
   }, [portfolioIntel]);
 
-  // ─── Phase 91: Reactive Convex Historical Timeline Queries ──
-  // One query per position, reactive — automatically updates when Convex data changes
+  // ─── Self-hosted historical timeline reads ──
   const positionIds = useMemo(() => positions.map(p => p.position.positionId), [positions]);
-  const convTimeline0 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 0 ? { positionId: positionIds[0] } : "skip",
-  );
-  const convTimeline1 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 1 ? { positionId: positionIds[1] } : "skip",
-  );
-  const convTimeline2 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 2 ? { positionId: positionIds[2] } : "skip",
-  );
-  const convTimeline3 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 3 ? { positionId: positionIds[3] } : "skip",
-  );
-  const convTimeline4 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 4 ? { positionId: positionIds[4] } : "skip",
-  );
+  const [convTimelines, setConvTimelines] = useState<Map<string, any>>(new Map());
 
-  // Map Convex reactive results by positionId
-  const convTimelines = useMemo(() => {
-    const map = new Map<string, any>();
-    const results = [convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4];
-    for (let i = 0; i < positionIds.length && i < results.length; i++) {
-      const result = results[i];
-      if (result && result.latestSnapshot) {
-        map.set(positionIds[i], result);
-      }
-    }
-    return map;
-  }, [positionIds, convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4]);
+  useEffect(() => {
+    let cancelled = false;
+    const loadTimelines = async () => {
+      const ids = positionIds.slice(0, 5);
+      const results = await Promise.allSettled(ids.map((id) => getBackendHistoricalTimeline(id)));
+      if (cancelled) return;
+      const next = new Map<string, any>();
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled" && result.value.latestSnapshot) {
+          next.set(ids[index], result.value);
+        }
+      });
+      setConvTimelines(next);
+    };
+    if (positionIds.length > 0) void loadTimelines();
+    else setConvTimelines(new Map());
+    const interval = window.setInterval(() => {
+      if (positionIds.length > 0) void loadTimelines();
+    }, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [positionIds]);
 
   // Track last-persisted snapshot identity to prevent redundant saves
   const lastPersistedRef = useRef<Map<string, string>>(new Map());
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ──────────────
-  const alertRules = useQuery(api.alertRules.listRules);
+  const [alertRules, setAlertRules] = useState<Record<string, unknown>[] | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    const loadRules = () => listBackendAlertRules()
+      .then((result) => { if (!cancelled) setAlertRules(result.items); })
+      .catch(() => { if (!cancelled) setAlertRules([]); });
+    void loadRules();
+    const interval = window.setInterval(() => void loadRules(), 60_000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, []);
   const prevStateRef = useRef<PreviousStateStore | null>(null);
   const triggerRecordsRef = useRef<Map<string, RuleTriggerRecord>>(new Map());
   const bridgeInitializedRef = useRef(false);
   const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
   const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
-  const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
   const healthSnapshot = useMemo(() => buildSnapshotFromBuffer(healthBufferRef.current, Date.now()), [intelligenceMap]);
 
   // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
@@ -590,7 +590,7 @@ export function PositionProtectionDashboard() {
         // Persist meaningful changes to Convex (fire-and-forget)
         if (decision.shouldPersistSnapshot && !stale) {
           lastPersistedRef.current.set(posId, snapshotIdentity(snapshot));
-          saveSnapshotMut(snapshotToArgs(snapshot)).then(() => {
+          saveBackendHistoricalSnapshot(snapshotToArgs(snapshot) as unknown as Record<string, unknown>).then(() => {
             healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save snapshot",
@@ -606,9 +606,9 @@ export function PositionProtectionDashboard() {
           });
         }
         if (decision.shouldPersistEvents && decision.newEvents.length > 0 && !stale) {
-          saveEventsMut(eventsToArgs(
+          saveBackendHistoricalEvents(eventsToArgs(
             posId, intel.instrument, intel.side, decision.newEvents,
-          )).then(() => {
+          ) as unknown as Record<string, unknown>).then(() => {
             healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save events",
@@ -656,10 +656,9 @@ export function PositionProtectionDashboard() {
       }
       return next;
     });
-  }, [intelligenceMap, convTimelines, saveSnapshotMut, saveEventsMut]);
+  }, [intelligenceMap, convTimelines]);
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ────────────
-  const createNotificationMut = useMutation(api.notifications.createNotification);
 
   useEffect(() => {
     if (intelligenceMap.size === 0) return;
@@ -715,7 +714,7 @@ export function PositionProtectionDashboard() {
 
     // Persist notifications to Convex (fire-and-forget, rate-limit safe)
     for (const notif of result.notifications) {
-      createNotificationMut({
+      createBackendNotification({
         notificationId: notif.notificationId,
         alertIdentity: notif.alertIdentity,
         ruleId: notif.ruleId,
@@ -749,7 +748,7 @@ export function PositionProtectionDashboard() {
         });
       });
     }
-  }, [intelligenceMap, alertRules, createNotificationMut]);
+  }, [intelligenceMap, alertRules]);
 
   // ─── Phase 95/97: Reset bridge state when positions are removed ──
   useEffect(() => {
@@ -789,7 +788,7 @@ export function PositionProtectionDashboard() {
     if (snapshotToPersist) {
       healthBufferRef.current = markPersisted(healthBufferRef.current, snapshotToPersist);
       isPersistingHealthRef.current = true;
-      saveHealthMut({
+      saveBackendRuntimeHealth({
         timestamp: snapshotToPersist.timestamp,
         overallStatus: snapshotToPersist.overallStatus,
         components: snapshotToPersist.components.map((c) => ({
@@ -817,7 +816,7 @@ export function PositionProtectionDashboard() {
         // Do NOT record a health event for persistence failure — prevents recursive loop
       });
     }
-  }, [intelligenceMap, positions.length, saveHealthMut]);
+  }, [intelligenceMap, positions.length]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
@@ -884,7 +883,7 @@ export function PositionProtectionDashboard() {
       removePos(positionId);
       prevAlertsRef.current.delete(positionId);
       // Phase 90: Clean up persisted historical intelligence
-      deleteHistoryMut({ positionId }).catch(() => {});
+      void deleteBackendHistoricalTimeline(positionId).catch(() => {});
       // Also remove from local timeline state
       setTimelines(prev => {
         const next = new Map(prev);
@@ -896,7 +895,7 @@ export function PositionProtectionDashboard() {
         duration: 3000,
       });
     },
-    [removePos, deleteHistoryMut],
+    [removePos],
   );
 
   // ─── Summary Stats ───────────────────────────────────────
