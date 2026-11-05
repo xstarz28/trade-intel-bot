@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useConvex } from "convex/react";
+import { useConvex, useConvexAuth } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "@/convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -20,8 +21,12 @@ import { ArrowRightLeft, CheckCircle2, Loader2, RefreshCw, ShieldCheck } from "l
 
 export function AccountMigrationPanel() {
   const convex = useConvex();
+  const { isAuthenticated: legacyAuthenticated, isLoading: legacyAuthLoading } = useConvexAuth();
+  const { signIn: signInLegacy } = useAuthActions();
   const { state: backendState, refresh } = useBackendSession();
   const [busy, setBusy] = useState(false);
+  const [legacyAuthBusy, setLegacyAuthBusy] = useState(false);
+  const [legacyAuthError, setLegacyAuthError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     totalSource: number;
@@ -37,10 +42,32 @@ export function AccountMigrationPanel() {
     return null;
   }
 
+  const handleLegacySignIn = async () => {
+    setLegacyAuthError(null);
+    setLegacyAuthBusy(true);
+    try {
+      await signInLegacy("google", {
+        redirectTo: `${window.location.origin}/dashboard`,
+      });
+    } catch (cause) {
+      const detail = cause instanceof Error ? cause.message : "legacy_google_sign_in_failed";
+      setLegacyAuthError(
+        detail.toLowerCase().includes("redirect")
+          ? "Login akun lama ditolak konfigurasi redirect Convex. Domain xstarzganaliys.com harus diizinkan pada deployment lama."
+          : "Login akun Convex lama gagal. Pastikan Google OAuth pada deployment lama masih aktif.",
+      );
+      setLegacyAuthBusy(false);
+    }
+  };
+
   const handleMigration = async () => {
     setError(null);
     if (backendState.status !== "authenticated") {
       window.location.assign(getBackendGoogleSignInUrl());
+      return;
+    }
+    if (!legacyAuthenticated) {
+      setError("Hubungkan akun Convex lama terlebih dahulu dengan Google yang sama sebelum memulai ekspor.");
       return;
     }
 
@@ -114,28 +141,69 @@ export function AccountMigrationPanel() {
           </p>
         )}
 
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            className="w-full sm:w-auto"
-            disabled={busy || backendState.status === "loading" || backendState.status === "error"}
-            onClick={() => void handleMigration()}
-          >
-            {busy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowRightLeft className="mr-2 size-3.5" />}
-            {backendState.status === "authenticated" ? "Migrasikan data Convex sekarang" : "Hubungkan akun backend"}
-          </Button>
-          {backendState.status === "authenticated" && backendState.user.isAnonymous && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={busy}
-              onClick={() => window.location.assign(getBackendGoogleSignInUrl())}
-            >
-              Hubungkan Google
-            </Button>
-          )}
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {legacyAuthLoading ? (
+              <p className="text-xs text-muted-foreground">Memeriksa sesi akun Convex lama...</p>
+            ) : legacyAuthenticated ? (
+              <p className="text-xs text-muted-foreground">Akun Convex lama terhubung.</p>
+            ) : (
+              <p className="text-xs text-muted-foreground">Akun Convex lama belum terhubung.</p>
+            )}
+            {backendState.status === "authenticated" ? (
+              <p className="text-xs text-muted-foreground">
+                Backend: <span className="font-medium text-foreground">{backendState.user.email ?? "akun tamu"}</span>
+              </p>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {backendState.status !== "authenticated" && (
+              <Button
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={busy || backendState.status === "loading" || backendState.status === "error"}
+                onClick={() => window.location.assign(getBackendGoogleSignInUrl())}
+              >
+                <ShieldCheck className="mr-2 size-3.5" />
+                Hubungkan akun backend
+              </Button>
+            )}
+            {backendState.status === "authenticated" && backendState.user.isAnonymous && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={busy}
+                onClick={() => window.location.assign(getBackendGoogleSignInUrl())}
+              >
+                Hubungkan Google backend
+              </Button>
+            )}
+            {!legacyAuthenticated && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={legacyAuthLoading || legacyAuthBusy}
+                onClick={() => void handleLegacySignIn()}
+              >
+                {legacyAuthBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ShieldCheck className="mr-2 size-3.5" />}
+                Hubungkan akun Convex lama
+              </Button>
+            )}
+            {backendState.status === "authenticated" && legacyAuthenticated && (
+              <Button
+                size="sm"
+                className="w-full sm:w-auto"
+                disabled={busy}
+                onClick={() => void handleMigration()}
+              >
+                {busy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ArrowRightLeft className="mr-2 size-3.5" />}
+                Migrasikan data Convex sekarang
+              </Button>
+            )}
+          </div>
         </div>
 
+        {legacyAuthError && <p role="alert" className="text-xs text-destructive">{legacyAuthError}</p>}
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
 
         {result && (
