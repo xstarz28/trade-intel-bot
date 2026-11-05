@@ -218,6 +218,25 @@ describe("native Convex account import endpoint", () => {
       assert.equal(imported.status, 200);
       const result = await imported.json();
       assert.equal(result.totalInserted, 1);
+      assert.equal(result.totalSource, 1);
+      assert.equal(result.sourceCounts.analyses, 1);
+      assert.equal(result.inserted.analyses, 1);
+      assert.equal(result.reconciled, true);
+      const repeatedImport = await fetch(`${baseUrl}/api/v1/account/import`, {
+        method: "POST",
+        headers: {
+          Origin: env.APP_ORIGIN,
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(exported),
+      });
+      assert.equal(repeatedImport.status, 200);
+      const repeatedResult = await repeatedImport.json();
+      assert.equal(repeatedResult.totalSource, 1);
+      assert.equal(repeatedResult.totalInserted, 0);
+      assert.equal(repeatedResult.totalSkipped, 1);
+      assert.equal(repeatedResult.reconciled, true);
       const row = database.raw.prepare(
         "SELECT id, user_id, instrument, created_at FROM analyses WHERE id = ?",
       ).get("convex-analysis-1");
