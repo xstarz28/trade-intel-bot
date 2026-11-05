@@ -35,6 +35,32 @@ All provider credentials are optional unless a feature specifically requires the
 - `EIA_API_KEY`: EIA inventory data; public FRED series are used when absent;
 - `SEC_USER_AGENT`: identifying SEC EDGAR application name and monitored contact email.
 
+## Automated self-hosted production deployment
+
+The repository includes `.github/workflows/self-hosted-deploy.yml`. It is manual-only, requires the exact confirmation phrase `DEPLOY_SELF_HOSTED`, uploads the selected source revision over pinned SSH, creates a SQLite backup before replacing an existing release, deploys with a stable Docker Compose project name, and rolls back the release symlink if the backend health check fails.
+
+Configure the GitHub `production` environment with these secrets:
+
+- `SELF_HOSTED_SSH_HOST`: public IPv4/hostname of the Linux host;
+- `SELF_HOSTED_SSH_USER`: dedicated deploy user with Docker Compose permissions;
+- `SELF_HOSTED_SSH_PRIVATE_KEY`: private key for that deploy user;
+- `SELF_HOSTED_SSH_KNOWN_HOSTS`: verified host-key line(s), checked out-of-band and pinned (the workflow does not trust an unverified `ssh-keyscan` result).
+
+Optional environment variables:
+
+- `SELF_HOSTED_SSH_PORT`: SSH port, default `22`;
+- `SELF_HOSTED_APP_DIR`: absolute release directory, default `/opt/trade-intel`.
+
+One-time host preparation:
+
+1. Install Docker Engine and the Docker Compose plugin.
+2. Create the deploy user, grant Docker permissions, and create `/opt/trade-intel/shared` owned by that user.
+3. Create `/opt/trade-intel/shared/backend.env` with the production values from `backend/.env.example`; restrict it to mode `0600`. Do not commit this file.
+4. Point `xstarzganaliys.com` to the host and allow inbound TCP ports 80 and 443.
+5. Dispatch the workflow with the intended commit and the confirmation phrase.
+
+The deploy workflow cannot provision a host, create DNS records, or manufacture SSH credentials. It will refuse to run if the required production secrets or host-side environment file are absent. A successful CI build is not evidence that public DNS/TLS or production deployment is live.
+
 ## Requirements
 
 - Docker Engine + Docker Compose;
