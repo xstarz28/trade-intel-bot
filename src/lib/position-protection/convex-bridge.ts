@@ -1,16 +1,12 @@
 /**
- * Phase 60 — Convex Persistence Bridge
+ * Retired legacy persistence adapter.
  *
- * Connects the in-memory monitoring engine to real Convex persistence.
+ * This module is retained only as historical migration context. The active
+ * application does not instantiate it: position state and history are owned
+ * by the authenticated self-hosted backend API and SQLite persistence.
  *
- * Architecture:
- * - Monitoring engine uses InMemoryRepository for real-time performance
- * - This bridge async-writes state changes to Convex in the background
- * - React components read from Convex via useQuery for reactive updates
- * - On page reload, state is restored from Convex
- *
- * CRITICAL: This bridge is INFORMATIONAL_ONLY.
- * It never modifies decision engine semantics.
+ * CRITICAL: This adapter is not a production persistence path and must not be
+ * imported by application runtime code.
  */
 
 import type {
