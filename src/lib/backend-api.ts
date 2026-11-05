@@ -230,8 +230,11 @@ export function importBackendAccount(
   return backendRequest<{
     success: boolean;
     accountId: string;
+    sourceCounts: Record<string, number>;
     inserted: Record<string, number>;
     skipped: Record<string, number>;
+    reconciled: boolean;
+    totalSource: number;
     totalInserted: number;
     totalSkipped: number;
   }>("/api/v1/account/import", {
