@@ -56,8 +56,8 @@ function gitInfo() {
   const gitCommit = read("git rev-parse HEAD");
   const commit = envCommit || gitCommit || "unknown";
 
-  const epoch = process.env.SOURCE_DATE_EPOCH;
-  const commitEpoch = epoch ?? read("git log -1 --format=%ct");
+  const epoch = process.env.SOURCE_DATE_EPOCH?.trim();
+  const commitEpoch = epoch || read("git log -1 --format=%ct");
   const time = /^\d+$/.test(commitEpoch)
     ? new Date(Number(commitEpoch) * 1000).toISOString()
     : "unknown";
