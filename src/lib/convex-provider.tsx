@@ -13,7 +13,7 @@ import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
  * login, session restoration, or route authorization.
  */
 export function LegacyConvexMigrationProvider({ children }: { children: React.ReactNode }) {
-  const rawUrl = import.meta.env.VITE_CONVEX_URL;
+  const rawUrl = import.meta.env.VITE_LEGACY_CONVEX_URL;
   const convexUrl = typeof rawUrl === "string" ? rawUrl.trim() : "";
   const configured = isActiveConvexUrl(convexUrl) && isAllowedConvexCloudUrl(convexUrl);
 
