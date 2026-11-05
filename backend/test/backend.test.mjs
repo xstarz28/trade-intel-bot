@@ -741,6 +741,39 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("returns an explicit unavailable state when the upstream FX reference provider times out", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    let providerCalls = 0;
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(baseUrl + "/api/v1/auth/anonymous", {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+
+        const response = await fetch(baseUrl + "/api/v1/intelligence/fx-rate", {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ from: "CAD", to: "SGD" }),
+        });
+        assert.equal(response.status, 503);
+        const result = await response.json();
+        assert.equal(result.success, false);
+        assert.match(result.error, /Frankfurter daily FX reference failed/);
+        assert.equal(providerCalls, 1);
+      }, {
+        env,
+        fetchImpl: async () => {
+          providerCalls += 1;
+          throw new Error("simulated upstream timeout");
+        },
+      });
+    } finally {
+      database.close();
+    }
+  });
+
   it("rejects empty OKX instrument requests before contacting public endpoints", async () => {
     const database = createTemporaryDatabase();
     const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
