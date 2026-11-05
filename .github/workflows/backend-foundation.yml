@@ -38,7 +38,7 @@ jobs:
           node-version: 22
 
       - name: Install project build dependencies
-        run: npm install --legacy-peer-deps --no-audit --no-fund
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
 
       - name: Build frontend for the self-hosted image
         run: npm run build
