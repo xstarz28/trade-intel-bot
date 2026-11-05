@@ -349,7 +349,7 @@ describe("self-hosted market analysis engine", () => {
             : { code: "0", data: [{ aggregated_long_liquidation_usd: "100", aggregated_short_liquidation_usd: "50" }] };
       return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
     };
-    const result = await fetchCryptoDerivatives("BTC/USDT", "server-only-test-key", fetchImpl);
+    const result = await fetchCryptoDerivatives("BTC-USDT-SWAP", "server-only-test-key", fetchImpl);
     assert.equal(result.success, true);
     assert.equal(result.data.provider, "coinglass");
     assert.equal(result.data.openInterest.current, 1_000_000);
@@ -358,6 +358,7 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.data.liquidations.totalVolume, 150);
     assert.equal(requested.length, 4);
     assert.ok(requested.every((url) => url.startsWith("https://open-api-v4.coinglass.com/api/")));
+    assert.ok(requested.every((url) => new URL(url).searchParams.get("symbol") === "BTC"));
   });
 
   it("does not request DeFiLlama data for unsupported instruments", async () => {
