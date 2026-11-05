@@ -31,6 +31,7 @@ jobs:
       SSH_USER: ${{ secrets.SELF_HOSTED_SSH_USER }}
       SSH_PRIVATE_KEY: ${{ secrets.SELF_HOSTED_SSH_PRIVATE_KEY }}
       SSH_KNOWN_HOSTS: ${{ secrets.SELF_HOSTED_SSH_KNOWN_HOSTS }}
+      CONFIRM_DEPLOY: ${{ inputs.confirm }}
       SSH_PORT: ${{ vars.SELF_HOSTED_SSH_PORT || '22' }}
       APP_DIR: ${{ vars.SELF_HOSTED_APP_DIR || '/opt/trade-intel' }}
     steps:
@@ -38,9 +39,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "${{ inputs.confirm }}" = "DEPLOY_SELF_HOSTED" || { echo "::error::Type DEPLOY_SELF_HOSTED to confirm."; exit 1; }
+          test "$CONFIRM_DEPLOY" = "DEPLOY_SELF_HOSTED" || { echo "::error::Type DEPLOY_SELF_HOSTED to confirm."; exit 1; }
           for name in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS; do
-            test -n "${!name:-}" || { echo "::error::Missing production secret: SELF_HOSTED_${name#SSH_}."; exit 1; }
+            test -n "${!name:-}" || { echo "::error::Missing production secret: SELF_HOSTED_SSH_${name#SSH_}."; exit 1; }
           done
           [[ "$APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "::error::SELF_HOSTED_APP_DIR must be an absolute path with no shell metacharacters."; exit 1; }
           [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]] || { echo "::error::SELF_HOSTED_SSH_PORT must be numeric."; exit 1; }
