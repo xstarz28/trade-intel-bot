@@ -6,6 +6,7 @@ const REQUIRED_NAMES = [
   "GOOGLE_CLIENT_SECRET",
   "APP_ORIGIN",
   "PUBLIC_BASE_URL",
+  "DOMAIN",
 ];
 
 function httpsOrigin(value) {
@@ -61,6 +62,14 @@ export function classifyGoogleAuthConfig(env = process.env) {
 
   if (appOrigin && backendOrigin && appOrigin.origin !== backendOrigin.origin) {
     invalid.push("APP_ORIGIN and PUBLIC_BASE_URL must match for the same-origin session cookie deployment");
+  }
+
+  const domain = env.DOMAIN?.trim().toLowerCase() ?? "";
+  if (domain && !/^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,63}$/.test(domain)) {
+    invalid.push("DOMAIN must be a hostname without scheme, path, port, or credentials");
+  }
+  if (domain && appOrigin && domain !== appOrigin.hostname.toLowerCase()) {
+    invalid.push("DOMAIN must match APP_ORIGIN hostname so Caddy TLS and application cookies use the same canonical host");
   }
 
   const callbackUrl = backendOrigin
