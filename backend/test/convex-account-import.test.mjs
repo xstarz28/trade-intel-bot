@@ -120,6 +120,27 @@ describe("native Convex account export mapping", () => {
     );
   });
 
+  it("rejects email-less exports without a valid source account ID", () => {
+    const base = {
+      format: "trade-intel-convex-account-export",
+      version: 1,
+      account: { email: null, isAnonymous: true },
+      data: {},
+    };
+    assert.throws(
+      () => normalizeConvexAccountExport(base, targetUser),
+      (error) => error.status === 400 && error.code === "invalid_convex_source_account",
+    );
+    assert.throws(
+      () => normalizeConvexAccountExport({
+        ...base,
+        account: { id: "convex-guest-1", email: 42, isAnonymous: true },
+        confirmSourceAccountId: "convex-guest-1",
+      }, targetUser),
+      (error) => error.status === 400 && error.code === "invalid_convex_source_account",
+    );
+  });
+
   it("rejects unknown tables and malformed row collections", () => {
     const base = {
       format: "trade-intel-convex-account-export",
