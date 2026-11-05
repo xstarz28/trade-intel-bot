@@ -37,7 +37,7 @@ All provider credentials are optional unless a feature specifically requires the
 
 ## Automated self-hosted production deployment
 
-The repository includes `.github/workflows/self-hosted-deploy.yml`. It is manual-only, requires the exact confirmation phrase `DEPLOY_SELF_HOSTED`, uploads the selected source revision over pinned SSH, creates a SQLite backup before replacing an existing release, deploys with a stable Docker Compose project name, and rolls back the release symlink if the backend health check fails.
+The repository includes `.github/workflows/self-hosted-deploy.yml`. It is manual-only, requires the exact confirmation phrase `DEPLOY_SELF_HOSTED`, refuses any commit whose latest `CI` or `Backend Foundation CI` workflow is not green, uploads the selected source revision over pinned SSH, creates a SQLite backup before replacing an existing release, embeds exact commit provenance in the Docker build, deploys with a stable Docker Compose project name, and rolls back the release symlink if the backend health check fails.
 
 Configure the GitHub `production` environment with these secrets:
 
