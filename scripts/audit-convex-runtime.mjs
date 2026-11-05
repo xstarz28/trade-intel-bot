@@ -12,6 +12,7 @@ const importPattern = /(?:from\s*|import\s*\(|import\s*)["'](?:convex(?:\/[^"']*
 const runtimeSymbolPattern = /\b(?:useConvex|useConvexAuth|useAction|useMutation|useQuery|usePaginatedQuery|ConvexReactClient|ConvexAuthProvider|ConvexProvider|ConvexProviderWithAuth)\b/g;
 const migrationBoundaryImportPattern = /(?:from\s*|import\s*\()\s*["']@\/(?:components\/AccountMigrationPanel|lib\/convex-provider)["']/g;
 const retiredAdapterImportPattern = /(?:from\s*|import\s*\()\s*["'][^"']*\/convex-(?:bridge|persistence)(?:\.ts)?["']/g;
+const hardcodedConvexEndpointPattern = /https?:\/\/[A-Za-z0-9-]+\.convex\.cloud\b/g;
 const errors = [];
 
 function walk(directory) {
@@ -41,6 +42,8 @@ for (const absolutePath of walk(sourceRoot)) {
   migrationBoundaryImportPattern.lastIndex = 0;
   const hasRetiredAdapterImport = retiredAdapterImportPattern.test(source);
   retiredAdapterImportPattern.lastIndex = 0;
+  const hasHardcodedConvexEndpoint = hardcodedConvexEndpointPattern.test(source);
+  hardcodedConvexEndpointPattern.lastIndex = 0;
 
   if ((hasRuntimeImport || hasRuntimeSymbol) && !allowedLegacyClientFiles.has(path)) {
     errors.push(`${path}: Convex runtime import/symbol outside the optional legacy migration boundary`);
@@ -50,6 +53,9 @@ for (const absolutePath of walk(sourceRoot)) {
   }
   if (hasRetiredAdapterImport) {
     errors.push(`${path}: retired Convex persistence adapters must not be imported by application runtime code`);
+  }
+  if (hasHardcodedConvexEndpoint) {
+    errors.push(`${path}: hardcoded Convex deployment URLs are forbidden outside the legacy server module boundary`);
   }
 }
 
