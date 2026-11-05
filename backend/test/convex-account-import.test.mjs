@@ -263,6 +263,22 @@ describe("native Convex account import endpoint", () => {
       assert.equal(row.instrument, "BTC-USDT");
       assert.equal(row.created_at, 100);
 
+      database.raw.prepare("UPDATE analyses SET instrument = ? WHERE id = ?")
+        .run("ETH-USDT", "convex-analysis-1");
+      const conflictingImport = await fetch(`${baseUrl}/api/v1/account/import`, {
+        method: "POST",
+        headers: {
+          Origin: env.APP_ORIGIN,
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(exported),
+      });
+      assert.equal(conflictingImport.status, 409);
+      assert.equal((await conflictingImport.json()).error, "account_import_record_conflict");
+      assert.equal(database.raw.prepare("SELECT instrument FROM analyses WHERE id = ?")
+        .get("convex-analysis-1").instrument, "ETH-USDT");
+
       const mismatched = await fetch(`${baseUrl}/api/v1/account/import`, {
         method: "POST",
         headers: {
