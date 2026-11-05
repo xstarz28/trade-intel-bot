@@ -20,6 +20,7 @@ import {
   fetchBackendOkxInstrumentSpec,
   fetchBackendOkxOrderBook,
   fetchBackendOkxFuturesOpenInterest,
+  fetchBackendLiveProtectionQuotes,
 } from "./backend-api";
 
 afterEach(() => vi.restoreAllMocks());
@@ -104,6 +105,27 @@ describe("self-hosted backend API client", () => {
       ["/api/v1/intelligence/treasury", "POST", "{}"],
     ]);
     expect(fetcher.mock.calls.every(([, init]) => init?.credentials === "include")).toBe(true);
+  });
+
+  it("fetches live position quotes through the authenticated backend without browser provider access", async () => {
+    const results = [{
+      instrument: "BTC-USDT-SWAP",
+      assetClass: "crypto",
+      price: 101250,
+      timestamp: Date.now(),
+      provider: "OKX",
+      primaryProvider: "OKX",
+      fallbackUsed: false,
+      sourceMode: "LIVE" as const,
+      success: true,
+    }];
+    const fetcher = vi.fn().mockResolvedValue(response(200, { results }));
+    await expect(fetchBackendLiveProtectionQuotes(["BTC-USDT-SWAP"], fetcher)).resolves.toEqual(results);
+    expect(fetcher).toHaveBeenCalledWith("/api/v1/market-data/quotes", expect.objectContaining({
+      method: "POST",
+      credentials: "include",
+      body: JSON.stringify({ instruments: ["BTC-USDT-SWAP"] }),
+    }));
   });
 
   it("fetches dated FX reference snapshots through the authenticated backend", async () => {
