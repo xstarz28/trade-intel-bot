@@ -29,14 +29,14 @@ The repository now contains:
 - a Caddyfile and Docker Compose service with persistent SQLite/Caddy volumes;
 - a backup utility using SQLite's consistent `VACUUM INTO` snapshot.
 
-No public DNS change, domain verification, server provisioning, or production cutover has been performed. Browser login and session restoration now run through the self-hosted backend independently of Convex, but the Dashboard analysis/provider actions and position-protection/notification surfaces still contain Convex data hooks. The self-hosted server is therefore not yet a full drop-in replacement for the current production site.
+No public DNS change, domain verification, server provisioning, or production cutover has been performed. The application branch now routes normal login, session restoration, Dashboard analysis/provider requests, journal, position-protection history, alert rules, notifications, and runtime-health persistence through the self-hosted backend. The only remaining active Convex UI path is the optional legacy account-export panel; it is not mounted around normal application routes and is not required for login or runtime operation. Convex source files and packages remain temporarily for legacy export and the final dependency/reference audit.
 
 ## Cutover gates
 
 Do not point the public domain to the new host or disable the old deployment until:
-1. every frontend Convex query/mutation/action has a replacement API route;
+1. the repository-wide runtime reference audit confirms no normal application route or feature requires Convex; the optional legacy account-export panel is either completed or deliberately retired;
 2. Google OAuth credentials and callback are configured securely;
-3. Convex data can be exported, imported idempotently, and verified;
+3. legacy Convex account data can be exported, imported idempotently, and reconciled by per-table row counts and ownership;
 4. analysis, journal, positions, alerts, notifications, history, fundamental data, and derivative data pass end-to-end parity tests;
 5. Docker image, backup, restore, TLS renewal, and reboot recovery are tested on the actual host.
 
