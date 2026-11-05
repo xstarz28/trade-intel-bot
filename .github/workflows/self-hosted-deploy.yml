@@ -104,9 +104,9 @@ jobs:
           tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
           ln -sfn "$APP_DIR/shared/backend.env" "$RELEASE_DIR/backend/.env"
 
-          if [ -n "$PREVIOUS" ] && docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" ps -q api | grep -q .; then
-            docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" exec -T api \
-              node backend/backup.mjs "/data/backups/predeploy-$SHA.sqlite"
+          if [ -n "$PREVIOUS" ]; then
+            docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" run --rm --no-deps api \
+              node backend/backup.mjs "/data/backups/predeploy-$SHA.sqlite" --if-exists
           fi
 
           ln -sfn "$RELEASE_DIR" "$APP_DIR/current.next"
