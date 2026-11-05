@@ -566,6 +566,57 @@ describe("self-hosted live protection quote provider", () => {
     assert.equal(providerCalled, false);
   });
 
+  it("uses backend-configured TwelveData for fresh FX quotes without exposing its key", async () => {
+    const secret = "test-twelve-data-secret";
+    const now = Date.now();
+    let requestedUrl = "";
+    const [quote] = await fetchMarketQuotesBatch(["EUR/USD"], async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify({
+        close: "1.085",
+        timestamp: String(Math.floor(now / 1000)),
+        bid: "1.0849",
+        ask: "1.0851",
+        percent_change: "0.5",
+        volume: "1200",
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }, secret);
+
+    assert.match(requestedUrl, /api\.twelvedata\.com\/quote/);
+    assert.match(decodeURIComponent(requestedUrl), /symbol=EUR\/USD/);
+    assert.match(requestedUrl, /apikey=test-twelve-data-secret/);
+    assert.equal(quote.provider, "TwelveData");
+    assert.equal(quote.primaryProvider, "TwelveData");
+    assert.equal(quote.sourceMode, "LIVE");
+    assert.equal(quote.price, 1.085);
+    assert.equal(quote.bid, 1.0849);
+    assert.equal(JSON.stringify(quote).includes(secret), false);
+  });
+
+  it("falls back to provider-timestamped Yahoo quotes when TwelveData is unavailable", async () => {
+    const now = Date.now();
+    const [quote] = await fetchMarketQuotesBatch(["GBP/JPY"], async (input) => {
+      const url = String(input);
+      if (url.includes("api.twelvedata.com")) {
+        return new Response(JSON.stringify({ code: 429, message: "rate limit" }), {
+          status: 429, headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.includes("query1.finance.yahoo.com")) {
+        return new Response(JSON.stringify(yahooQuotePayload(now)), {
+          status: 200, headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected provider", { status: 404 });
+    }, "test-twelve-data-secret");
+
+    assert.equal(quote.provider, "Yahoo Finance");
+    assert.equal(quote.primaryProvider, "TwelveData");
+    assert.equal(quote.fallbackUsed, true);
+    assert.match(quote.fallbackReason ?? "", /TwelveData/);
+    assert.equal(quote.sourceMode, "LIVE");
+  });
+
   it("uses Binance only as an exact USDT spot fallback after an OKX spot failure", async () => {
     const requested: string[] = [];
     const [quote] = await fetchMarketQuotesBatch(["DOGE/USDT"], async (input) => {
