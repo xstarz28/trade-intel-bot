@@ -8,8 +8,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useAction } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { fetchBackendCandles } from "@/lib/backend-api";
 import { type Candle, normalizeCandles } from "./technical-indicators";
 import {
   type TimeframeKey,
@@ -70,7 +69,7 @@ export function useOHLCVData(
   const enabled = options?.enabled ?? true;
   const refreshMs = options?.refreshIntervalMs ?? REFRESH_INTERVAL_MS;
 
-  const fetchCandles = useAction(api.liveProtection.fetchOHLCVCandles);
+  const fetchCandles = fetchBackendCandles;
 
   const [state, setState] = useState<OHLCVState>({
     data: new Map(),
@@ -189,7 +188,7 @@ export function useOHLCVData(
         onHealthEvent({
           component: "OHLCV",
           success: fetchSuccesses.length > 0 && fetchErrors.length === 0,
-          source: "TwelveData",
+          source: fetchSuccesses[0]?.provider ?? "self-hosted-backend",
           operation: `OHLCV fetch: ${batch.join(", ")}`,
           durationMs: fetchDuration,
           error: firstError?.error,
@@ -211,7 +210,7 @@ export function useOHLCVData(
         onHealthEvent({
           component: "OHLCV",
           success: false,
-          source: "TwelveData",
+          source: "self-hosted-backend",
           operation: `OHLCV fetch: ${batch.join(", ")}`,
           durationMs: Date.now() - fetchStart,
           error: err?.message ?? "Fetch failed",
