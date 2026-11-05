@@ -25,7 +25,7 @@ import {
   type BackendMarketAnalysisResult,
 } from "@/lib/backend-api";
 import { AccountMigrationPanel } from "@/components/AccountMigrationPanel";
-import { AppAuthProvider } from "@/lib/convex-provider";
+import { LegacyConvexMigrationProvider } from "@/lib/convex-provider";
 import { isActiveConvexUrl } from "@/lib/auth-provider-mode";
 import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
@@ -1164,7 +1164,7 @@ export default function Dashboard() {
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
         <div className="mb-5">
           {isActiveConvexUrl(import.meta.env.VITE_CONVEX_URL) && isAllowedConvexCloudUrl(import.meta.env.VITE_CONVEX_URL) ? (
-            <AppAuthProvider><AccountMigrationPanel /></AppAuthProvider>
+            <LegacyConvexMigrationProvider><AccountMigrationPanel /></LegacyConvexMigrationProvider>
           ) : null}
         </div>
         {historyError && (
