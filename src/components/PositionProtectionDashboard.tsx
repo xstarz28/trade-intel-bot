@@ -419,7 +419,7 @@ export function PositionProtectionDashboard() {
           const result = await fetchBackendAlphaVantage(instrument.split("/")[0], instrumentType);
           if (cancelled) break;
 
-          const articles = result && "sentiment" in result ? result.sentiment?.articles ?? [] : [];
+          const articles = result?.sentiment?.articles ?? [];
           const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
             id: `av-${instrument}-${i}`,
             timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
