@@ -163,7 +163,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
             json(response,400,{success:false,error:"invalid_instrument"});
             return true;
           }
-          result=await engine.fetchCryptoDerivatives(instrument,env.COINGLASS_API_KEY,fetchImpl);
+          result=await engine.fetchCryptoDerivatives(instrument,env.COINGLASS_API_KEY,fetchImpl,env.TOKENOMIST_API_KEY);
         } else if(url.pathname==="/api/v1/intelligence/defi-fundamentals") {
           const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
           if(!instrument||instrument.length>80) {
