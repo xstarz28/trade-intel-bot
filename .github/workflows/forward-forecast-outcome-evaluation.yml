@@ -14,7 +14,11 @@ on:
     paths:
       - "src/lib/forward-forecast.ts"
       - "src/lib/backtest/forward-forecast-evaluation*"
+      - "src/lib/backtest/donchian-atr-hypothesis.live.test.ts"
+      - "src/lib/backtest/historical-ohlcv.ts"
       - ".github/workflows/forward-forecast-outcome-evaluation.yml"
+  schedule:
+    - cron: "17 3 * * 1"
   workflow_dispatch:
 
 permissions:
