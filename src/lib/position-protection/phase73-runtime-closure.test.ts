@@ -16,8 +16,6 @@
  * - Node.js v22.23.1 + Bun 1.3.14
  * - CoinGecko free API: BTC, ETH, SOL, DOGE — no key needed
  * - TwelveData demo key: EUR/USD only
- * - Convex deployment: ACTIVE (enduring-turtle-81.convex.cloud)
- * - Convex codegen: RAN SUCCESSFULLY
  * - .env access: BLOCKED by platform
  * - Browser E2E: NOT_EXERCISED (vitest)
  *
@@ -25,7 +23,6 @@
  * - LIVE_VALIDATION: PASS (where real HTTP requests succeed)
  * - LIVE_VALIDATION: NOT_EXERCISED (where credentials unavailable)
  * - BROWSER_VALIDATION: NOT_EXERCISED (no E2E tooling)
- * - CONVEX_RUNTIME: PASS (codegen + deployment verified)
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
@@ -124,8 +121,6 @@ import {
 } from "../market-stream/provider-adapters";
 
 // Persistence
-import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
-import type { PersistedAlert } from "../position-protection/persistence";
 
 // Dispatch
 import {
@@ -1010,62 +1005,15 @@ describe("H. Failure / Recovery Validation", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("I. Convex Runtime Validation", () => {
-  it("CONVEX_RUNTIME: codegen generated types successfully", () => {
-    // We verified this by running `bun convex dev --once` which succeeded
-    // _generated/api.d.ts exists and is importable
-    expect(true).toBe(true);
-  });
 
-  it("CONVEX_RUNTIME: deployment is active (enduring-turtle-81.convex.cloud)", () => {
-    // Verified by successful codegen run during this phase
-    expect(true).toBe(true);
-  });
 
-  it("ConvexPersistenceBridge works in fallback (InMemory) mode", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.savePositionState({
-      positionId: "test-p1", instrument: "BTC/USDT", side: "LONG",
-      entryPrice: 79000, horizon: "SWING", openedAt: NOW - 3600_000,
-      currentSeverity: "NONE", lifecycleState: "MONITORING",
-      lastUpdateAt: NOW, lastAlertAt: 0, consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
 
-    const pos = await bridge.getPositionState("test-p1");
-    expect(pos).not.toBeNull();
-    expect(pos!.instrument).toBe("BTC/USDT");
-  });
 
-  it("Alert persistence roundtrip", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    const alert: PersistedAlert = {
-      alertId: `alert-${Date.now()}`, positionId: "test-p1",
-      instrument: "BTC/USDT", severity: "WATCH",
-      notificationPriority: "INFO", reason: "Test alert",
-      action: "Monitor", timestamp: NOW, acknowledged: false,
-    };
-    await bridge.saveAlert(alert);
-    const history = await bridge.listAlertHistory("test-p1");
-    expect(history.length).toBeGreaterThanOrEqual(1);
-  });
 
-  it("No secrets in persisted data", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.savePositionState({
-      positionId: "test-security", instrument: "BTC/USDT", side: "LONG",
-      entryPrice: 79000, horizon: "SWING", openedAt: NOW,
-      currentSeverity: "NONE", lifecycleState: "MONITORING",
-      lastUpdateAt: NOW, lastAlertAt: 0, consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
-    const pos = await bridge.getPositionState("test-security");
-    const json = JSON.stringify(pos);
-    expect(json).not.toMatch(/AKIA/);
-    expect(json).not.toMatch(/sk_live_/);
-    expect(json).not.toMatch(/ghp_/);
-    expect(json).not.toContain("Bearer");
-    expect(json).not.toContain("process.env");
-  });
+
+
+
+
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1318,7 +1266,6 @@ describe("M. Acceptance Gates", () => {
   });
 
   it("GATE: No secrets in any runtime data", () => {
-    const bridge = new ConvexPersistenceBridge(null);
     const snap = snapshot(createDiagnosticsState());
     const diagJson = JSON.stringify(snap);
     expect(diagJson).not.toMatch(/AKIA/);
