@@ -557,7 +557,7 @@ describe("self-hosted live protection quote provider", () => {
     assert.equal(stale.sourceMode, "STALE");
 
     let providerCalled = false;
-    const [unsupported] = await fetchMarketQuotesBatch(["LITHIUM"], async () => {
+    const [unsupported] = await fetchMarketQuotesBatch(["UNMAPPED-COMMODITY"], async () => {
       providerCalled = true;
       throw new Error("Unmapped instruments must fail before provider access.");
     });
