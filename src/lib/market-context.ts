@@ -29,7 +29,7 @@ export function isUsableSmc(
 }
 
 /** Structural subset of the core bias breakdown (keeps this module free
- *  of app-alias imports so BOTH the Convex bundler and Vite can use it). */
+ *  of app-alias imports so the backend-shared TypeScript build and Vite can use it). */
 interface CoreBreakdownSubset {
   fundamental: number;
   sentiment: number;
