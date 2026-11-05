@@ -11,7 +11,7 @@ import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
  * being transferred to the self-hosted backend. It never owns application
  * login, session restoration, or route authorization.
  */
-export function AppAuthProvider({ children }: { children: React.ReactNode }) {
+export function LegacyConvexMigrationProvider({ children }: { children: React.ReactNode }) {
   const rawUrl = import.meta.env.VITE_CONVEX_URL;
   const convexUrl = typeof rawUrl === "string" ? rawUrl.trim() : "";
   const configured = isActiveConvexUrl(convexUrl) && isAllowedConvexCloudUrl(convexUrl);
