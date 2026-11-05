@@ -17,7 +17,7 @@ jobs:
     environment: production
     timeout-minutes: 25
     env:
-      XSTARZ_SMOKE_URL: https://xstarzanalysis.vercel.app
+      XSTARZ_SMOKE_URL: https://xstarzganaliys.com
       XSTARZ_SMOKE_TIMEOUT_MS: "120000"
     steps:
       - uses: actions/checkout@v4
