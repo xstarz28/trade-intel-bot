@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo, useEffect } from "react";
+import { lazy, Suspense, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstrumentInput } from "@/components/InstrumentInput";
@@ -24,8 +24,8 @@ import {
   type BackendAnalysisRecord,
   type BackendMarketAnalysisResult,
 } from "@/lib/backend-api";
-import { AccountMigrationPanel } from "@/components/AccountMigrationPanel";
-import { LegacyConvexMigrationProvider } from "@/lib/convex-provider";
+const AccountMigrationPanel = lazy(() => import("@/components/AccountMigrationPanel").then((module) => ({ default: module.AccountMigrationPanel })));
+const LegacyConvexMigrationProvider = lazy(() => import("@/lib/convex-provider").then((module) => ({ default: module.LegacyConvexMigrationProvider })));
 import { isActiveConvexUrl } from "@/lib/auth-provider-mode";
 import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
@@ -1164,7 +1164,7 @@ export default function Dashboard() {
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
         <div className="mb-5">
           {isActiveConvexUrl(import.meta.env.VITE_CONVEX_URL) && isAllowedConvexCloudUrl(import.meta.env.VITE_CONVEX_URL) ? (
-            <LegacyConvexMigrationProvider><AccountMigrationPanel /></LegacyConvexMigrationProvider>
+            <Suspense fallback={null}><LegacyConvexMigrationProvider><AccountMigrationPanel /></LegacyConvexMigrationProvider></Suspense>
           ) : null}
         </div>
         {historyError && (
