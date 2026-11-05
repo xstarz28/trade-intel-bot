@@ -873,12 +873,13 @@ export function fetchBackendAlphaVantage(instrument: string, instrumentType: str
   if (instrumentType !== "stock") {
     return Promise.resolve({
       success: false,
+      sentiment: { articles: [] },
       dataAvailable: { news: false, fundamentals: false, macro: false },
     });
   }
   return backendRequest<{
     success: boolean;
-    sentiment?: unknown;
+    sentiment?: { articles?: Array<{ publishedAt?: string | number; source?: string; title?: string; summary?: string; url?: string; sentimentLabel?: string }> };
     fundamentals?: unknown;
     macro?: unknown;
     dataAvailable: { news: boolean; fundamentals: boolean; macro: boolean };
