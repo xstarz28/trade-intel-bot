@@ -1,0 +1,155 @@
+name: Self-hosted production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Exact branch, tag or commit to deploy"
+        required: true
+        default: "architecture/self-hosted-backend-foundation"
+        type: string
+      confirm:
+        description: "Type DEPLOY_SELF_HOSTED to confirm the production deployment"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: self-hosted-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Backup, deploy and verify the self-hosted stack
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 45
+    env:
+      SSH_HOST: ${{ secrets.SELF_HOSTED_SSH_HOST }}
+      SSH_USER: ${{ secrets.SELF_HOSTED_SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SELF_HOSTED_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SELF_HOSTED_SSH_KNOWN_HOSTS }}
+      SSH_PORT: ${{ vars.SELF_HOSTED_SSH_PORT || '22' }}
+      APP_DIR: ${{ vars.SELF_HOSTED_APP_DIR || '/opt/trade-intel' }}
+    steps:
+      - name: Require explicit production confirmation and host credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${{ inputs.confirm }}" = "DEPLOY_SELF_HOSTED" || { echo "::error::Type DEPLOY_SELF_HOSTED to confirm."; exit 1; }
+          for name in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS; do
+            test -n "${!name:-}" || { echo "::error::Missing production secret: SELF_HOSTED_${name#SSH_}."; exit 1; }
+          done
+          [[ "$APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "::error::SELF_HOSTED_APP_DIR must be an absolute path with no shell metacharacters."; exit 1; }
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]] || { echo "::error::SELF_HOSTED_SSH_PORT must be numeric."; exit 1; }
+          test "$SSH_PORT" -ge 1 && test "$SSH_PORT" -le 65535
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - name: Package exact source revision without secrets or local build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          tar -czf "$RUNNER_TEMP/trade-intel-release.tar.gz" \
+            --exclude=.git --exclude=node_modules --exclude=dist \
+            --exclude=backend/.env --exclude=.env --exclude='*.sqlite' .
+          sha256sum "$RUNNER_TEMP/trade-intel-release.tar.gz"
+
+      - name: Configure pinned SSH transport
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null
+
+      - name: Upload release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -P "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$RUNNER_TEMP/trade-intel-release.tar.gz" \
+            "$SSH_USER@$SSH_HOST:/tmp/trade-intel-${GITHUB_SHA}.tar.gz"
+
+      - name: Backup database, deploy exact revision and rollback on failed health check
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$GITHUB_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          RELEASE_DIR="$APP_DIR/releases/$SHA"
+          ARCHIVE="/tmp/trade-intel-$SHA.tar.gz"
+          PREVIOUS="$(readlink -f "$APP_DIR/current" 2>/dev/null || true)"
+          mkdir -p "$RELEASE_DIR" "$APP_DIR/shared"
+          test -f "$APP_DIR/shared/backend.env" || {
+            echo "Missing $APP_DIR/shared/backend.env; configure the production environment file once on the host."
+            exit 1
+          }
+          tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
+          ln -sfn "$APP_DIR/shared/backend.env" "$RELEASE_DIR/backend/.env"
+
+          if [ -n "$PREVIOUS" ] && docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" ps -q api | grep -q .; then
+            docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" exec -T api \
+              node backend/backup.mjs "/data/backups/predeploy-$SHA.sqlite"
+          fi
+
+          ln -sfn "$RELEASE_DIR" "$APP_DIR/current.next"
+          mv -Tf "$APP_DIR/current.next" "$APP_DIR/current"
+          cd "$APP_DIR/current/backend"
+          if ! docker compose -p trade-intel up --build -d --remove-orphans; then
+            if [ -n "$PREVIOUS" ]; then
+              ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
+              mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
+              cd "$APP_DIR/current/backend"
+              docker compose -p trade-intel up --build -d --remove-orphans || true
+            fi
+            exit 1
+          fi
+
+          healthy=false
+          for attempt in $(seq 1 30); do
+            if docker compose -p trade-intel exec -T api node -e \
+              "fetch('http://127.0.0.1:8787/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              healthy=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$healthy" != true ]; then
+            echo "Self-hosted API did not become ready; rolling back."
+            if [ -n "$PREVIOUS" ]; then
+              ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
+              mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
+              cd "$APP_DIR/current/backend"
+              docker compose -p trade-intel up --build -d --remove-orphans || true
+            fi
+            exit 1
+          fi
+          rm -f "$ARCHIVE"
+          echo "Self-hosted API is healthy on revision $SHA."
+          REMOTE
+
+      - name: Verify canonical public HTTPS endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 10 https://xstarzganaliys.com/health/ready >/dev/null; then
+              echo "Canonical HTTPS endpoint is healthy."
+              exit 0
+            fi
+            echo "Waiting for canonical hostname/TLS: attempt $attempt/12"
+            sleep 5
+          done
+          echo "::error::Host deployment completed, but xstarzganaliys.com is not publicly healthy. Check DNS, firewall ports 80/443 and Caddy logs."
+          exit 1
