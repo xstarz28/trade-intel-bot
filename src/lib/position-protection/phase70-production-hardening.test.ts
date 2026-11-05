@@ -1411,7 +1411,7 @@ describe("I. Security Audit", () => {
     }
   });
 
-  it("Alert serializes cleanly for Convex persistence", () => {
+  it("Alert serializes cleanly for backend persistence", () => {
     const alert = evaluate(btcLong(), deterioratingEvidence(90_000));
     const json = JSON.stringify(alert);
     const parsed = JSON.parse(json);
@@ -1772,7 +1772,7 @@ describe("M. Final Acceptance Gates", () => {
     expect(action).not.toContain("execute");
   });
 
-  it("GATE: Convex persistence shape compatibility", () => {
+  it("GATE: backend persistence shape compatibility", () => {
     const alert = evaluate(btcLong(), deterioratingEvidence(90_000));
     const json = JSON.stringify(alert);
     const parsed = JSON.parse(json);
