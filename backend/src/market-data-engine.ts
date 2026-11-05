@@ -55,6 +55,11 @@ import {
   resolveYahooFinanceComparatorSymbols,
   resolveYahooFinanceMarketSymbol,
 } from "../../src/lib/data/providers/yahoo-finance";
+import { DeFiLlamaAdapter } from "../../src/lib/data/crypto/defillama-adapter";
+import { BinancePublicDerivativesAdapter } from "../../src/lib/data/crypto/binance-derivatives-adapter";
+import { BybitPublicDerivativesAdapter } from "../../src/lib/data/crypto/bybit-derivatives-adapter";
+import { OkxPublicDerivativesAdapter } from "../../src/lib/data/crypto/okx-derivatives-adapter";
+import type { DerivativesResult, OpenInterestData, FundingRateData, LongShortData, LiquidationData } from "../../src/lib/data/derivatives-types";
 import {
   OKX_SPOT_MARKET_PROVIDER,
   OkxSpotMarketAdapter,
@@ -824,6 +829,133 @@ export async function fetchEconomicCalendar(
     }
   }
   return { success: true, data };
+}
+
+
+const cryptoDerivativesCache = new Map<string, { value: DerivativesResult; expiresAt: number }>();
+const cryptoFundamentalsCache = new Map<string, { value: { success: boolean; data?: Record<string, unknown>; provider?: string; observedAt?: number; error?: string }; expiresAt: number }>();
+
+function finiteProviderNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+async function fetchCoinGlassJson(path: string, apiKey: string, fetchImpl: typeof fetch): Promise<any> {
+  const response = await fetchImpl("https://open-api-v4.coinglass.com/api" + path, {
+    headers: { accept: "application/json", "CG-API-KEY": apiKey },
+    signal: AbortSignal.timeout(6500),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`CoinGlass HTTP ${response.status}`);
+  if (!payload || (payload.code !== undefined && String(payload.code) !== "0")) {
+    throw new Error("CoinGlass returned an invalid or unsuccessful response");
+  }
+  return payload.data ?? payload;
+}
+
+export async function fetchCryptoDerivatives(
+  instrument: string,
+  apiKey: string | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<DerivativesResult> {
+  const normalized = instrument.trim().toUpperCase();
+  if (!normalized || normalized.length > 80) return { success: false, error: "A valid crypto instrument is required.", errorCode: "UNSUPPORTED_ASSET" };
+  const cached = cryptoDerivativesCache.get(normalized);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  if (cached) cryptoDerivativesCache.delete(normalized);
+
+  if (apiKey?.trim()) {
+    const symbol = normalized.split("/")[0].replace(/-SWAP$/, "").replace(/-[0-9]{6}$/, "");
+    try {
+      const [oiRaw, fundingRaw, longShortRaw, liquidationRaw] = await Promise.allSettled([
+        fetchCoinGlassJson("/futures/open-interest/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey.trim(), fetchImpl),
+        fetchCoinGlassJson("/futures/funding-rate/exchange-list?symbol=" + encodeURIComponent(symbol), apiKey.trim(), fetchImpl),
+        fetchCoinGlassJson("/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=" + encodeURIComponent(symbol + "USDT") + "&interval=4h&limit=1", apiKey.trim(), fetchImpl),
+        fetchCoinGlassJson("/futures/liquidation/aggregated-history?exchange_list=Binance%2COKX%2CBybit&symbol=" + encodeURIComponent(symbol) + "&interval=4h&limit=1", apiKey.trim(), fetchImpl),
+      ]);
+      const rows = (value: unknown) => Array.isArray(value) ? value : value ? [value] : [];
+      const oiRows = oiRaw.status === "fulfilled" ? rows(oiRaw.value) : [];
+      const oiItem = oiRows.find((item: any) => String(item.exchange ?? "").toLowerCase() === "all") ?? oiRows[0];
+      const oiValue = finiteProviderNumber(oiItem?.open_interest_usd);
+      const openInterest: OpenInterestData | undefined = oiValue !== undefined && oiValue > 0 ? {
+        current: oiValue,
+        ...(finiteProviderNumber(oiItem?.open_interest_change_percent_1h) !== undefined ? { change1h: finiteProviderNumber(oiItem.open_interest_change_percent_1h) } : {}),
+        ...(finiteProviderNumber(oiItem?.open_interest_change_percent_24h) !== undefined ? { change24h: finiteProviderNumber(oiItem.open_interest_change_percent_24h) } : {}),
+      } : undefined;
+      const fundingRows = fundingRaw.status === "fulfilled" ? rows(fundingRaw.value) : [];
+      const fundingItem = fundingRows.find((item: any) => String(item.symbol ?? "").toUpperCase() === symbol) ?? fundingRows[0];
+      const fundingEntries = Array.isArray(fundingItem?.stablecoin_margin_list) ? fundingItem.stablecoin_margin_list : [];
+      const fundingValues = fundingEntries.map((entry: any) => ({
+        name: String(entry.exchange ?? "unknown"),
+        raw: finiteProviderNumber(entry.funding_rate),
+        interval: finiteProviderNumber(entry.funding_rate_interval) ?? 8,
+      })).filter((entry: any) => entry.raw !== undefined);
+      const selectedFunding = fundingValues.find((entry: any) => entry.name.toLowerCase() === "binance") ?? fundingValues[0];
+      const fundingRate: FundingRateData | undefined = selectedFunding ? {
+        currentRate: selectedFunding.raw / 100,
+        annualizedRate: selectedFunding.raw / 100 * (24 / Math.max(1, selectedFunding.interval)) * 365,
+        exchanges: fundingValues.map((entry: any) => ({ name: entry.name, rate: entry.raw / 100 })),
+      } : undefined;
+      const lsRows = longShortRaw.status === "fulfilled" ? rows(longShortRaw.value) : [];
+      const lsValue = finiteProviderNumber(lsRows.at(-1)?.global_account_long_short_ratio);
+      const longShort: LongShortData | undefined = lsValue !== undefined && lsValue > 0 ? { accountRatio: lsValue } : undefined;
+      const liquidationRows = liquidationRaw.status === "fulfilled" ? rows(liquidationRaw.value) : [];
+      const liqItem = liquidationRows.at(-1);
+      const longVolume = finiteProviderNumber(liqItem?.aggregated_long_liquidation_usd);
+      const shortVolume = finiteProviderNumber(liqItem?.aggregated_short_liquidation_usd);
+      const liquidations: LiquidationData | undefined = longVolume !== undefined || shortVolume !== undefined ? {
+        longVolume: longVolume ?? 0, shortVolume: shortVolume ?? 0,
+        totalVolume: (longVolume ?? 0) + (shortVolume ?? 0),
+        dominantSide: (longVolume ?? 0) > (shortVolume ?? 0) * 1.5 ? "longs" :
+          (shortVolume ?? 0) > (longVolume ?? 0) * 1.5 ? "shorts" : "balanced",
+        window: "4h",
+      } : undefined;
+      const availability = { openInterest: Boolean(openInterest), fundingRate: Boolean(fundingRate), longShort: Boolean(longShort), liquidations: Boolean(liquidations) };
+      const available = Object.values(availability).filter(Boolean).length;
+      if (available > 0) {
+        const value: DerivativesResult = {
+          success: true,
+          data: {
+            provider: "coinglass", symbol, timestamp: Date.now(), freshness: "realtime",
+            ...(openInterest ? { openInterest } : {}), ...(fundingRate ? { fundingRate } : {}),
+            ...(longShort ? { longShort } : {}), ...(liquidations ? { liquidations } : {}),
+            availability, confidence: available >= 3 ? "high" : available >= 2 ? "medium" : "low",
+          },
+        };
+        cryptoDerivativesCache.set(normalized, { value, expiresAt: Date.now() + 60_000 });
+        return value;
+      }
+    } catch {
+      // A failed paid provider is never promoted; try explicitly labelled public adapters.
+    }
+  }
+
+  const adapters = [
+    new BinancePublicDerivativesAdapter(fetchImpl),
+    new BybitPublicDerivativesAdapter(fetchImpl),
+    new OkxPublicDerivativesAdapter(fetchImpl),
+  ];
+  const settled = await Promise.allSettled(adapters.map((adapter) => adapter.fetch(normalized)));
+  const match = settled.find((item) => item.status === "fulfilled" && item.value);
+  const data = match?.status === "fulfilled" ? match.value : null;
+  if (!data) return { success: false, error: "CoinGlass and public derivatives providers returned no usable data for the exact instrument.", errorCode: "NO_DATA" };
+  const value: DerivativesResult = { success: true, data };
+  cryptoDerivativesCache.set(normalized, { value, expiresAt: Date.now() + 60_000 });
+  return value;
+}
+
+export async function fetchCryptoFundamentals(instrument: string, fetchImpl: typeof fetch = fetch) {
+  const key = instrument.trim().toUpperCase();
+  const cached = cryptoFundamentalsCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const result = await new DeFiLlamaAdapter(fetchImpl).fetch(key);
+  if (!result || !result.success || !result.data) {
+    return { success: false, error: result?.error ?? "DeFiLlama does not support this instrument.", provider: result?.provider ?? "DeFiLlama", observedAt: result?.observedAt ?? Date.now() };
+  }
+  const value = { success: true, data: result.data as Record<string, unknown>, provider: result.provider, observedAt: result.observedAt };
+  cryptoFundamentalsCache.set(key, { value, expiresAt: Date.now() + 10 * 60 * 1000 });
+  return value;
 }
 
 const FX_REFERENCE_CACHE_TTL_MS = 60 * 60 * 1000;
