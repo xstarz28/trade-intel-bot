@@ -122,6 +122,17 @@ export function createAccountImportHandler({ database, env = process.env }) {
         }
       }
 
+      const sourceCounts = Object.fromEntries(
+        IMPORT_TABLES.map((table) => [table, (input.data[table] ?? []).length]),
+      );
+      if (input.counts !== undefined) {
+        if (!input.counts || typeof input.counts !== "object" || Array.isArray(input.counts) ||
+            IMPORT_TABLES.some((table) => input.counts[table] !== sourceCounts[table])) {
+          json(response, 400, { error: "account_export_count_mismatch" });
+          return true;
+        }
+      }
+
       const inserted = {};
       const skipped = {};
       const raw = database.raw;
@@ -158,8 +169,12 @@ export function createAccountImportHandler({ database, env = process.env }) {
       json(response, 200, {
         success: true,
         accountId: user.id,
+        sourceCounts,
         inserted,
         skipped,
+        reconciled: IMPORT_TABLES.every((table) =>
+          sourceCounts[table] === inserted[table] + skipped[table]),
+        totalSource: Object.values(sourceCounts).reduce((sum, count) => sum + count, 0),
         totalInserted: Object.values(inserted).reduce((sum, count) => sum + count, 0),
         totalSkipped: Object.values(skipped).reduce((sum, count) => sum + count, 0),
       });
