@@ -483,7 +483,7 @@ describe("self-hosted live protection quote provider", () => {
 
   it("fetches an exact OKX perpetual ticker without substituting spot", async () => {
     const now = Date.now();
-    const requested: string[] = [];
+    const requested = [];
     const [quote] = await fetchMarketQuotesBatch(["BTC-USDT-SWAP"], async (input) => {
       requested.push(String(input));
       return new Response(JSON.stringify({
@@ -511,7 +511,7 @@ describe("self-hosted live protection quote provider", () => {
   });
 
   it("never falls back from a dated futures contract to a spot quote", async () => {
-    const requested: string[] = [];
+    const requested = [];
     const [quote] = await fetchMarketQuotesBatch(["BTC-USDT-261225"], async (input) => {
       requested.push(String(input));
       return new Response(JSON.stringify({ code: "51001", msg: "instrument not found" }), {
@@ -527,7 +527,7 @@ describe("self-hosted live protection quote provider", () => {
   });
 
   it("uses exact Yahoo tickers for FX, metals, equities, indices, and macro context", async () => {
-    const requested: string[] = [];
+    const requested = [];
     const instruments = ["EUR/USD", "XAU/USD", "AAPL", "DXY", "US10Y", "WTI"];
     const results = await fetchMarketQuotesBatch(instruments, async (input) => {
       const url = new URL(String(input));
@@ -618,7 +618,7 @@ describe("self-hosted live protection quote provider", () => {
   });
 
   it("uses Binance only as an exact USDT spot fallback after an OKX spot failure", async () => {
-    const requested: string[] = [];
+    const requested = [];
     const [quote] = await fetchMarketQuotesBatch(["DOGE/USDT"], async (input) => {
       const url = String(input);
       requested.push(url);
