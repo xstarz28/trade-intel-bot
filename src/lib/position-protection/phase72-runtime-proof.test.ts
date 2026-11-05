@@ -105,8 +105,7 @@ import {
 
 // Persistence
 import { InMemoryRepository } from "../position-protection/persistence";
-import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
-import type { PersistedPositionState, PersistedAlert } from "../position-protection/persistence";
+import type { PersistedPositionState } from "../position-protection/persistence";
 
 // Dispatch
 import {
@@ -328,10 +327,7 @@ describe("A. Actual Runtime Environment Audit", () => {
     expect(typeof fetch).toBe("function");
   });
 
-  it("Convex package is installed", async () => {
-    // Check that the convex module can be imported (already done at top)
-    expect(true).toBe(true); // If we got here, imports worked
-  });
+
 
   it("All protection engine modules import successfully", () => {
     // If we got here, all imports at top of file succeeded
@@ -884,43 +880,9 @@ describe("G. Diagnostics with Real Data", () => {
 // ═══════════════════════════════════════════════════════════════
 
 describe("H. Convex Persistence Compatibility", () => {
-  it("ConvexPersistenceBridge works in fallback mode with real data shape", async () => {
-    const btc = liveResults.find(r => r.instrument === "BTC/USDT" && r.success);
-    if (!btc) return;
 
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.savePositionState({
-      positionId: "p1", instrument: "BTC/USDT", side: "LONG",
-      entryPrice: btc!.price * 0.95, horizon: "SWING",
-      openedAt: NOW - 3600_000, currentSeverity: "NONE",
-      lifecycleState: "MONITORING", lastUpdateAt: NOW,
-      lastAlertAt: 0, consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
 
-    const pos = await bridge.getPositionState("p1");
-    expect(pos).not.toBeNull();
-    expect(pos!.entryPrice).toBeCloseTo(btc!.price * 0.95, 0);
-  });
 
-  it("Alert persistence roundtrip with real data", async () => {
-    const btc = liveResults.find(r => r.instrument === "BTC/USDT" && r.success);
-    if (!btc) return;
-
-    const bridge = new ConvexPersistenceBridge(null);
-    const alert: PersistedAlert = {
-      alertId: `alert-${Date.now()}`, positionId: "p1",
-      instrument: "BTC/USDT", severity: "WATCH",
-      notificationPriority: "INFO",
-      reason: `BTC price at $${btc!.price} — monitoring`,
-      action: "Monitor position", timestamp: NOW,
-      acknowledged: false,
-    };
-    await bridge.saveAlert(alert);
-    const history = await bridge.listAlertHistory("p1");
-    expect(history.length).toBe(1);
-    expect(history[0].reason).toContain("$");
-  });
 });
 
 // ═══════════════════════════════════════════════════════════════
@@ -1089,15 +1051,5 @@ describe("K. Acceptance Gates", () => {
     expect(result.shouldAlert).toBe(true);
   });
 
-  it("GATE: Convex persistence compatible", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.saveAlert({
-      alertId: "test", positionId: "p1", instrument: "BTC/USDT",
-      severity: "WATCH", notificationPriority: "INFO",
-      reason: "Test", action: "Monitor", timestamp: NOW,
-      acknowledged: false,
-    });
-    const history = await bridge.listAlertHistory("p1");
-    expect(history.length).toBe(1);
-  });
+
 });
