@@ -115,7 +115,7 @@ const INDEX_SYMBOLS: Record<string, string> = {
   NDX: "^NDX", NASDAQ100: "^NDX", "NASDAQ-100": "^NDX", US100: "^IXIC",
   IXIC: "^IXIC", NASDAQ: "^IXIC",
   DJI: "^DJI", DOWJONES: "^DJI", US30: "^DJI",
-  RUT: "^RUT", VIX: "^VIX", DXY: "DX-Y.NYB", US10Y: "^TNX", US2Y: "^IRX",
+  RUT: "^RUT", VIX: "^VIX", DXY: "DX-Y.NYB", US10Y: "^TNX",
   FTSE: "^FTSE", DAX: "^GDAXI", N225: "^N225", NIKKEI: "^N225",
   HSI: "^HSI", JKSE: "^JKSE", IHSG: "^JKSE",
 };
@@ -1283,6 +1283,8 @@ function normalizeLiveOkxInstrument(instrument: string): string | null {
     const quote = value.endsWith("USDT") ? "USDT" : value.endsWith("USDC") ? "USDC" : "USD";
     return value.slice(0, -quote.length) + "-" + quote;
   }
+  const exactSlashPair = value.match(/^([A-Z0-9]{2,20})\/([A-Z0-9]{2,20})$/);
+  if (exactSlashPair) return exactSlashPair[1] + "-" + exactSlashPair[2];
   return toOkxSpotInstrument(value);
 }
 
@@ -1434,6 +1436,15 @@ async function fetchLiveQuoteUncached(
   const instrumentType = inferInstrumentType(instrument);
   const assetClass = ["DXY", "VIX", "US10Y", "US2Y"].includes(instrument) ? "macro" : instrumentType;
   const now = Date.now();
+
+  if (instrument === "US2Y") {
+    return {
+      instrument, assetClass, price: 0, timestamp: now, provider: "Yahoo Finance",
+      primaryProvider: "Yahoo Finance", fallbackUsed: false, sourceMode: "UNAVAILABLE",
+      success: false,
+      error: "No verified exact US 2-year Treasury yield symbol is configured; the ^IRX 13-week T-bill series is not a valid substitute.",
+    };
+  }
 
   if (instrumentType === "crypto") {
     const instId = normalizeLiveOkxInstrument(instrument);
