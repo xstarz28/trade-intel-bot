@@ -661,7 +661,7 @@ export function PositionProtectionDashboard() {
       }
       return next;
     });
-  }, [intelligenceMap, visibleBackendTimelines]);
+  }, [intelligenceMap, backendTimelines, positionIds.length]);
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ────────────
 
