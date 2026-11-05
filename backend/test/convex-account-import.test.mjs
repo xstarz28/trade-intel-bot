@@ -120,6 +120,25 @@ describe("native Convex account export mapping", () => {
     );
   });
 
+  it("rejects legacy exports whose declared table counts do not match their rows", () => {
+    const counts = Object.fromEntries([
+      "analyses", "journal", "monitoredPositions", "alertHistory", "streamCursors",
+      "historicalSnapshots", "alertRules", "ruleAlertHistory", "notifications",
+      "notificationPreferences", "historicalEvents", "runtimeHealthSnapshots",
+    ].map((table) => [table, 0]));
+    counts.analyses = 1;
+    assert.throws(
+      () => normalizeConvexAccountExport({
+        format: "trade-intel-convex-account-export",
+        version: 1,
+        account: { id: "convex-user-1", email: "trader@example.test" },
+        data: { analyses: [] },
+        counts,
+      }, targetUser),
+      (error) => error.status === 400 && error.code === "convex_export_count_mismatch",
+    );
+  });
+
   it("rejects email-less exports without a valid source account ID", () => {
     const base = {
       format: "trade-intel-convex-account-export",
