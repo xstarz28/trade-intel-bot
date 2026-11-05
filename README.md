@@ -31,25 +31,26 @@ The production target is a single-origin self-hosted Docker/Caddy deployment at 
 
 ## Local development
 
-Install dependencies:
+Install the locked dependencies:
 
 ```bash
-npm install
+npm ci --legacy-peer-deps
 ```
 
-Start the frontend:
-
-```bash
-npm run dev
-```
-
-Build:
+Build the frontend and shared backend engine:
 
 ```bash
 npm run build
+npm run backend:build
 ```
 
-Test:
+For a local full-stack run, set the same-origin development URLs and start the self-hosted Node service:
+
+```bash
+NODE_ENV=development APP_ORIGIN=http://localhost:8787 PUBLIC_BASE_URL=http://localhost:8787 node backend/server.mjs
+```
+
+Open http://localhost:8787. Guest login works without Google credentials. Run the automated tests with:
 
 ```bash
 npm test
