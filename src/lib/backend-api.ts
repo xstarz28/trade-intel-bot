@@ -819,6 +819,24 @@ export function fetchBackendFxRate(from: string, to: string, fetchImpl?: typeof 
   }, fetchImpl);
 }
 
+/** Fetches real OHLCV candles through the self-hosted provider fabric. */
+export function fetchBackendCandles(input: {
+  instruments: string[];
+  timeframes: string[];
+  outputsize: number;
+}, fetchImpl?: typeof fetch) {
+  return backendRequest<{ results: Array<{
+    instrument: string;
+    timeframe: string;
+    success: boolean;
+    candles: Array<{ timestamp: number; open: number; high: number; low: number; close: number; volume?: number }>;
+    provider?: string;
+    error?: string;
+  }> }>("/api/v1/market-data/candles", {
+    method: "POST", body: JSON.stringify(input),
+  }, fetchImpl).then((result) => result.results);
+}
+
 /** Historical intelligence persistence and timeline reads. */
 export function saveBackendHistoricalSnapshot(snapshot: Record<string, unknown>, fetchImpl?: typeof fetch) {
   return backendRequest<{ id: string; pruned: number }>("/api/v1/history/snapshots", {
