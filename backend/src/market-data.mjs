@@ -95,6 +95,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
       "/api/v1/intelligence/okx-orderbook",
       "/api/v1/intelligence/okx-futures-open-interest",
       "/api/v1/market-data/analyze",
+      "/api/v1/market-data/candles",
     ]);
     if(!providerPaths.has(url.pathname)) return false;
     if(request.method!=="POST") {
@@ -117,6 +118,23 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
     }
     try {
       const input=await readBody(request);
+      if(url.pathname==="/api/v1/market-data/candles") {
+        const instruments=input.instruments;
+        const timeframes=input.timeframes;
+        const outputsize=Number(input.outputsize??50);
+        if(!Array.isArray(instruments)||instruments.length<1||instruments.length>5||
+          instruments.some(value=>typeof value!=="string"||!value.trim()||value.length>80)||
+          !Array.isArray(timeframes)||timeframes.length<1||timeframes.length>7||
+          timeframes.some(value=>typeof value!=="string"||!["M1","M5","M15","H1","H4","D1","W1"].includes(value.trim().toUpperCase()))||
+          !Number.isInteger(outputsize)||outputsize<20||outputsize>300) {
+          json(response,400,{success:false,error:"invalid_ohlcv_batch_request"});
+          return true;
+        }
+        const engine=await import("../dist/market-data-engine.mjs");
+        const results=await engine.fetchMarketCandlesBatch(instruments,timeframes,outputsize,fetchImpl);
+        json(response,200,{results});
+        return true;
+      }
       if(url.pathname!=="/api/v1/market-data/analyze") {
         const engine=await import("../dist/market-data-engine.mjs");
         let result;
