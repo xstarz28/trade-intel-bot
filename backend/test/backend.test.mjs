@@ -370,6 +370,62 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("rate-limits anonymous session creation per client and returns a retry hint", async () => {
+    const database = createTemporaryDatabase();
+    const env = {
+      NODE_ENV: "development",
+      APP_ORIGIN: "http://localhost:5173",
+    };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const responses = [];
+        for (let attempt = 0; attempt < 11; attempt += 1) {
+          responses.push(await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+            method: "POST",
+            headers: { Origin: env.APP_ORIGIN },
+          }));
+        }
+
+        assert.deepEqual(responses.slice(0, 10).map((response) => response.status), Array(10).fill(201));
+        assert.equal(responses[10].status, 429);
+        assert.equal(responses[10].headers.get("retry-after"), "600");
+        assert.deepEqual(await responses[10].json(), { error: "anonymous_sign_in_rate_limited" });
+        assert.equal(database.raw.prepare("SELECT COUNT(*) AS count FROM users").get().count, 10);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
+  it("rate-limits Google OAuth initiation without making an upstream request", async () => {
+    const database = createTemporaryDatabase();
+    const env = {
+      NODE_ENV: "development",
+      APP_ORIGIN: "http://localhost:5173",
+      PUBLIC_BASE_URL: "http://localhost:8787",
+      GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com",
+      GOOGLE_CLIENT_SECRET: "test-secret",
+    };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const responses = [];
+        for (let attempt = 0; attempt < 21; attempt += 1) {
+          responses.push(await fetch(`${baseUrl}/api/v1/auth/google`, {
+            headers: { Accept: "application/json" },
+          }));
+        }
+
+        assert.deepEqual(responses.slice(0, 20).map((response) => response.status), Array(20).fill(302));
+        assert.equal(responses[20].status, 429);
+        assert.equal(responses[20].headers.get("retry-after"), "600");
+        assert.deepEqual(await responses[20].json(), { error: "google_sign_in_rate_limited" });
+        assert.equal(database.raw.prepare("SELECT COUNT(*) AS count FROM oauth_flows").get().count, 20);
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
+
   it("links a guest account to Google without changing its user ID or private data", () => {
     const database = createTemporaryDatabase();
     try {
