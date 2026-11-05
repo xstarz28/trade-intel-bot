@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -461,5 +461,138 @@ describe("self-hosted market analysis engine", () => {
     });
     assert.equal(invalid.success, false);
     assert.equal(providerCalled, false);
+  });
+});
+
+
+describe("self-hosted live protection quote provider", () => {
+  const yahooQuotePayload = (timestamp = Date.now()) => ({
+    chart: {
+      result: [{
+        meta: {
+          regularMarketPrice: 100.25,
+          regularMarketTime: Math.floor(timestamp / 1000),
+          bid: 100.2,
+          ask: 100.3,
+          regularMarketChangePercent: 1.5,
+          regularMarketVolume: 250_000,
+        },
+      }],
+    },
+  });
+
+  it("fetches an exact OKX perpetual ticker without substituting spot", async () => {
+    const now = Date.now();
+    const requested: string[] = [];
+    const [quote] = await fetchMarketQuotesBatch(["BTC-USDT-SWAP"], async (input) => {
+      requested.push(String(input));
+      return new Response(JSON.stringify({
+        code: "0",
+        data: [{
+          instId: "BTC-USDT-SWAP",
+          last: "101250",
+          bidPx: "101249",
+          askPx: "101251",
+          ts: String(now),
+          open24h: "100000",
+          vol24h: "125",
+        }],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    assert.equal(quote.success, true);
+    assert.equal(quote.sourceMode, "LIVE");
+    assert.equal(quote.provider, "OKX");
+    assert.equal(quote.instrument, "BTC-USDT-SWAP");
+    assert.equal(quote.price, 101250);
+    assert.equal(quote.change24h, 1.25);
+    assert.match(decodeURIComponent(requested[0]), /instId=BTC-USDT-SWAP/);
+    assert.equal(requested.length, 1);
+  });
+
+  it("never falls back from a dated futures contract to a spot quote", async () => {
+    const requested: string[] = [];
+    const [quote] = await fetchMarketQuotesBatch(["BTC-USDT-261225"], async (input) => {
+      requested.push(String(input));
+      return new Response(JSON.stringify({ code: "51001", msg: "instrument not found" }), {
+        status: 404, headers: { "content-type": "application/json" },
+      });
+    });
+
+    assert.equal(quote.success, false);
+    assert.equal(quote.sourceMode, "UNAVAILABLE");
+    assert.match(quote.error ?? "", /exact-instrument ticker unavailable/i);
+    assert.equal(requested.length, 1);
+    assert.match(requested[0], /okx\.com\/api\/v5\/market\/ticker/);
+  });
+
+  it("uses exact Yahoo tickers for FX, metals, equities, indices, and macro context", async () => {
+    const requested: string[] = [];
+    const instruments = ["EUR/USD", "XAU/USD", "AAPL", "DXY", "US10Y", "WTI"];
+    const results = await fetchMarketQuotesBatch(instruments, async (input) => {
+      const url = new URL(String(input));
+      requested.push(decodeURIComponent(url.pathname.split("/").pop() ?? ""));
+      return new Response(JSON.stringify(yahooQuotePayload()), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    });
+
+    assert.deepEqual(requested.sort(), ["EURUSD=X", "XAUUSD=X", "AAPL", "DX-Y.NYB", "^TNX", "CL=F"].sort());
+    assert.deepEqual(results.map((item) => item.instrument), instruments);
+    assert.equal(results[0].assetClass, "forex");
+    assert.equal(results[1].assetClass, "commodity");
+    assert.equal(results[2].assetClass, "stock");
+    assert.equal(results[3].assetClass, "macro");
+    assert.equal(results[4].assetClass, "macro");
+    assert.equal(results[5].assetClass, "commodity");
+    assert.ok(results.every((item) => item.success && item.sourceMode === "LIVE"));
+  });
+
+  it("marks provider observations stale from the provider timestamp and rejects unsupported symbols", async () => {
+    const [stale] = await fetchMarketQuotesBatch(["MSFT"], async () =>
+      new Response(JSON.stringify(yahooQuotePayload(Date.now() - 120_000)), {
+        status: 200, headers: { "content-type": "application/json" },
+      }));
+    assert.equal(stale.success, true);
+    assert.equal(stale.sourceMode, "STALE");
+
+    let providerCalled = false;
+    const [unsupported] = await fetchMarketQuotesBatch(["LITHIUM"], async () => {
+      providerCalled = true;
+      throw new Error("Unmapped instruments must fail before provider access.");
+    });
+    assert.equal(unsupported.success, false);
+    assert.equal(unsupported.sourceMode, "UNAVAILABLE");
+    assert.equal(providerCalled, false);
+  });
+
+  it("uses Binance only as an exact USDT spot fallback after an OKX spot failure", async () => {
+    const requested: string[] = [];
+    const [quote] = await fetchMarketQuotesBatch(["DOGE/USDT"], async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.includes("www.okx.com")) {
+        return new Response(JSON.stringify({ code: "500", msg: "temporary error" }), {
+          status: 503, headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response(JSON.stringify({
+        symbol: "DOGEUSDT",
+        lastPrice: "0.18",
+        bidPrice: "0.1799",
+        askPrice: "0.1801",
+        priceChangePercent: "2.5",
+        volume: "1000000",
+        closeTime: Date.now(),
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+
+    assert.equal(quote.success, true);
+    assert.equal(quote.provider, "Binance Spot");
+    assert.equal(quote.fallbackUsed, true);
+    assert.equal(quote.sourceMode, "LIVE");
+    assert.equal(quote.price, 0.18);
+    assert.equal(requested.length, 2);
+    assert.match(requested[1], /api\.binance\.com\/api\/v3\/ticker\/24hr\?symbol=DOGEUSDT/);
   });
 });
