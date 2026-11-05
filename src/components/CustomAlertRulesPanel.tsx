@@ -2,7 +2,7 @@
  * Phase 93 — Custom Alert Rules Panel
  *
  * Trader-facing UI for managing custom intelligence alert rules.
- * CRUD via Convex mutations. No auto-execution. INFORMATIONAL_ONLY.
+ * CRUD through the authenticated self-hosted backend API. No auto-execution. INFORMATIONAL_ONLY.
  */
 import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
