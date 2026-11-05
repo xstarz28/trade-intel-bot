@@ -1,5 +1,5 @@
 /**
- * Normalized market data types shared between Convex backend and frontend.
+ * Normalized market data types shared between the self-hosted backend and frontend.
  * Every provider response is mapped into these types before reaching the
  * analysis engine.
  */
