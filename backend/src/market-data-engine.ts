@@ -1027,6 +1027,7 @@ export async function fetchCryptoDerivatives(
   const cached = cryptoDerivativesCache.get(normalized);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
   if (cached) cryptoDerivativesCache.delete(normalized);
+  const tokenomicsPromise = fetchCryptoTokenomics(normalized, tokenomistApiKey, fetchImpl);
 
   if (apiKey?.trim()) {
     const symbol = normalized.split("/")[0].replace(/-SWAP$/, "").replace(/-[0-9]{6}$/, "").replace(/-(USDT|USDC|USD|BTC|ETH)$/, "");
