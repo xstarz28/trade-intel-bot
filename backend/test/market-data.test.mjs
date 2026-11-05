@@ -340,6 +340,7 @@ describe("self-hosted market analysis engine", () => {
     const fetchImpl = async (input) => {
       const url = String(input);
       requested.push(url);
+      if (url.includes("pattern.plus") || url.includes("api.coingecko.com")) return new Response("not found", { status: 404 });
       const payload = url.includes("open-interest")
         ? { code: "0", data: [{ exchange: "All", open_interest_usd: "1000000", open_interest_change_percent_1h: "2.5", open_interest_change_percent_24h: "4" }] }
         : url.includes("funding-rate")
@@ -356,9 +357,9 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.data.fundingRate.currentRate, 0.0001);
     assert.equal(result.data.longShort.accountRatio, 1.2);
     assert.equal(result.data.liquidations.totalVolume, 150);
-    assert.equal(requested.length, 4);
-    assert.ok(requested.every((url) => url.startsWith("https://open-api-v4.coinglass.com/api/")));
-    assert.ok(requested.every((url) => new URL(url).searchParams.get("symbol") === "BTC"));
+    const coinGlassRequests = requested.filter((url) => url.startsWith("https://open-api-v4.coinglass.com/api/"));
+    assert.equal(coinGlassRequests.length, 4);
+    assert.ok(coinGlassRequests.every((url) => new URL(url).searchParams.get("symbol") === "BTC"));
   });
 
   it("does not request DeFiLlama data for unsupported instruments", async () => {
