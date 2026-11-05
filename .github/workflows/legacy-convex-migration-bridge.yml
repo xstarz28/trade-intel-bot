@@ -17,8 +17,6 @@ jobs:
     name: Deploy additive legacy account export bridge
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +39,8 @@ jobs:
           test -f src/convex/accountMigration.ts
           grep -q "async redirect" src/convex/auth.ts
       - name: Verify one-time deployment credential
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
         run: |
           if [ -z "$CONVEX_DEPLOY_KEY" ]; then
             echo "::error::CONVEX_DEPLOY_KEY is missing. Add the legacy production deployment key only for this one-time export bridge."
@@ -54,4 +54,6 @@ jobs:
               ;;
           esac
       - name: Deploy the migration-only auth redirect and user-scoped export query
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
         run: npx convex deploy
