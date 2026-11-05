@@ -323,21 +323,15 @@ export function AppAuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   if (mode === "convex" && realConvex) {
+    // Convex is retained only as an optional legacy-data migration provider.
+    // Application authentication is owned by the self-hosted backend.
     return <ConvexAuthProvider client={realConvex}>{children}</ConvexAuthProvider>;
   }
 
-  if (mode === "mock") {
+  if (mode === "mock" && import.meta.env.DEV) {
     return <MockConvexAuthProvider>{children}</MockConvexAuthProvider>;
   }
 
-  return (
-    <div role="alert" className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
-      <div className="max-w-lg text-center">
-        <p className="text-sm font-semibold">Autentikasi belum dikonfigurasi.</p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Login dinonaktifkan karena layanan autentikasi tidak tersedia. Tidak ada sesi tiruan yang akan dibuat di lingkungan produksi.
-        </p>
-      </div>
-    </div>
-  );
+  // Missing/disabled Convex must never block backend-authenticated app routes.
+  return <>{children}</>;
 }
