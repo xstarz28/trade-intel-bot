@@ -8,6 +8,7 @@ import type { OkxSpecData } from "@/lib/risk/okx-spec";
 import type { ExecutionData } from "@/lib/execution-quality";
 import type { CryptoDerivativesData } from "@/lib/data/derivatives-types";
 import type { EconomicCalendarData } from "@/lib/data/calendar-types";
+import type { DerivativesResult } from "@/lib/data/derivatives-types";
 /**
  * Typed client for the self-hosted Trade Intel API.
  *
@@ -815,6 +816,41 @@ export function fetchBackendFxRate(from: string, to: string, fetchImpl?: typeof 
   }>("/api/v1/intelligence/fx-rate", {
     method: "POST",
     body: JSON.stringify({ from, to }),
+  }, fetchImpl);
+}
+
+/** Fetches stock fundamentals, sentiment and macro intelligence through the backend. */
+export function fetchBackendAlphaVantage(instrument: string, instrumentType: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{
+    success: boolean;
+    sentiment?: unknown;
+    fundamentals?: unknown;
+    macro?: unknown;
+    dataAvailable: { news: boolean; fundamentals: boolean; macro: boolean };
+    error?: string;
+    errorCode?: string;
+  }>("/api/v1/intelligence/alpha-vantage", {
+    method: "POST", body: JSON.stringify({ instrument, instrumentType }),
+  }, fetchImpl);
+}
+
+/** Fetches CoinGlass derivatives or explicitly labelled public exchange fallbacks. */
+export function fetchBackendCryptoDerivatives(instrument: string, fetchImpl?: typeof fetch) {
+  return backendRequest<DerivativesResult>("/api/v1/intelligence/derivatives", {
+    method: "POST", body: JSON.stringify({ instrument }),
+  }, fetchImpl);
+}
+
+/** Fetches DeFiLlama fundamentals through the backend. */
+export function fetchBackendCryptoFundamentals(instrument: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{
+    success: boolean;
+    data?: Record<string, unknown>;
+    provider?: string;
+    observedAt?: number;
+    error?: string;
+  }>("/api/v1/intelligence/defi-fundamentals", {
+    method: "POST", body: JSON.stringify({ instrument }),
   }, fetchImpl);
 }
 
