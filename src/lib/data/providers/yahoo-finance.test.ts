@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   fetchYahooFinanceCandles,
   fetchYahooFinanceMarketCandles,
+  fetchYahooFinanceQuote,
+  parseYahooFinanceQuote,
   resolveYahooFinanceMarketCandidates,
   parseYahooFinanceCandles,
   resolveYahooFinanceStockSymbol,
@@ -175,5 +177,66 @@ describe("free Yahoo Finance stock fallback", () => {
     expect(requestedUrl).toContain("interval=5m");
     expect(requestedUrl).toContain("range=60d");
     expect(candles).toHaveLength(2);
+  });
+});
+
+
+describe("Yahoo Finance live quote observations", () => {
+  const quotePayload = {
+    chart: {
+      result: [{
+        meta: {
+          regularMarketPrice: 152.75,
+          regularMarketTime: 1_800_000_000,
+          bid: 152.7,
+          ask: 152.8,
+          regularMarketChangePercent: 1.25,
+          regularMarketVolume: 123_456,
+        },
+      }],
+    },
+  };
+
+  it("parses provider timestamp, spread, percentage change, and volume", () => {
+    expect(parseYahooFinanceQuote(quotePayload)).toEqual({
+      price: 152.75,
+      timestamp: 1_800_000_000_000,
+      bid: 152.7,
+      ask: 152.8,
+      change24h: 1.25,
+      volume24h: 123_456,
+    });
+  });
+
+  it("rejects missing provider timestamps and invalid prices instead of using local time", () => {
+    expect(parseYahooFinanceQuote({ chart: { result: [{ meta: { regularMarketPrice: 100 } }] } })).toBeNull();
+    expect(parseYahooFinanceQuote({
+      chart: { result: [{ meta: { regularMarketPrice: 0, regularMarketTime: 1_800_000_000 } }] },
+    })).toBeNull();
+  });
+
+  it("does not expose a crossed bid/ask spread", () => {
+    expect(parseYahooFinanceQuote({
+      chart: { result: [{ meta: {
+        regularMarketPrice: 100,
+        regularMarketTime: 1_800_000_000,
+        bid: 101,
+        ask: 100,
+      } }] },
+    })).toEqual({ price: 100, timestamp: 1_800_000_000_000 });
+  });
+
+  it("requests the exact Yahoo ticker through the injected backend transport", async () => {
+    let requestedUrl = "";
+    const result = await fetchYahooFinanceQuote("AAPL", async (input) => {
+      requestedUrl = String(input);
+      return new Response(JSON.stringify(quotePayload), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    expect(requestedUrl).toContain("/chart/AAPL?interval=1m&range=1d");
+    expect(result.price).toBe(152.75);
+    expect(result.timestamp).toBe(1_800_000_000_000);
   });
 });
