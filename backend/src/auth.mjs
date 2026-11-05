@@ -315,6 +315,12 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
     }
 
     if (method === "POST" && path === "/api/v1/auth/anonymous") {
+      const existingUser = sessionUser(database, request, production);
+      if (existingUser) {
+        delete existingUser.sessionId;
+        sendJson(response, 200, { user: existingUser });
+        return true;
+      }
       if(!allowAnonymousSignIn(request)) {
         response.setHeader("retry-after","600");
         sendJson(response,429,{error:"anonymous_sign_in_rate_limited"});
@@ -359,11 +365,13 @@ export function createAuthHandler({ database, env = process.env, fetchImpl = fet
         return true;
       }
 
+      const now = Date.now();
+      database.raw.prepare("DELETE FROM oauth_flows WHERE expires_at <= ?").run(now);
       const state = randomBytes(32).toString("base64url");
       const nonce = randomBytes(32).toString("base64url");
       const verifier = randomBytes(48).toString("base64url");
       const challenge = base64url(createHash("sha256").update(verifier).digest());
-      const expiresAt = Date.now() + OAUTH_FLOW_TTL_MS;
+      const expiresAt = now + OAUTH_FLOW_TTL_MS;
       database.raw.prepare(
         "INSERT INTO oauth_flows (state_hash, nonce, code_verifier, expires_at) VALUES (?, ?, ?, ?)",
       ).run(sha256(state), nonce, verifier, expiresAt);
