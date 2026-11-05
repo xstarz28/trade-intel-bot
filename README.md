@@ -20,11 +20,14 @@ XSTARZG is a multi-market trading intelligence platform for structured analysis 
 - Vite
 - React Router
 - Tailwind CSS
-- Convex + Convex Auth
+- Self-hosted Node.js API + SQLite persistence
+- Backend-owned sessions and Google OAuth
+- Docker Compose + Caddy HTTPS reverse proxy
+- Optional legacy Convex account export only
 - Framer Motion
 - Vitest
 
-The production frontend is deployed as a prebuilt Vercel Build Output artifact. The deployment workflow verifies the exact Git commit, release provenance, branding, authentication surface, routing, and published JavaScript assets before promotion.
+The production target is a single-origin self-hosted Docker/Caddy deployment at `https://xstarzganaliys.com`. The Node.js service serves the frontend and API; SQLite stores application data. GitHub Actions provides CI and a guarded SSH deployment workflow. Vercel is not part of the target runtime.
 
 ## Local development
 
@@ -54,9 +57,11 @@ npm test
 
 ## Production
 
-Production deployments are triggered from `main` through GitHub Actions. The frontend uses the production Convex deployment configured by the repository's deployment environment.
+The self-hosted deployment workflow is manual and requires a prepared Linux host, pinned SSH credentials, a protected GitHub `production` environment, and a host-side `backend.env`. The requested domain is `xstarzganaliys.com`. No production DNS/TLS cutover is claimed until the host and domain are configured and the public health checks pass.
 
-Sensitive provider credentials and deployment credentials are supplied through environment secrets; they are not committed to the repository.
+Normal login, session restoration, market analysis, journal, position protection, alerts, notifications, and persistence use the self-hosted backend. Convex is isolated to the optional one-time legacy account-export panel; disabling Convex does not disable application login or normal runtime features.
+
+Sensitive provider credentials and deployment credentials are supplied through host/GitHub environment secrets; they are not committed to the repository.
 
 ## Data integrity
 
