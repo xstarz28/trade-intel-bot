@@ -11,9 +11,9 @@ export type AuthPhase = "initializing" | "authenticated" | "unauthenticated" | "
 /**
  * Application authentication is owned by the self-hosted backend.
  *
- * Convex may still be used by legacy data surfaces during the staged data
- * migration, but it is never consulted to determine whether a user is signed
- * in, restore a browser session, create an account, or sign out.
+ * Convex is not consulted by application authentication. The optional legacy
+ * account-export panel is isolated from this hook and can be unavailable
+ * without affecting login, session restoration, or account creation.
  */
 export function useAuth() {
   const { state, refresh, logout } = useBackendSession();
