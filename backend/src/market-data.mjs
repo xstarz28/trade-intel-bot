@@ -96,6 +96,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
       "/api/v1/intelligence/okx-futures-open-interest",
       "/api/v1/market-data/analyze",
       "/api/v1/market-data/candles",
+      "/api/v1/market-data/quotes",
     ]);
     if(!providerPaths.has(url.pathname)) return false;
     if(request.method!=="POST") {
@@ -118,6 +119,18 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
     }
     try {
       const input=await readBody(request);
+      if(url.pathname==="/api/v1/market-data/quotes") {
+        const instruments=input.instruments;
+        if(!Array.isArray(instruments)||instruments.length<1||instruments.length>20||
+          instruments.some(value=>typeof value!=="string"||!value.trim()||value.length>80)) {
+          json(response,400,{success:false,error:"invalid_live_quote_batch_request"});
+          return true;
+        }
+        const engine=await import("../dist/market-data-engine.mjs");
+        const results=await engine.fetchMarketQuotesBatch(instruments,fetchImpl);
+        json(response,200,{results});
+        return true;
+      }
       if(url.pathname==="/api/v1/market-data/candles") {
         const instruments=input.instruments;
         const timeframes=input.timeframes;
