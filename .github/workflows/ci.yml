@@ -25,6 +25,8 @@ jobs:
       - name: Validate GitHub Actions workflow YAML
         run: |
           ruby -ryaml -e 'ARGV.each { |path| YAML.parse_file(path); puts "Valid YAML: #{path}" }' .github/workflows/*.yml
+      - name: Enforce Convex-independent application runtime
+        run: npm run audit:convex-runtime
 
       - name: Typecheck and production build
         run: npm run build
