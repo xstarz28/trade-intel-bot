@@ -142,7 +142,7 @@ describe("authenticated self-hosted live quote API", () => {
             Cookie: cookie,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ instruments: Array.from({ length: 21 }, (_, index) => "QUOTE" + index) }),
+          body: JSON.stringify({ instruments: Array.from({ length: 51 }, (_, index) => "QUOTE" + index) }),
         });
         assert.equal(oversized.status, 400);
         assert.deepEqual(await oversized.json(), {
