@@ -83,8 +83,7 @@ export function AccountMigrationPanel() {
           <CardTitle className="text-sm">Migrasi ke backend mandiri</CardTitle>
         </div>
         <CardDescription>
-          Pindahkan riwayat dan data pribadi dari Convex ke database SQLite milik Trade Intel.
-          Data Convex asli tidak dihapus.
+          Pindahkan data akun lama dari Convex ke database mandiri Trade Intel. Login, sesi, analisis baru, jurnal, dan fitur aplikasi berjalan melalui backend mandiri.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -148,8 +147,7 @@ export function AccountMigrationPanel() {
 
         <p className="flex items-start gap-2 text-[11px] text-muted-foreground">
           <ShieldCheck className="mt-0.5 size-3.5 shrink-0" />
-          Ini hanya memindahkan data akun. Aplikasi tetap memakai Convex sampai seluruh fitur backend
-          dan autentikasi selesai diverifikasi; jangan hapus atau matikan data lama.
+          Panel ini hanya untuk ekspor satu kali data akun lama. Convex bukan lagi penyedia login atau runtime aplikasi. Jangan hapus database lama sebelum jumlah record hasil migrasi dan kepemilikan datanya direkonsiliasi.
         </p>
       </CardContent>
     </Card>
