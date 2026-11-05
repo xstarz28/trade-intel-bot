@@ -69,7 +69,7 @@ export interface UseLiveProtectionPollingResult {
 // HOOK
 // ═══════════════════════════════════════════════════════════════
 
-const DEFAULT_POLL_INTERVAL_MS = 30_000; // 30 seconds for crypto (CoinGecko rate limit ~30/min)
+const DEFAULT_POLL_INTERVAL_MS = 30_000; // Backend cache and provider budgets bound quote polling.
 
 export function useLiveProtectionPolling(
   instruments: string[],
