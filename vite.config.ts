@@ -82,8 +82,13 @@ function gitInfo() {
   // An uncommitted tree does not correspond to the commit it names, so the
   // artifact says so rather than implying reproducibility it does not have.
   const status = read("git status --porcelain");
+  // A source archive has no .git directory. The self-hosted deploy workflow
+  // supplies this assertion only after checking the exact checkout is clean.
+  const declaredCleanArchive = process.env.XSTARZ_BUILD_WORKTREE_CLEAN === "true";
   const worktreeDirty =
-    gitCommit.length === 0 ? null : status.trim().length > 0;
+    gitCommit.length === 0
+      ? declaredCleanArchive ? false : null
+      : status.trim().length > 0;
 
   return buildProvenance({ commit, branch, builtAt: time, source, worktreeDirty });
 }
