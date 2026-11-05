@@ -558,8 +558,12 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     // Phase 7C: when ACTUAL DXY price data is available via the cross-asset
     // layer, the proxy is REDUNDANT and contributes nothing (one underlying
     // factor = one evidence; the CROSS_ASSET layer already carries it).
-    const actualDxyAvailable = hasActualDxyIndex(input.technicalData?.crossAsset);
-    if (!actualDxyAvailable && macro.dxyTrend) {
+    const crossAsset = input.technicalData?.crossAsset;
+    const actualDxyAvailable = hasActualDxyIndex(crossAsset);
+    const dxyPriceSeriesAvailable = actualDxyAvailable ||
+      (crossAsset?.available === true && crossAsset.dataKind === "actual_price" &&
+        /DXY.*FUTURES PROXY/i.test(crossAsset.comparatorSymbol));
+    if (!dxyPriceSeriesAvailable && macro.dxyTrend) {
       const usdStrength = macro.dxyTrend === "rising" ? 1 : -1;
       if (input.instrumentType === "forex") {
         score += scoreCurrencyStrengthOnPair(input.instrument, "USD", usdStrength);
@@ -2678,13 +2682,13 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
     ? input.technicalData?.crossAsset?.provider?.trim() || "verified market-data provider"
     : "";
   if (dxyFuturesProxy) {
-    parts.push(`USD strength context: DXY futures proxy (${crossAsset?.providerSymbol ?? "DX=F"}) in use — this is not the cash DXY index.`);
+    parts.push(`USD strength context: DXY futures proxy (${crossAsset?.providerSymbol ?? "DX=F"}) in use — not the cash DXY index; news-derived USD proxy excluded from scoring to avoid double counting.`);
   }
   if (macro && macro.confidence !== "unavailable") {
     parts.push(`Macro context (${macro.confidence} confidence): ${macro.summary}`);
     if (actualDxy) {
       parts.push(`USD strength context: ACTUAL DXY price data in use (${actualDxyProvider}) — news-derived proxy redundant and excluded from scoring.`);
-    } else if (macro.dxyTrend && (input.instrumentType === "forex" || input.instrumentType === "commodity")) {
+    } else if (!dxyFuturesProxy && macro.dxyTrend && (input.instrumentType === "forex" || input.instrumentType === "commodity")) {
       parts.push(`USD strength context: ${macro.dxyTrend} (NEWS-derived proxy, not actual DXY price data).`);
     }
   } else if (actualDxy) {
