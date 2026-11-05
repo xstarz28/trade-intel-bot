@@ -92,7 +92,7 @@ Requirements: Node.js 22.13+.
 From the repository root:
 
 ```sh
-npm install --legacy-peer-deps
+npm ci --legacy-peer-deps
 npm run build
 npm run backend:build
 node backend/server.mjs
