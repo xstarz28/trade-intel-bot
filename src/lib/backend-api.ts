@@ -862,14 +862,6 @@ export function deleteBackendHistoricalTimeline(positionId: string, fetchImpl?: 
     method: "DELETE",
   }, fetchImpl);
 }
-export function listBackendAlertRules(fetchImpl?: typeof fetch) {
-  return backendRequest<{ items: Record<string, unknown>[] }>("/api/v1/alert-rules", {}, fetchImpl);
-}
-export function saveBackendRuntimeHealth(snapshot: Record<string, unknown>, fetchImpl?: typeof fetch) {
-  return backendRequest<{ id: string; deduplicated?: boolean }>("/api/v1/runtime-health", {
-    method: "POST", body: JSON.stringify(snapshot),
-  }, fetchImpl);
-}
 export function createBackendNotification(notification: Record<string, unknown>, fetchImpl?: typeof fetch) {
   return backendRequest<{ item: Record<string, unknown>; deduplicated?: boolean }>("/api/v1/notifications", {
     method: "POST", body: JSON.stringify(notification),
