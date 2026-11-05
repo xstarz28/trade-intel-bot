@@ -332,6 +332,32 @@ describe("scoreFundamentals (via breakdown)", () => {
     expect(analyze("EUR/GBP").breakdown.fundamental).toBe(0);
   });
 
+  it("reports the actual provider for verified DXY price evidence", () => {
+    const result = runAnalysis(baseInput({
+      instrumentType: "forex",
+      instrument: "EUR/USD",
+      technicalData: {
+        crossAsset: {
+          comparatorSymbol: "DXY",
+          providerSymbol: "DX-Y.NYB",
+          timeframe: "D1",
+          available: true,
+          correlation: -0.82,
+          sampleSize: 40,
+          directionalContext: "inverse",
+          comparatorMomentum: "up",
+          dataKind: "actual_price",
+          provider: "yahoo-finance-public",
+        },
+      } as AnalysisInput["technicalData"],
+    }));
+
+    expect(result.fundamentalSummary).toContain(
+      "ACTUAL DXY price data in use (yahoo-finance-public)",
+    );
+    expect(result.fundamentalSummary).not.toContain("(Twelve Data)");
+  });
+
   it("scores -1 for dovish forex news", () => {
     const result = runAnalysis(
       baseInput({
