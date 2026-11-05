@@ -27,6 +27,7 @@ export function AccountMigrationPanel() {
   const [busy, setBusy] = useState(false);
   const [legacyAuthBusy, setLegacyAuthBusy] = useState(false);
   const [legacyAuthError, setLegacyAuthError] = useState<string | null>(null);
+  const [pendingGuestExport, setPendingGuestExport] = useState<ConvexAccountExport | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{
     totalSource: number;
@@ -56,6 +57,7 @@ export function AccountMigrationPanel() {
           ? "Login akun lama ditolak konfigurasi redirect Convex. Domain xstarzganaliys.com harus diizinkan pada deployment lama."
           : "Login akun Convex lama gagal. Pastikan Google OAuth pada deployment lama masih aktif.",
       );
+    } finally {
       setLegacyAuthBusy(false);
     }
   };
@@ -77,15 +79,13 @@ export function AccountMigrationPanel() {
         api.accountMigration.exportMyAccount,
         {},
       ) as ConvexAccountExport;
-      const payload: ConvexAccountExport = {
-        ...exported,
-        // Clicking this action is explicit confirmation for an email-less
-        // Convex guest. Email-bearing accounts are still matched server-side.
-        ...(!exported.account.email
-          ? { confirmSourceAccountId: exported.account.id }
-          : {}),
-      };
-      const imported = await importBackendAccount(payload);
+      if (!exported.account.email) {
+        // Never auto-import a newly-created anonymous Convex session. Show
+        // the exact source account and require a second, explicit confirmation.
+        setPendingGuestExport(exported);
+        return;
+      }
+      const imported = await importBackendAccount(exported);
       setResult(imported);
     } catch (cause) {
       const code = cause instanceof Error ? cause.message : "account_migration_failed";
@@ -100,6 +100,33 @@ export function AccountMigrationPanel() {
           "Format ekspor Convex tidak dikenali. Pastikan versi aplikasi dan backend berasal dari rilis yang sama.",
         account_import_record_conflict:
           "Ada record dengan ID atau kunci yang sama tetapi isi/kepemilikannya berbeda. Seluruh transaksi migrasi dibatalkan; periksa data target sebelum mencoba lagi.",
+      };
+      setError(messages[code] ?? `Migrasi gagal: ${code}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleGuestImport = async () => {
+    if (!pendingGuestExport) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const payload: ConvexAccountExport = {
+        ...pendingGuestExport,
+        confirmSourceAccountId: pendingGuestExport.account.id,
+      };
+      const imported = await importBackendAccount(payload);
+      setResult(imported);
+      setPendingGuestExport(null);
+    } catch (cause) {
+      const code = cause instanceof Error ? cause.message : "account_migration_failed";
+      const messages: Record<string, string> = {
+        convex_account_identity_mismatch: "Email akun Convex dan backend berbeda. Masuk ke backend dengan Google yang sama dengan akun Convex.",
+        convex_source_account_confirmation_required: "Konfirmasi akun tamu tidak valid. Muat ulang dashboard lalu ulangi migrasi.",
+        authentication_required: "Sesi backend tidak ditemukan. Hubungkan akun backend terlebih dahulu.",
+        unsupported_account_export: "Format ekspor Convex tidak dikenali. Pastikan versi aplikasi dan backend berasal dari rilis yang sama.",
+        account_import_record_conflict: "Ada record dengan ID atau kunci yang sama tetapi isi/kepemilikannya berbeda. Seluruh transaksi migrasi dibatalkan; periksa data target sebelum mencoba lagi.",
       };
       setError(messages[code] ?? `Migrasi gagal: ${code}`);
     } finally {
@@ -178,18 +205,16 @@ export function AccountMigrationPanel() {
                 Hubungkan Google backend
               </Button>
             )}
-            {!legacyAuthenticated && (
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={legacyAuthLoading || legacyAuthBusy}
-                onClick={() => void handleLegacySignIn()}
-              >
-                {legacyAuthBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ShieldCheck className="mr-2 size-3.5" />}
-                Hubungkan akun Convex lama
-              </Button>
-            )}
-            {backendState.status === "authenticated" && legacyAuthenticated && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={legacyAuthLoading || legacyAuthBusy}
+              onClick={() => void handleLegacySignIn()}
+            >
+              {legacyAuthBusy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ShieldCheck className="mr-2 size-3.5" />}
+              Masuk / ganti akun lama dengan Google
+            </Button>
+            {backendState.status === "authenticated" && legacyAuthenticated && !pendingGuestExport && (
               <Button
                 size="sm"
                 className="w-full sm:w-auto"
@@ -202,6 +227,32 @@ export function AccountMigrationPanel() {
             )}
           </div>
         </div>
+
+        {pendingGuestExport && (
+          <div role="alert" className="space-y-2 rounded-md border border-amber-500/30 bg-amber-500/5 p-3">
+            <p className="text-xs font-medium">Akun Convex ini tidak memiliki email. Verifikasi sumber sebelum impor.</p>
+            <p className="text-[11px] text-muted-foreground">
+              ID akun: <span className="font-mono">{pendingGuestExport.account.id}</span>
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Record sumber: {Object.values(pendingGuestExport.counts).reduce((sum, count) => sum + count, 0)}
+              {" · "}
+              {Object.entries(pendingGuestExport.counts).filter(([, count]) => count > 0).map(([table, count]) => `${table}: ${count}`).join(" · ") || "belum ada record"}
+            </p>
+            <p className="text-[11px] text-muted-foreground">
+              Jika ini sesi tamu baru yang kosong, batalkan lalu masuk dengan Google akun lama. Tidak ada data yang diimpor sebelum konfirmasi ini.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" disabled={busy} onClick={() => void handleGuestImport()}>
+                {busy ? <Loader2 className="mr-2 size-3.5 animate-spin" /> : <ShieldCheck className="mr-2 size-3.5" />}
+                Konfirmasi akun tamu & impor
+              </Button>
+              <Button size="sm" variant="outline" disabled={busy} onClick={() => setPendingGuestExport(null)}>
+                Batal
+              </Button>
+            </div>
+          </div>
+        )}
 
         {legacyAuthError && <p role="alert" className="text-xs text-destructive">{legacyAuthError}</p>}
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
