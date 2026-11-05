@@ -9,7 +9,7 @@ const allowedLegacyClientFiles = new Set([
   "src/lib/convex-provider.tsx",
 ]);
 const importPattern = /(?:from\s*|import\s*\(|import\s*)["'](?:convex(?:\/[^"']*)?|@convex-dev\/[^"']*|@\/convex\/[^"']*)["']/g;
-const runtimeSymbolPattern = /\b(?:useConvex|ConvexReactClient|ConvexAuthProvider)\b/g;
+const runtimeSymbolPattern = /\b(?:useConvex|useConvexAuth|useAction|useMutation|useQuery|usePaginatedQuery|ConvexReactClient|ConvexAuthProvider|ConvexProvider|ConvexProviderWithAuth)\b/g;
 const migrationBoundaryImportPattern = /(?:from\s*|import\s*\()\s*["']@\/(?:components\/AccountMigrationPanel|lib\/convex-provider)["']/g;
 const retiredAdapterImportPattern = /(?:from\s*|import\s*\()\s*["'][^"']*\/convex-(?:bridge|persistence)(?:\.ts)?["']/g;
 const errors = [];
