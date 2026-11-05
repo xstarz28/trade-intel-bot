@@ -224,8 +224,34 @@ async function fetchCandles(
   fetchImpl:typeof fetch,
 ):Promise<OhlcvCandle[]> {
   if(request.instrumentType==="crypto") {
-    if(/-SWAP$|-[0-9]{6}$/.test(request.instrument.toUpperCase())) {
-      throw Object.assign(new Error("This self-hosted market-data lane currently supports verified OKX spot instruments only; no spot substitution was made for a derivative contract."),{code:"UNSUPPORTED"});
+    const instrument = request.instrument.toUpperCase();
+    if (instrument.endsWith("-SWAP") || /-[0-9]{6}$/.test(instrument)) {
+      const bar = ({ M1: "1m", M5: "5m", M15: "15m", H1: "1H", H4: "4H", D1: "1D", W1: "1W" } as Record<string,string>)[timeframe];
+      if (!bar) throw Object.assign(new Error("Unsupported OKX derivative candle timeframe: " + timeframe), { code: "UNSUPPORTED" });
+      const url = "https://www.okx.com/api/v5/market/candles?instId=" + encodeURIComponent(instrument) +
+        "&bar=" + encodeURIComponent(bar) + "&limit=" + Math.min(300, Math.max(1, Math.floor(count)));
+      const response = await fetchImpl(url, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(4000) });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload || String(payload.code) !== "0" || !Array.isArray(payload.data)) {
+        throw Object.assign(new Error("OKX derivative candles unavailable for exact contract " + instrument + ": " + String(payload?.msg ?? response.statusText)), { code: "API_UNAVAILABLE" });
+      }
+      const candles = payload.data
+        .filter((row: unknown) => Array.isArray(row) && row.length >= 6)
+        .map((row: unknown[]) => ({
+          timestamp: Number(row[0]),
+          open: Number(row[1]),
+          high: Number(row[2]),
+          low: Number(row[3]),
+          close: Number(row[4]),
+          volume: Number(row[5] ?? 0),
+        }))
+        .filter((row: OhlcvCandle) => [row.timestamp,row.open,row.high,row.low,row.close,row.volume].every(Number.isFinite) &&
+          row.timestamp > 0 && row.open > 0 && row.high >= Math.max(row.open,row.close,row.low) &&
+          row.low <= Math.min(row.open,row.close,row.high))
+        .sort((a: OhlcvCandle,b: OhlcvCandle) => a.timestamp-b.timestamp)
+        .slice(-count);
+      if (candles.length < 20) throw Object.assign(new Error("OKX returned fewer than 20 valid candles for exact contract " + instrument), { code: "API_UNAVAILABLE" });
+      return candles;
     }
     return okx.fetchCandles(request.instrument,timeframe,count);
   }
@@ -240,7 +266,9 @@ async function calculate(request:MarketAnalysisRequest,fetchImpl:typeof fetch):P
   const symbol=request.instrument.trim().toUpperCase();
   const now=Date.now();
   const okx=new OkxSpotMarketAdapter(fetchImpl);
-  const provider=request.instrumentType==="crypto"?OKX_SPOT_MARKET_PROVIDER:"yahoo-finance-public";
+  const provider=request.instrumentType==="crypto"
+    ? (/-SWAP$/.test(symbol) ? "okx-perpetual-public" : /-[0-9]{6}$/.test(symbol) ? "okx-dated-futures-public" : OKX_SPOT_MARKET_PROVIDER)
+    : "yahoo-finance-public";
 
   try {
     const candles=await fetchCandles(request,request.timeframe,210,okx,fetchImpl);
