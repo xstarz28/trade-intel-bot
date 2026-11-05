@@ -29,7 +29,7 @@ This is an incremental extraction, not a rewrite. Convex remains untouched until
 
 The mock client in `src/lib/convex-provider.tsx` stores a limited subset of data in browser `localStorage`. It returns hard-coded/default values for several query paths and has a small set of mock mutations/actions.
 
-The mock sign-in implementation still exists as legacy development compatibility code, but it is not used by the normal backend-authenticated routes. Production login and session restoration use the self-hosted backend OAuth/session implementation.
+The legacy mock sign-in/provider implementation was removed from the application provider boundary. The remaining optional provider constructs a real Convex client only when the configured legacy URL passes the allow-list; otherwise it simply renders children. Production login and session restoration use the self-hosted backend OAuth/session implementation.
 
 It is useful as a development fallback, but it is not a substitute for:
 - durable shared persistence across devices;
