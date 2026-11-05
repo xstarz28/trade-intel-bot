@@ -819,6 +819,45 @@ export function fetchBackendFxRate(from: string, to: string, fetchImpl?: typeof 
   }, fetchImpl);
 }
 
+/** Historical intelligence persistence and timeline reads. */
+export function saveBackendHistoricalSnapshot(snapshot: Record<string, unknown>, fetchImpl?: typeof fetch) {
+  return backendRequest<{ id: string; pruned: number }>("/api/v1/history/snapshots", {
+    method: "POST", body: JSON.stringify(snapshot),
+  }, fetchImpl);
+}
+export function saveBackendHistoricalEvents(batch: Record<string, unknown>, fetchImpl?: typeof fetch) {
+  return backendRequest<{ ids: string[]; inserted: number; pruned: number }>("/api/v1/history/events", {
+    method: "POST", body: JSON.stringify(batch),
+  }, fetchImpl);
+}
+export function getBackendHistoricalTimeline(positionId: string, fetchImpl?: typeof fetch) {
+  const params = new URLSearchParams({ positionId });
+  return backendRequest<{
+    positionId: string;
+    latestSnapshot: Record<string, unknown> | null;
+    previousSnapshot: Record<string, unknown> | null;
+    events: Record<string, unknown>[];
+  }>(`/api/v1/history/timeline?${params.toString()}`, {}, fetchImpl);
+}
+export function deleteBackendHistoricalTimeline(positionId: string, fetchImpl?: typeof fetch) {
+  return backendRequest<{ deleted: number }>(`/api/v1/history/positions/${encodeURIComponent(positionId)}`, {
+    method: "DELETE",
+  }, fetchImpl);
+}
+export function listBackendAlertRules(fetchImpl?: typeof fetch) {
+  return backendRequest<{ items: Record<string, unknown>[] }>("/api/v1/alert-rules", {}, fetchImpl);
+}
+export function saveBackendRuntimeHealth(snapshot: Record<string, unknown>, fetchImpl?: typeof fetch) {
+  return backendRequest<{ id: string; deduplicated?: boolean }>("/api/v1/runtime-health", {
+    method: "POST", body: JSON.stringify(snapshot),
+  }, fetchImpl);
+}
+export function createBackendNotification(notification: Record<string, unknown>, fetchImpl?: typeof fetch) {
+  return backendRequest<{ item: Record<string, unknown>; deduplicated?: boolean }>("/api/v1/notifications", {
+    method: "POST", body: JSON.stringify(notification),
+  }, fetchImpl);
+}
+
 /** Fetches stock fundamentals, sentiment and macro intelligence through the backend. */
 export function fetchBackendAlphaVantage(instrument: string, instrumentType: string, fetchImpl?: typeof fetch) {
   if (instrumentType !== "stock") {
