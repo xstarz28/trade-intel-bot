@@ -1573,16 +1573,20 @@ async function fetchLiveQuoteCached(
   twelveDataApiKey?: string,
 ): Promise<LiveMarketQuoteResult> {
   const key = instrument.trim().toUpperCase();
+  // Cache entries must respect provider configuration. Otherwise a public
+  // quote fetched before credentials are configured can mask the preferred
+  // TwelveData source for the same instrument.
+  const cacheKey = `${key}::${twelveDataApiKey?.trim() ? "twelvedata" : "public"}`;
   const now = Date.now();
-  const cached = liveQuoteCache.get(key);
+  const cached = liveQuoteCache.get(cacheKey);
   if (cached && cached.expiresAt > now) return { ...cached.value };
-  const pending = liveQuoteInflight.get(key);
+  const pending = liveQuoteInflight.get(cacheKey);
   if (pending) return { ...(await pending) };
   const request = fetchLiveQuoteUncached(key, fetchImpl, twelveDataApiKey);
-  liveQuoteInflight.set(key, request);
+  liveQuoteInflight.set(cacheKey, request);
   try {
     const value = await request;
-    liveQuoteCache.set(key, {
+    liveQuoteCache.set(cacheKey, {
       value,
       expiresAt: Date.now() + (value.success ? LIVE_QUOTE_CACHE_TTL_MS : 5_000),
     });
@@ -1598,7 +1602,7 @@ async function fetchLiveQuoteCached(
     }
     return { ...value };
   } finally {
-    if (liveQuoteInflight.get(key) === request) liveQuoteInflight.delete(key);
+    if (liveQuoteInflight.get(cacheKey) === request) liveQuoteInflight.delete(cacheKey);
   }
 }
 
