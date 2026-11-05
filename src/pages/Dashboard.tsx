@@ -14,6 +14,9 @@ import {
   fetchBackendOkxInstrumentSpec,
   fetchBackendOkxOrderBook,
   fetchBackendCalendar,
+  fetchBackendAlphaVantage,
+  fetchBackendCryptoDerivatives,
+  fetchBackendCryptoFundamentals,
   fetchBackendEiaInventory,
   fetchBackendTreasuryYields,
   listBackendAnalyses,
@@ -201,9 +204,6 @@ export default function Dashboard() {
   }, []);
   // Legacy Convex actions remain only for provider legs not yet extracted.
   const fetchMarketData = useAction(api.marketData.fetchMarketData);
-  const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
-  const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
-  const fetchDeFiLlamaFundamentals = useAction(api.coinglass.fetchDeFiLlamaFundamentals);
 
   const handleSignOut = async () => {
     await signOut();
@@ -298,10 +298,7 @@ export default function Dashboard() {
               "Primary market data",
             ),
             withActionTimeout(
-              fetchIntelligence({
-                instrument: input.instrument,
-                instrumentType: input.instrumentType,
-              }),
+              fetchBackendAlphaVantage(input.instrument, input.instrumentType),
               ACTION_TIMEOUTS_MS.intelligence,
               "Intelligence",
             ),
@@ -318,7 +315,7 @@ export default function Dashboard() {
                   if (/-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())) {
                     return fetchBackendOkxFuturesOpenInterest(input.instrument);
                   }
-                  return fetchDerivatives({ instrument: input.instrument });
+                  return fetchBackendCryptoDerivatives(input.instrument);
                 }),
                 ACTION_TIMEOUTS_MS.derivatives,
                 /-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())
@@ -328,7 +325,7 @@ export default function Dashboard() {
             );
             fetchPromises.push(
               withActionTimeout(
-                fetchDeFiLlamaFundamentals({ instrument: input.instrument }),
+                fetchBackendCryptoFundamentals(input.instrument),
                 ACTION_TIMEOUTS_MS.intelligence,
                 "DeFiLlama fundamentals",
               ),
