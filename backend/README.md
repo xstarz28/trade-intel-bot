@@ -16,7 +16,7 @@ This deployment runs the Vite frontend, Node.js API, and SQLite database on infr
 - monitored-position persistence, bounded position-alert history/acknowledgement, stream cursors, custom alert rules/history, deduplicated notifications, read/dismiss lifecycle, and notification preferences;
 - authenticated on-demand OHLCV retrieval for mapped instruments through public OKX Spot and Yahoo Finance sources, reusing the existing technical-indicator, SMC, MTF, freshness, and cross-asset modules;
 - optional Alpha Vantage stock news/sentiment, news-derived macro context, overview and earnings integration through the existing shared normalizers (disabled unless `ALPHA_VANTAGE_API_KEY` is configured);
-- consistent SQLite snapshot backup command.
+- consistent SQLite snapshot backup and validated atomic restore commands.
 
 ## Important migration status
 
@@ -60,6 +60,24 @@ One-time host preparation:
 5. Dispatch the workflow with the intended commit and the confirmation phrase.
 
 The deploy workflow cannot provision a host, create DNS records, or manufacture SSH credentials. It will refuse to run if the required production secrets or host-side environment file are absent. A successful CI build is not evidence that public DNS/TLS or production deployment is live.
+
+## SQLite backup and restore
+
+Create a consistent snapshot from the running API container:
+
+```sh
+docker compose -p trade-intel exec -T api node backend/backup.mjs /data/backups/manual.sqlite
+```
+
+Restore only while the API is stopped. The restore utility checks SQLite integrity, refuses active WAL/SHM sidecars, writes a temporary file, and atomically replaces the target database:
+
+```sh
+docker compose -p trade-intel stop api
+docker compose -p trade-intel run --rm --no-deps api node backend/restore.mjs /data/backups/manual.sqlite
+docker compose -p trade-intel up -d api
+```
+
+Keep backups outside the release directory and copy them to a separate storage device periodically. A backup stored only in the same Docker volume does not protect against loss of the host or volume.
 
 ## Requirements
 
