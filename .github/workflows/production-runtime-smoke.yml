@@ -1,11 +1,7 @@
 name: Production runtime smoke
 
 on:
-  # Only test the public site after a successful production deployment, or
-  # when explicitly requested. A branch push does not change the production UI.
-  workflow_run:
-    workflows: ["Production frontend deploy"]
-    types: [completed]
+  # Manual acceptance only after the self-hosted Docker/Caddy deployment is live.
   workflow_dispatch:
 
 permissions:
@@ -25,13 +21,13 @@ jobs:
     environment: production
     timeout-minutes: 18
     env:
-      # Keep runtime smoke on the same public hostname that the release job verifies.
-      XSTARZ_SMOKE_URL: https://xstarzanalysis.vercel.app
-      EXPECTED_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      # Run acceptance against the canonical self-hosted public hostname.
+      XSTARZ_SMOKE_URL: https://xstarzganaliys.com
+      EXPECTED_SHA: ${{ github.sha }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          ref: ${{ github.sha }}
           fetch-depth: 1
 
       - uses: actions/setup-node@v4
