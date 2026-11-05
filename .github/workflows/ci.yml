@@ -53,7 +53,7 @@ jobs:
           src/lib/backtest/forward-forecast-evaluation.live.test.ts src/lib/fundamental-thesis.ts
           src/lib/data/sec-edgar.ts src/convex/marketRadarScheduler.ts src/convex/secEdgar.ts
       - name: Strict lint for authentication modules changed in this PR
-        run: npx eslint src/hooks/use-auth.ts src/hooks/use-backend-session.ts src/hooks/__tests__/use-auth.test.ts src/lib/backend-api.ts src/lib/auth-provider-mode.ts src/lib/auth-provider-mode.test.ts src/lib/auth-redirect.ts src/lib/auth-redirect.test.ts src/pages/Auth.tsx src/components/RequireAuth.tsx src/main.tsx
+        run: npx eslint src/hooks/use-auth.ts src/hooks/use-backend-session.ts src/hooks/__tests__/use-auth.test.ts src/lib/backend-api.ts src/lib/auth-redirect.ts src/lib/auth-redirect.test.ts src/pages/Auth.tsx src/components/RequireAuth.tsx src/main.tsx
       - name: Enforce ESLint baseline without new violations
         run: |
           mkdir -p artifacts
