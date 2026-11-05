@@ -26,7 +26,6 @@ import {
 } from "@/lib/backend-api";
 const AccountMigrationPanel = lazy(() => import("@/components/AccountMigrationPanel").then((module) => ({ default: module.AccountMigrationPanel })));
 const LegacyConvexMigrationProvider = lazy(() => import("@/lib/convex-provider").then((module) => ({ default: module.LegacyConvexMigrationProvider })));
-import { isActiveConvexUrl } from "@/lib/auth-provider-mode";
 import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
@@ -1163,7 +1162,7 @@ export default function Dashboard() {
       {/* Main */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
         <div className="mb-5">
-          {isActiveConvexUrl(import.meta.env.VITE_LEGACY_CONVEX_URL) && isAllowedConvexCloudUrl(import.meta.env.VITE_LEGACY_CONVEX_URL) ? (
+          {isAllowedConvexCloudUrl(import.meta.env.VITE_LEGACY_CONVEX_URL) ? (
             <Suspense fallback={null}><LegacyConvexMigrationProvider><AccountMigrationPanel /></LegacyConvexMigrationProvider></Suspense>
           ) : null}
         </div>
