@@ -1,6 +1,6 @@
 # Backend Independence Audit — Trade Intel Bot
 
-**Status:** initial source audit; no production code has been switched or removed.  
+**Status:** self-hosted application runtime and authentication implemented on this branch; production cutover and final legacy dependency retirement remain unverified.  
 **Base revision audited:** `230aece22581d73a8a353a4d9b1cf68e2e1590a3`  
 **Working branch:** `architecture/self-hosted-backend-foundation`
 
@@ -25,20 +25,13 @@ This is an incremental extraction, not a rewrite. Convex remains untouched until
 
 **Implication:** changing a database URL or adding a second database will not remove the dependency. The frontend auth provider, query/mutation/action call sites, server functions, generated references, and identity model must be migrated as one controlled boundary.
 
-### 2. Existing mock mode is not a production backend
+### 2. Optional legacy account-export provider is not an application runtime
 
-The mock client in `src/lib/convex-provider.tsx` stores a limited subset of data in browser `localStorage`. It returns hard-coded/default values for several query paths and has a small set of mock mutations/actions.
+`src/lib/convex-provider.tsx` now mounts a real Convex client only inside the explicit legacy account-export panel and only when the configured URL matches the allow-listed legacy deployment. It is not mounted around Dashboard, Journal, the auth page, or protected routes. No mock Convex client or localStorage-backed mock auth is used as a production fallback.
 
-The legacy mock sign-in/provider implementation was removed from the application provider boundary. The remaining optional provider constructs a real Convex client only when the configured legacy URL passes the allow-list; otherwise it simply renders children. Production login and session restoration use the self-hosted backend OAuth/session implementation.
+This isolated path exists only to export a user's old Convex records into the self-hosted backend. If the legacy Convex deployment is disabled, normal backend login, session restoration, account creation, analysis, journal, position protection, and backend persistence continue to work. The export panel becomes unavailable until the legacy source is restored; that is a data-migration limitation, not an authentication dependency.
 
-It is useful as a development fallback, but it is not a substitute for:
-- durable shared persistence across devices;
-- real Google identity verification;
-- server-side authorization and per-user data isolation;
-- complete CRUD coverage for the application's existing features;
-- reliable concurrent writes, backups, and recovery.
-
-Do not label mock mode as production-ready or silently fall back to it when a real backend fails.
+Do not reintroduce Convex as a fallback for backend outages. A backend failure must remain explicit and retryable.
 
 ### 3. Confirmed persisted domain areas
 
