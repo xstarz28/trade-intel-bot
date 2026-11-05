@@ -110,9 +110,10 @@ export interface MarketAnalysisResult {
   analysis?: ReturnType<typeof runAnalysis>;
 }
 
+const MACRO_INDEX_SYMBOLS = new Set(["DXY", "VIX", "US10Y", "US2Y", "US500", "US30", "US100"]);
 const INDEX_SYMBOLS: Record<string, string> = {
   SPX: "^GSPC", "S&P500": "^GSPC", GSPC: "^GSPC", US500: "^GSPC",
-  NDX: "^NDX", NASDAQ100: "^NDX", "NASDAQ-100": "^NDX", US100: "^IXIC",
+  NDX: "^NDX", NASDAQ100: "^NDX", "NASDAQ-100": "^NDX", US100: "^NDX",
   IXIC: "^IXIC", NASDAQ: "^IXIC",
   DJI: "^DJI", DOWJONES: "^DJI", US30: "^DJI",
   RUT: "^RUT", VIX: "^VIX", DXY: "DX-Y.NYB", US10Y: "^TNX",
@@ -278,7 +279,7 @@ function inferInstrumentType(instrumentInput: string): MarketAnalysisRequest["in
   // Explicit metal/energy aliases take precedence over generic six-letter
   // currency-pair heuristics (XAUUSD is a commodity, not forex).
   if (/^(XAU|XAG|WTI|BRENT|GOLD|SILVER|COPPER|CL|NG)/.test(instrument)) return "commodity";
-  if (INDEX_SYMBOLS[instrument]) return "indices";
+  if (INDEX_SYMBOLS[instrument] || MACRO_INDEX_SYMBOLS.has(instrument)) return "indices";
 
   const registered = resolveInstrument(instrument);
   if (registered?.assetClass === "crypto") return "crypto";
