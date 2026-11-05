@@ -26,7 +26,8 @@ import {
 } from "@/lib/backend-api";
 import { AccountMigrationPanel } from "@/components/AccountMigrationPanel";
 import { AppAuthProvider } from "@/lib/convex-provider";
-import { isActiveConvexUrl, isAllowedConvexCloudUrl } from "@/lib/convex-url";
+import { isActiveConvexUrl } from "@/lib/auth-provider-mode";
+import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
