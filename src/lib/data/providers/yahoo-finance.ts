@@ -339,3 +339,74 @@ export async function fetchYahooFinanceMarketCandles(
   }
   throw new Error("All Yahoo Finance market candidates failed: " + errors.join("; "));
 }
+
+
+export interface YahooFinanceQuoteObservation {
+  price: number;
+  timestamp: number;
+  bid?: number;
+  ask?: number;
+  change24h?: number;
+  volume24h?: number;
+}
+
+function finiteQuoteNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : undefined;
+}
+
+/** Parse Yahoo's provider timestamp and quote metadata without substituting local time. */
+export function parseYahooFinanceQuote(payload: unknown): YahooFinanceQuoteObservation | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const chart = (payload as Record<string, unknown>).chart;
+  if (!chart || typeof chart !== "object" || Array.isArray(chart)) return null;
+  const results = (chart as Record<string, unknown>).result;
+  if (!Array.isArray(results) || !results[0] || typeof results[0] !== "object") return null;
+  const meta = (results[0] as Record<string, unknown>).meta;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return null;
+  const fields = meta as Record<string, unknown>;
+  const price = finiteQuoteNumber(fields.regularMarketPrice);
+  const rawTimestamp = finiteQuoteNumber(fields.regularMarketTime);
+  if (price === undefined || price <= 0 || rawTimestamp === undefined || rawTimestamp <= 0) return null;
+  const timestamp = rawTimestamp < 1_000_000_000_000 ? rawTimestamp * 1000 : rawTimestamp;
+  if (!Number.isFinite(timestamp) || timestamp <= 0) return null;
+  const rawBid = finiteQuoteNumber(fields.bid);
+  const rawAsk = finiteQuoteNumber(fields.ask);
+  const bid = rawBid !== undefined && rawBid > 0 ? rawBid : undefined;
+  const ask = rawAsk !== undefined && rawAsk > 0 ? rawAsk : undefined;
+  const crossedSpread = bid !== undefined && ask !== undefined && bid > ask;
+  const change24h = finiteQuoteNumber(fields.regularMarketChangePercent);
+  const volume24h = finiteQuoteNumber(fields.regularMarketVolume);
+  return {
+    price,
+    timestamp,
+    ...(!crossedSpread && bid !== undefined ? { bid } : {}),
+    ...(!crossedSpread && ask !== undefined ? { ask } : {}),
+    ...(change24h !== undefined ? { change24h } : {}),
+    ...(volume24h !== undefined && volume24h >= 0 ? { volume24h } : {}),
+  };
+}
+
+/** Fetch an exact Yahoo Finance quote; freshness is evaluated by the backend caller. */
+export async function fetchYahooFinanceQuote(
+  symbol: string,
+  transport: YahooChartTransport = fetch,
+): Promise<YahooFinanceQuoteObservation> {
+  const normalizedSymbol = symbol.trim().toUpperCase();
+  if (!normalizedSymbol) throw new Error("A Yahoo Finance quote symbol is required");
+  const url = "https://query1.finance.yahoo.com/v8/finance/chart/" +
+    encodeURIComponent(normalizedSymbol) + "?interval=1m&range=1d";
+  const response = await transport(url, {
+    headers: {
+      accept: "application/json",
+      "user-agent": "Mozilla/5.0 (compatible; XstarzGAnalysis/1.0)",
+    },
+    signal: AbortSignal.timeout(5_000),
+  });
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) throw new Error("Yahoo Finance quote HTTP " + response.status);
+  const quote = parseYahooFinanceQuote(payload);
+  if (!quote) throw new Error("Yahoo Finance returned no valid provider-timestamped quote for " + normalizedSymbol);
+  return quote;
+}
