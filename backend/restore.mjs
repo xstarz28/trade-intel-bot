@@ -1,5 +1,5 @@
-import { copyFileSync, existsSync, fsyncSync, openSync, renameSync, rmSync, statSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, renameSync, rmSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
@@ -15,15 +15,13 @@ export function restoreDatabase(sourcePath, targetPath) {
     throw new Error("Restore source is missing or empty: " + source);
   }
   if (existsSync(target + "-wal") || existsSync(target + "-shm")) {
-    throw new Error("Target SQLite sidecar files exist; stop the backend and checkpoint/close SQLite before restore.");
+    throw new Error("Target SQLite sidecar files exist; stop the backend before restore.");
   }
 
   const validation = new DatabaseSync(source, { readOnly: true });
   try {
     const result = validation.prepare("PRAGMA quick_check").get();
-    if (result?.quick_check !== "ok") {
-      throw new Error("Restore source failed SQLite quick_check.");
-    }
+    if (result?.quick_check !== "ok") throw new Error("Restore source failed SQLite quick_check.");
   } finally {
     validation.close();
   }
@@ -36,8 +34,6 @@ export function restoreDatabase(sourcePath, targetPath) {
     try {
       fsyncSync(descriptor);
     } finally {
-      // The descriptor is intentionally closed before the atomic rename.
-      const { closeSync } = awaitlessFs();
       closeSync(descriptor);
     }
     renameSync(temporary, target);
@@ -47,22 +43,6 @@ export function restoreDatabase(sourcePath, targetPath) {
     throw error;
   }
 }
-
-function awaitlessFs() {
-  return { closeSync: (descriptor) => {
-    const { closeSync } = requireFsSync();
-    closeSync(descriptor);
-  } };
-}
-
-function requireFsSync() {
-  return { closeSync: (descriptor) => {
-    // Imported through a static module binding below in the generated source.
-    closeSyncNative(descriptor);
-  } };
-}
-
-import { closeSync as closeSyncNative } from "node:fs";
 
 function main() {
   const source = process.argv[2];
