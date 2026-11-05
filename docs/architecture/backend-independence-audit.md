@@ -12,7 +12,7 @@ This is an incremental extraction, not a rewrite. Convex remains untouched until
 
 ## Confirmed source findings
 
-### 1. Convex is a runtime dependency, not just a database
+### 1. Legacy Convex surface and current isolation
 
 - `package.json` includes `convex` and `@convex-dev/auth`.
 - `convex.json` points the Convex function directory at `src/convex/`.
@@ -94,15 +94,16 @@ Use open-source components that can run on a machine we control:
 
 Node.js and SQLite are software components, not a promise of free public hosting. A publicly reachable, always-on service still needs a machine and network. The application itself should not require a paid SaaS backend. Node currently emits an experimental-feature warning for `node:sqlite`; CI has verified the implementation on Node 22.23.4, and this runtime caveat must remain visible until Node marks the API stable.
 
-## Migration sequence and safety gates
+## Remaining migration gates
 
-1. **Complete dependency inventory (read-only):** enumerate every Convex import, generated API reference, query/mutation/action call site, server function, schema table, auth assumption, and environment variable. Record exact files and call names.
-2. **Define contracts:** introduce provider-neutral TypeScript interfaces for identity, user records, analysis history, journal, positions, alerts, notifications, and market-data actions. Do not change existing call sites until contract coverage is reviewed.
-3. **Build replacement backend in isolation:** PostgreSQL schema + migrations, API routes, session security, validation, ownership checks, retention behavior, and integration tests. Keep Convex production code untouched.
-4. **Parity tests:** compare old Convex behavior and new backend behavior for each operation, including authorization failures, empty states, ordering, retention, deduplication, and lifecycle transitions.
-5. **Data migration tooling:** export and validate existing records, map IDs and ownership, import idempotently, and produce row counts/checksums. Never delete or mutate source records during initial import.
-6. **Frontend adapter migration:** switch one bounded feature at a time behind an explicit backend adapter. Remove Convex packages/config only after all call sites and auth flows have moved and CI proves no Convex runtime imports remain.
-7. **Cutover:** only after backup, restore rehearsal, parity tests, auth tests, and production smoke tests pass. Preserve a rollback path until the new backend has been verified.
+1. **Repository-wide dependency/reference audit:** enumerate every remaining Convex import, generated API reference, query/mutation/action call site, server function, schema table, auth assumption, and environment variable. Distinguish active optional export code from dead legacy modules and tests.
+2. **Legacy account reconciliation:** run the native Convex export for each account, import into the matching backend identity, and verify per-table inserted/skipped counts, ownership, duplicates, and important record samples. Keep source data intact until reconciliation is signed off.
+3. **Retire the optional export path:** only after account reconciliation, remove the legacy Convex panel, provider, generated client, Convex packages/configuration, and unused functions in a separate reviewed change. Normal login and application features must remain operational with Convex disabled.
+4. **Production host and domain:** prepare the self-hosted Linux host, protected deployment secrets, host-side environment file, DNS A/AAAA records, firewall ports 80/443, and Caddy TLS. The deployment workflow is manual and refuses to claim success without the real host and public health checks.
+5. **Production acceptance:** run the exact-commit runtime smoke against `https://xstarzganaliys.com`, verify Google OAuth and guest sessions, market/provider coverage, database backup/recovery, restart persistence, and authenticated account flows.
+6. **Release decision:** keep PR #252 Draft until CI is green, the migration gates are evidenced, and production acceptance is complete. Do not merge or claim production cutover prematurely.
+
+The implemented backend uses Node.js built-in `node:sqlite`, checksummed transactional SQL migrations, authenticated HTTP APIs, and a single-origin Docker/Caddy deployment. PostgreSQL is not the current implementation or a prerequisite; it remains a possible future self-hosted option only if measured workload requires it.
 
 ## Non-negotiable safeguards
 
@@ -114,10 +115,13 @@ Node.js and SQLite are software components, not a promise of free public hosting
 - No migration cutover while the new backend is untested.
 - Every stage must have reproducible tests and a concrete pass/fail result.
 
-## Known gaps in this initial audit
+## Known remaining gaps
 
-This document is not yet a complete dependency inventory. The full `src/convex/` tree, every frontend call site, all generated API references, all auth consumers, and every table's read/write behavior still need enumeration. No schema migration or production switch should begin until that inventory is complete.
+- The repository-wide static reference audit is not yet complete; old Convex source/configuration and packages are intentionally retained for the optional export path and need a reviewed cleanup.
+- No live Convex account export/import reconciliation has been executed in this environment.
+- No production host credentials, server IP, DNS change, TLS issuance, or public production smoke result has been provided.
+- CI must pass on the final PR head after the latest migration and deployment changes.
 
-## Immediate next engineering task
+## Immediate engineering focus
 
-Finish the repository-wide dependency inventory, then define the smallest provider-neutral boundary that covers the real production features. The first implementation should be an isolated backend foundation with tests; it must not alter the deployed frontend or the existing Convex deployment.
+Finish the final reference audit and production validation. Do not rebuild the already-migrated auth or application features, do not reintroduce Convex as a runtime fallback, and do not remove legacy account data before reconciliation.
