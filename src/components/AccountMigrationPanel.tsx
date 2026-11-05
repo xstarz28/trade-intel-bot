@@ -71,6 +71,8 @@ export function AccountMigrationPanel() {
           "Sesi backend tidak ditemukan. Hubungkan akun backend terlebih dahulu.",
         unsupported_account_export:
           "Format ekspor Convex tidak dikenali. Pastikan versi aplikasi dan backend berasal dari rilis yang sama.",
+        account_import_record_conflict:
+          "Ada record dengan ID atau kunci yang sama tetapi isi/kepemilikannya berbeda. Seluruh transaksi migrasi dibatalkan; periksa data target sebelum mencoba lagi.",
       };
       setError(messages[code] ?? `Migrasi gagal: ${code}`);
     } finally {
