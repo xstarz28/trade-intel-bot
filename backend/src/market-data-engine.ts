@@ -935,7 +935,7 @@ async function fetchCryptoTokenomics(
     try {
       const result = await new TokenomistAdapter(fetchImpl, apiKey.trim()).fetch(key);
       if (result?.success && result.data && typeof result.data === "object") {
-        const normalized = parseTokenomistResult(result.data as Record<string, any>, key, result.observedAt ?? Date.now());
+        const normalized = parseTokenomistResult(result.data as Parameters<typeof parseTokenomistResult>[0], key, result.observedAt ?? Date.now());
         if (normalized.available) {
           tokenomicsCache.set(key, { value: normalized, expiresAt: Date.now() + 30 * 60_000 });
           return normalized;
@@ -1003,7 +1003,14 @@ function finiteProviderNumber(value: unknown): number | undefined {
   return Number.isFinite(number) ? number : undefined;
 }
 
-async function fetchCoinGlassJson(path: string, apiKey: string, fetchImpl: typeof fetch): Promise<any> {
+type ProviderRow = Record<string, unknown>;
+
+function providerRows(value: unknown): ProviderRow[] {
+  const candidates = Array.isArray(value) ? value : value ? [value] : [];
+  return candidates.filter((item): item is ProviderRow => Boolean(item) && typeof item === "object" && !Array.isArray(item));
+}
+
+async function fetchCoinGlassJson(path: string, apiKey: string, fetchImpl: typeof fetch): Promise<unknown> {
   const response = await fetchImpl("https://open-api-v4.coinglass.com/api" + path, {
     headers: { accept: "application/json", "CG-API-KEY": apiKey },
     signal: AbortSignal.timeout(6500),
@@ -1038,33 +1045,32 @@ export async function fetchCryptoDerivatives(
         fetchCoinGlassJson("/futures/global-long-short-account-ratio/history?exchange=Binance&symbol=" + encodeURIComponent(symbol + "USDT") + "&interval=4h&limit=1", apiKey.trim(), fetchImpl),
         fetchCoinGlassJson("/futures/liquidation/aggregated-history?exchange_list=Binance%2COKX%2CBybit&symbol=" + encodeURIComponent(symbol) + "&interval=4h&limit=1", apiKey.trim(), fetchImpl),
       ]);
-      const rows = (value: unknown) => Array.isArray(value) ? value : value ? [value] : [];
-      const oiRows = oiRaw.status === "fulfilled" ? rows(oiRaw.value) : [];
-      const oiItem = oiRows.find((item: any) => String(item.exchange ?? "").toLowerCase() === "all") ?? oiRows[0];
+      const oiRows = oiRaw.status === "fulfilled" ? providerRows(oiRaw.value) : [];
+      const oiItem = oiRows.find((item) => String(item.exchange ?? "").toLowerCase() === "all") ?? oiRows[0];
       const oiValue = finiteProviderNumber(oiItem?.open_interest_usd);
       const openInterest: OpenInterestData | undefined = oiValue !== undefined && oiValue > 0 ? {
         current: oiValue,
         ...(finiteProviderNumber(oiItem?.open_interest_change_percent_1h) !== undefined ? { change1h: finiteProviderNumber(oiItem.open_interest_change_percent_1h) } : {}),
         ...(finiteProviderNumber(oiItem?.open_interest_change_percent_24h) !== undefined ? { change24h: finiteProviderNumber(oiItem.open_interest_change_percent_24h) } : {}),
       } : undefined;
-      const fundingRows = fundingRaw.status === "fulfilled" ? rows(fundingRaw.value) : [];
-      const fundingItem = fundingRows.find((item: any) => String(item.symbol ?? "").toUpperCase() === symbol) ?? fundingRows[0];
-      const fundingEntries = Array.isArray(fundingItem?.stablecoin_margin_list) ? fundingItem.stablecoin_margin_list : [];
-      const fundingValues = fundingEntries.map((entry: any) => ({
+      const fundingRows = fundingRaw.status === "fulfilled" ? providerRows(fundingRaw.value) : [];
+      const fundingItem = fundingRows.find((item) => String(item.symbol ?? "").toUpperCase() === symbol) ?? fundingRows[0];
+      const fundingEntries = providerRows(fundingItem?.stablecoin_margin_list);
+      const fundingValues = fundingEntries.map((entry) => ({
         name: String(entry.exchange ?? "unknown"),
         raw: finiteProviderNumber(entry.funding_rate),
         interval: finiteProviderNumber(entry.funding_rate_interval) ?? 8,
-      })).filter((entry: any) => entry.raw !== undefined);
-      const selectedFunding = fundingValues.find((entry: any) => entry.name.toLowerCase() === "binance") ?? fundingValues[0];
+      })).filter((entry): entry is { name: string; raw: number; interval: number } => entry.raw !== undefined);
+      const selectedFunding = fundingValues.find((entry) => entry.name.toLowerCase() === "binance") ?? fundingValues[0];
       const fundingRate: FundingRateData | undefined = selectedFunding ? {
         currentRate: selectedFunding.raw / 100,
         annualizedRate: selectedFunding.raw / 100 * (24 / Math.max(1, selectedFunding.interval)) * 365,
-        exchanges: fundingValues.map((entry: any) => ({ name: entry.name, rate: entry.raw / 100 })),
+        exchanges: fundingValues.map((entry) => ({ name: entry.name, rate: entry.raw / 100 })),
       } : undefined;
-      const lsRows = longShortRaw.status === "fulfilled" ? rows(longShortRaw.value) : [];
+      const lsRows = longShortRaw.status === "fulfilled" ? providerRows(longShortRaw.value) : [];
       const lsValue = finiteProviderNumber(lsRows.at(-1)?.global_account_long_short_ratio);
       const longShort: LongShortData | undefined = lsValue !== undefined && lsValue > 0 ? { accountRatio: lsValue } : undefined;
-      const liquidationRows = liquidationRaw.status === "fulfilled" ? rows(liquidationRaw.value) : [];
+      const liquidationRows = liquidationRaw.status === "fulfilled" ? providerRows(liquidationRaw.value) : [];
       const liqItem = liquidationRows.at(-1);
       const longVolume = finiteProviderNumber(liqItem?.aggregated_long_liquidation_usd);
       const shortVolume = finiteProviderNumber(liqItem?.aggregated_short_liquidation_usd);
