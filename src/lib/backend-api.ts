@@ -908,6 +908,10 @@ export interface BackendAlphaVantageResult {
       summary?: string;
       url?: string;
       sentimentLabel?: string;
+      sentimentScore?: number;
+      relevanceScore?: number;
+      relatedTickers?: string[];
+      category?: string;
     }>;
   };
   fundamentals?: unknown;
@@ -917,13 +921,13 @@ export interface BackendAlphaVantageResult {
   errorCode?: string;
 }
 
-/** Fetches stock fundamentals, sentiment and macro intelligence through the backend. */
+/** Fetches asset-class news/sentiment and stock-only fundamentals through the backend. */
 export function fetchBackendAlphaVantage(
   instrument: string,
   instrumentType: string,
   fetchImpl?: typeof fetch,
 ): Promise<BackendAlphaVantageResult> {
-  if (instrumentType !== "stock") {
+  if (!["stock", "crypto", "forex", "commodity", "macro"].includes(instrumentType)) {
     return Promise.resolve({
       success: false,
       sentiment: { articles: [] },

@@ -165,11 +165,12 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
         } else if(url.pathname==="/api/v1/intelligence/alpha-vantage") {
           const instrument=typeof input.instrument==="string"?input.instrument.trim().toUpperCase():"";
           const instrumentType=typeof input.instrumentType==="string"?input.instrumentType.trim():"";
-          if(!/^[A-Z0-9.-]{1,15}$/.test(instrument)||instrumentType!=="stock") {
+          const supportedTypes=new Set(["stock","crypto","forex","commodity","macro"]);
+          if(!/^[A-Z0-9./-]{1,40}$/.test(instrument)||!supportedTypes.has(instrumentType)) {
             json(response,400,{success:false,error:"unsupported_alpha_vantage_instrument"});
             return true;
           }
-          result=await engine.fetchAlphaVantageIntelligence(instrument,env.ALPHA_VANTAGE_API_KEY,fetchImpl);
+          result=await engine.fetchAlphaVantageIntelligence(instrument,env.ALPHA_VANTAGE_API_KEY,fetchImpl,instrumentType);
         } else if(url.pathname==="/api/v1/intelligence/derivatives") {
           const instrument=typeof input.instrument==="string"?input.instrument.trim():"";
           if(!instrument||instrument.length>80) {

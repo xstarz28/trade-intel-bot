@@ -138,18 +138,62 @@ export interface AlphaVantageIntelligenceResult {
   errorCode?:"API_UNAVAILABLE"|"RATE_LIMIT"|"AUTH_ERROR"|"NO_DATA";
 }
 
-/** Fetch stock news/sentiment and company fundamentals using the existing shared normalizers. */
+type AlphaVantageInstrumentType = "stock" | "crypto" | "forex" | "commodity" | "macro";
+
+function resolveAlphaVantageNewsQuery(
+  symbol: string,
+  instrumentType: AlphaVantageInstrumentType,
+): { params: Record<string,string>; relatedSymbol: string } | null {
+  if (instrumentType === "stock") {
+    if (!/^[A-Z0-9.-]{1,15}$/.test(symbol)) return null;
+    return { params: { tickers: symbol }, relatedSymbol: symbol };
+  }
+  if (instrumentType === "crypto") {
+    let base = symbol.split(/[/-]/)[0] ?? "";
+    base = base.replace(/(?:USDT|USDC|BUSD|USD)$/,"");
+    if (!/^[A-Z0-9]{2,20}$/.test(base)) return null;
+    return { params: { tickers: `CRYPTO:${base}` }, relatedSymbol: `CRYPTO:${base}` };
+  }
+  if (instrumentType === "forex") {
+    const pair = symbol.match(/^([A-Z]{3})[/-]?([A-Z]{3})$/);
+    if (!pair) return null;
+    const base = `FOREX:${pair[1]}`;
+    const quote = `FOREX:${pair[2]}`;
+    return { params: { tickers: `${base},${quote}` }, relatedSymbol: base };
+  }
+  if (instrumentType === "commodity") {
+    const topic = /WTI|BRENT|OIL|NATGAS|NATURAL.?GAS|NGAS/.test(symbol)
+      ? "energy_transportation"
+      : "financial_markets";
+    return { params: { topics: topic }, relatedSymbol: "" };
+  }
+  const topic = /DXY|USD|US\\d+Y|FED|RATE|YIELD/.test(symbol)
+    ? "economy_monetary"
+    : /DEFICIT|BUDGET|TAX/.test(symbol)
+      ? "economy_fiscal"
+      : "economy_macro";
+  return { params: { topics: topic }, relatedSymbol: "" };
+}
+
+/** Fetch news/sentiment for every supported asset class; stock fundamentals remain equity-only. */
 export async function fetchAlphaVantageIntelligence(
   symbolInput:string,
   apiKey:string|undefined,
   fetchImpl:typeof fetch=fetch,
+  instrumentTypeInput:AlphaVantageInstrumentType="stock",
 ):Promise<AlphaVantageIntelligenceResult> {
   const symbol=symbolInput.trim().toUpperCase();
-  if(!/^[A-Z0-9.-]{1,15}$/.test(symbol)) return {success:false,dataAvailable:{news:false,fundamentals:false,macro:false},error:"A valid stock ticker is required.",errorCode:"NO_DATA"};
+  const instrumentType=instrumentTypeInput;
+  const validSymbol=instrumentType==="stock"
+    ? /^[A-Z0-9.-]{1,15}$/.test(symbol)
+    : /^[A-Z0-9./-]{1,40}$/.test(symbol);
+  const newsQuery=validSymbol?resolveAlphaVantageNewsQuery(symbol,instrumentType):null;
+  if(!newsQuery) return {success:false,dataAvailable:{news:false,fundamentals:false,macro:false},error:"A supported instrument symbol is required.",errorCode:"NO_DATA"};
   if(!apiKey?.trim()) return {success:false,dataAvailable:{news:false,fundamentals:false,macro:false},error:"Alpha Vantage API key is not configured.",errorCode:"AUTH_ERROR"};
-  const cached=alphaVantageCache.get(symbol);
+  const cacheKey=`${instrumentType}:${symbol}`;
+  const cached=alphaVantageCache.get(cacheKey);
   if(cached&&cached.expiresAt>Date.now()) return cached.value;
-  const pending=alphaVantageInflight.get(symbol);
+  const pending=alphaVantageInflight.get(cacheKey);
   if(pending) return pending;
   const task=(async()=>{
     const request=async(params:Record<string,string>)=>{
@@ -162,37 +206,54 @@ export async function fetchAlphaVantageIntelligence(
       if(providerMessage) throw new Error(String(providerMessage));
       return payload;
     };
-    const [newsResult,overviewResult,earningsResult]=await Promise.allSettled([
-      request({function:"NEWS_SENTIMENT",tickers:symbol,sort:"LATEST",limit:"50"}),
-      request({function:"OVERVIEW",symbol}),
-      request({function:"EARNINGS",symbol}),
-    ]);
-    const errors=[newsResult,overviewResult,earningsResult]
+    const requests=[request({function:"NEWS_SENTIMENT",...newsQuery.params,sort:"LATEST",limit:"50"})];
+    if(instrumentType==="stock") {
+      requests.push(request({function:"OVERVIEW",symbol}));
+      requests.push(request({function:"EARNINGS",symbol}));
+    }
+    const outcomes=await Promise.allSettled(requests);
+    const errors=outcomes
       .filter((x):x is PromiseRejectedResult=>x.status==="rejected")
       .map(x=>x.reason instanceof Error?x.reason.message:String(x.reason));
-    const newsPayload=newsResult.status==="fulfilled"?newsResult.value:undefined;
-    const overview=overviewResult.status==="fulfilled"?overviewResult.value as RawOverview:undefined;
-    const earnings=earningsResult.status==="fulfilled"?earningsResult.value as RawEarnings:undefined;
+    const newsOutcome=outcomes[0];
+    const newsPayload=newsOutcome?.status==="fulfilled"?newsOutcome.value:undefined;
+    const overviewOutcome=instrumentType==="stock"?outcomes[1]:undefined;
+    const earningsOutcome=instrumentType==="stock"?outcomes[2]:undefined;
+    const overview=overviewOutcome?.status==="fulfilled"?overviewOutcome.value as RawOverview:undefined;
+    const earnings=earningsOutcome?.status==="fulfilled"?earningsOutcome.value as RawEarnings:undefined;
     const feed=Array.isArray(newsPayload?.feed)?newsPayload.feed as RawNewsFeed["feed"]:undefined;
-    const articles=normalizeNewsArticles(feed,symbol);
+    const articles=normalizeNewsArticles(feed,newsQuery.relatedSymbol);
     const sentiment=aggregateSentiment(articles,"alpha-vantage");
-    const macro=buildMacroContext(articles,"stock");
-    const fundamentals=normalizeFundamentals(overview??null,earnings??null,"stock",symbol);
-    const dataAvailable={news:articles.length>0,fundamentals:fundamentals.available,macro:macro.confidence!=="unavailable"};
+    const macro=buildMacroContext(articles,instrumentType);
+    const fundamentals=instrumentType==="stock"
+      ? normalizeFundamentals(overview??null,earnings??null,"stock",symbol)
+      : undefined;
+    const dataAvailable={
+      news:articles.length>0,
+      fundamentals:fundamentals?.available??false,
+      macro:macro.confidence!=="unavailable",
+    };
+    const hasData=Object.values(dataAvailable).some(Boolean);
     const result:AlphaVantageIntelligenceResult={
-      success:Object.values(dataAvailable).some(Boolean),sentiment,fundamentals,macro,dataAvailable,
+      success:hasData,
+      sentiment,
+      ...(fundamentals?{fundamentals}:{}),
+      macro,
+      dataAvailable,
       ...(errors.length?{
         error:errors.join("; "),
         errorCode:errors.some(x=>/rate limit|call frequency/i.test(x))?"RATE_LIMIT":"API_UNAVAILABLE",
+      }:!hasData?{
+        error:"Alpha Vantage returned no matching news or intelligence data.",
+        errorCode:"NO_DATA",
       }:{}),
     };
-    alphaVantageCache.set(symbol,{value:result,expiresAt:Date.now()+(result.success?5*60_000:30_000)});
+    alphaVantageCache.set(cacheKey,{value:result,expiresAt:Date.now()+(result.success?5*60_000:30_000)});
     return result;
-  })().finally(()=>alphaVantageInflight.delete(symbol));
-  alphaVantageInflight.set(symbol,task);
+  })().finally(()=>alphaVantageInflight.delete(cacheKey));
+  alphaVantageInflight.set(cacheKey,task);
   return task;
 }
-
 
 function ttl(timeframe:string):number {
   switch(timeframe) {

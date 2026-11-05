@@ -150,6 +150,45 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(JSON.stringify(result).includes(apiKey), false);
   });
 
+  it("routes crypto, forex, commodity and macro news to asset-specific Alpha Vantage filters", async () => {
+    const apiKey = "test-secret-cross-asset-news";
+    const cases = [
+      { type: "crypto", symbol: "BTC/USDT", filter: "tickers", expected: "CRYPTO:BTC", related: "CRYPTO:BTC" },
+      { type: "forex", symbol: "EUR/USD", filter: "tickers", expected: "FOREX:EUR,FOREX:USD", related: "FOREX:EUR" },
+      { type: "commodity", symbol: "WTI", filter: "topics", expected: "energy_transportation", related: "" },
+      { type: "macro", symbol: "US10Y", filter: "topics", expected: "economy_monetary", related: "" },
+    ];
+    for (const [index, item] of cases.entries()) {
+      let requestedUrl;
+      const result = await fetchAlphaVantageIntelligence(item.symbol, apiKey, async (input) => {
+        requestedUrl = new URL(String(input));
+        return new Response(JSON.stringify({
+          feed: [{
+            title: "Cross-asset macro and market update " + index,
+            url: "https://example.test/cross-asset/" + index,
+            source: "Test Wire",
+            time_published: "20261105090000",
+            overall_sentiment_score: "0.32",
+            overall_sentiment_label: "Somewhat-Bullish",
+            ticker_sentiment: item.related ? [{
+              ticker: item.related,
+              relevance_score: "0.88",
+              ticker_sentiment_score: "0.42",
+              ticker_sentiment_label: "Bullish",
+            }] : [],
+          }],
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }, item.type);
+
+      assert.equal(requestedUrl.searchParams.get(item.filter), item.expected, item.symbol);
+      assert.equal(result.success, true, item.symbol);
+      assert.equal(result.dataAvailable.news, true, item.symbol);
+      assert.equal(result.dataAvailable.fundamentals, false, item.symbol);
+      assert.equal(result.sentiment.articles.length, 1, item.symbol);
+      assert.equal(JSON.stringify(result).includes(apiKey), false);
+    }
+  });
+
   it("fails closed when Alpha Vantage credentials are absent", async () => {
     let called = false;
     const result = await fetchAlphaVantageIntelligence("AVNOKEY", undefined, async () => {

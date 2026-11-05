@@ -415,35 +415,76 @@ export function PositionProtectionDashboard() {
         if (cancelled) break;
         try {
           const assetClass = userPositions.find(p => p.instrument === instrument)?.assetClass ?? "crypto";
-          const instrumentType = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
-          const result = await fetchBackendAlphaVantage(instrument.split("/")[0], instrumentType);
+          const instrumentType =
+            assetClass === "crypto" ? "crypto" :
+            assetClass === "forex" ? "forex" :
+            assetClass === "commodity" ? "commodity" :
+            assetClass === "macro" || assetClass === "indices" ? "macro" :
+            assetClass === "equity" || assetClass === "stock" ? "stock" : null;
+          if (!instrumentType) continue;
+          const result = await fetchBackendAlphaVantage(instrument, instrumentType);
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
           const newsAssetClass: NewsItem["assetClass"] =
+            assetClass === "indices" ? "macro" :
             assetClass === "crypto" || assetClass === "forex" || assetClass === "commodity" ||
             assetClass === "macro" || assetClass === "equity"
               ? assetClass
               : "other";
-          const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
-            id: `av-${instrument}-${i}`,
-            timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
-            source: art.source || "AlphaVantage",
-            headline: art.title || "",
-            summary: art.summary || undefined,
-            url: art.url || undefined,
-            relatedInstruments: [instrument],
-            assetClass: newsAssetClass,
-            category: assetClass === "crypto" ? "CRYPTO_SPECIFIC" as const : "FOREX" as const,
-            sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
-                       art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
-            impactStrength: "MODERATE" as const,
-            freshness: classifyNewsFreshness(
-              art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
-              Date.now(),
-            ),
-            sourceMode: "LIVE" as const,
-          }));
+          const newsItems: NewsItem[] = articles.map((art, i) => {
+            const articleText = `${art.title || ""} ${art.summary || ""}`.toLowerCase();
+            const relatedTickers = art.relatedTickers ?? [];
+            const instrumentTokens = instrument.toUpperCase().split(/[/-]/).filter(Boolean);
+            const directlyRelated = relatedTickers.some((ticker) => {
+              const normalizedTicker = ticker.toUpperCase().replace(/^(CRYPTO|FOREX):/, "");
+              return instrumentTokens.some((token) =>
+                token === normalizedTicker || token === normalizedTicker.replace(/USD$/, ""),
+              );
+            });
+            const category: NewsItem["category"] =
+              newsAssetClass === "crypto" ? "CRYPTO_SPECIFIC" :
+              newsAssetClass === "forex" ? "FOREX" :
+              newsAssetClass === "commodity" ? "COMMODITY" :
+              newsAssetClass === "equity" ? "COMPANY" :
+              /inflation|cpi|ppi|pce/.test(articleText) ? "INFLATION" :
+              /employment|payroll|unemployment|jobs/.test(articleText) ? "EMPLOYMENT" :
+              /gdp|gross domestic/.test(articleText) ? "GDP" :
+              /federal reserve|central bank|interest rate|policy rate|hawkish|dovish/.test(articleText) ? "CENTRAL_BANK" :
+              /war|sanction|geopolitic/.test(articleText) ? "GEOPOLITICAL" :
+              /regulat|cftc/.test(articleText) ? "REGULATION" : "FUNDAMENTAL";
+            const publishedAt = art.publishedAt ? new Date(art.publishedAt).getTime() : 0;
+            const hasTimestamp = Number.isFinite(publishedAt) && publishedAt > 0;
+            const freshness = hasTimestamp
+              ? classifyNewsFreshness(publishedAt, Date.now())
+              : "UNAVAILABLE";
+            const sentimentLabel = (art.sentimentLabel || "").toLowerCase();
+            const sentiment: NewsItem["sentiment"] =
+              sentimentLabel === "positive" ? "BULLISH" :
+              sentimentLabel === "negative" ? "BEARISH" :
+              sentimentLabel === "neutral" ? "NEUTRAL" : "UNKNOWN";
+            const relevance = typeof art.relevanceScore === "number" && Number.isFinite(art.relevanceScore)
+              ? art.relevanceScore
+              : null;
+            const impactStrength: NewsItem["impactStrength"] = relevance === null
+              ? "UNKNOWN"
+              : relevance >= 0.75 ? "HIGH" : relevance >= 0.4 ? "MODERATE" : "LOW";
+            return {
+              id: `av-${instrument}-${i}`,
+              timestamp: hasTimestamp ? publishedAt : 0,
+              source: art.source || "AlphaVantage",
+              headline: art.title || "",
+              summary: art.summary || undefined,
+              url: art.url || undefined,
+              relatedInstruments: directlyRelated ? [instrument] : [],
+              assetClass: newsAssetClass,
+              category,
+              sentiment,
+              impactStrength,
+              freshness,
+              sourceMode: freshness === "UNAVAILABLE" ? "UNAVAILABLE" : freshness === "STALE" ? "STALE" : "LIVE",
+            };
+          });
 
           setFeedNews(prev => {
             const next = new Map(prev);
