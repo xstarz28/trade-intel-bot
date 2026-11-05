@@ -4,8 +4,6 @@ import Google from "@auth/core/providers/google";
 
 const LEGACY_MIGRATION_ORIGINS = new Set([
   "https://xstarzganaliys.com",
-  "http://localhost:5173",
-  "http://127.0.0.1:5173",
 ]);
 
 function allowedLegacyRedirectOrigins(): Set<string> {
