@@ -194,25 +194,18 @@ export function useLiveProtectionPolling(
             Number.isFinite(result.price) &&
             result.price > 0 &&
             (!quoteIsFresh || result.sourceMode === "STALE");
-          const simulatedQuote = result.sourceMode === "SIMULATED";
           const liveState: LiveInstrumentState = {
             instrument: result.instrument,
             price: 0,
             provider: result.provider,
-            sourceMode: staleSuccessfulQuote
-              ? "STALE"
-              : simulatedQuote
-                ? "SIMULATED"
-                : "UNAVAILABLE",
+            sourceMode: staleSuccessfulQuote ? "STALE" : "UNAVAILABLE",
             lastUpdateAt: now,
             success: false,
             error: invalidSuccessfulPrice
               ? "Provider returned an invalid or non-finite price"
               : staleSuccessfulQuote
                 ? "Quote rejected because its timestamp is stale or invalid"
-                : simulatedQuote
-                  ? "Simulated quotes are not accepted by live position protection"
-                  : result.error,
+                : result.error,
           };
           next.set(result.instrument, liveState);
           quoteResultCallbacksRef.current?.(liveState);
