@@ -420,6 +420,11 @@ export function PositionProtectionDashboard() {
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
+          const newsAssetClass: NewsItem["assetClass"] =
+            assetClass === "crypto" || assetClass === "forex" || assetClass === "commodity" ||
+            assetClass === "macro" || assetClass === "equity"
+              ? assetClass
+              : "other";
           const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
             id: `av-${instrument}-${i}`,
             timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
@@ -428,7 +433,7 @@ export function PositionProtectionDashboard() {
             summary: art.summary || undefined,
             url: art.url || undefined,
             relatedInstruments: [instrument],
-            assetClass: assetClass as any,
+            assetClass: newsAssetClass,
             category: assetClass === "crypto" ? "CRYPTO_SPECIFIC" as const : "FOREX" as const,
             sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
                        art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
@@ -503,8 +508,9 @@ export function PositionProtectionDashboard() {
 
   // ─── Self-hosted historical timeline reads ──
   const positionIds = useMemo(() => positions.map(p => p.position.positionId), [positions]);
-  const [backendTimelines, setBackendTimelines] = useState<Map<string, any>>(new Map());
-  const visibleBackendTimelines = positionIds.length > 0 ? backendTimelines : new Map<string, any>();
+  type BackendTimeline = Awaited<ReturnType<typeof getBackendHistoricalTimeline>>;
+  const [backendTimelines, setBackendTimelines] = useState<Map<string, BackendTimeline>>(new Map());
+  const visibleBackendTimelines = positionIds.length > 0 ? backendTimelines : new Map<string, BackendTimeline>();
 
   useEffect(() => {
     let cancelled = false;
@@ -512,7 +518,7 @@ export function PositionProtectionDashboard() {
       const ids = positionIds.slice(0, 5);
       const results = await Promise.allSettled(ids.map((id) => getBackendHistoricalTimeline(id)));
       if (cancelled) return;
-      const next = new Map<string, any>();
+      const next = new Map<string, BackendTimeline>();
       results.forEach((result, index) => {
         if (result.status === "fulfilled" && result.value.latestSnapshot) {
           next.set(ids[index], result.value);
@@ -633,9 +639,9 @@ export function PositionProtectionDashboard() {
         if (backendData) {
           // Reconstruct authoritative timeline from backend
           const persistedSnapshots: PersistedSnapshot[] = [];
-          if (backendData.latestSnapshot) persistedSnapshots.push(backendData.latestSnapshot);
+          if (backendData.latestSnapshot) persistedSnapshots.push(backendData.latestSnapshot as unknown as PersistedSnapshot);
           if (backendData.previousSnapshot) persistedSnapshots.push(backendData.previousSnapshot);
-          const persistedEvents: PersistedEvent[] = backendData.events ?? [];
+          const persistedEvents = (backendData.events ?? []) as unknown as PersistedEvent[];
           const backendTimeline = reconstructTimeline(persistedSnapshots, persistedEvents);
 
           // Merge: local optimistic + backend authoritative
