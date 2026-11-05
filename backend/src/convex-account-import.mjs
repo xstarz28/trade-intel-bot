@@ -84,9 +84,23 @@ function mapRow(table, row) {
  */
 export function normalizeConvexAccountExport(input, targetUser) {
   if (!input || input.format !== "trade-intel-convex-account-export" ||
-      input.version !== 1 || !input.account || !input.data ||
-      typeof input.data !== "object" || Array.isArray(input.data)) {
+      input.version !== 1 || !input.account ||
+      typeof input.account !== "object" || Array.isArray(input.account) ||
+      !input.data || typeof input.data !== "object" || Array.isArray(input.data)) {
     throw Object.assign(new Error("Unsupported Convex account export"), { status: 400 });
+  }
+  if (typeof input.account.id !== "string" || !input.account.id.trim()) {
+    throw Object.assign(new Error("Convex account export is missing its source account ID"), {
+      status: 400,
+      code: "invalid_convex_source_account",
+    });
+  }
+  if (input.account.email !== null && input.account.email !== undefined &&
+      typeof input.account.email !== "string") {
+    throw Object.assign(new Error("Convex account export has an invalid source email"), {
+      status: 400,
+      code: "invalid_convex_source_account",
+    });
   }
 
   const sourceEmail = typeof input.account.email === "string"
