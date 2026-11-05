@@ -868,8 +868,31 @@ export function createBackendNotification(notification: Record<string, unknown>,
   }, fetchImpl);
 }
 
+export interface BackendAlphaVantageResult {
+  success: boolean;
+  sentiment?: {
+    articles?: Array<{
+      publishedAt?: string | number;
+      source?: string;
+      title?: string;
+      summary?: string;
+      url?: string;
+      sentimentLabel?: string;
+    }>;
+  };
+  fundamentals?: unknown;
+  macro?: unknown;
+  dataAvailable: { news: boolean; fundamentals: boolean; macro: boolean };
+  error?: string;
+  errorCode?: string;
+}
+
 /** Fetches stock fundamentals, sentiment and macro intelligence through the backend. */
-export function fetchBackendAlphaVantage(instrument: string, instrumentType: string, fetchImpl?: typeof fetch) {
+export function fetchBackendAlphaVantage(
+  instrument: string,
+  instrumentType: string,
+  fetchImpl?: typeof fetch,
+): Promise<BackendAlphaVantageResult> {
   if (instrumentType !== "stock") {
     return Promise.resolve({
       success: false,
@@ -877,15 +900,7 @@ export function fetchBackendAlphaVantage(instrument: string, instrumentType: str
       dataAvailable: { news: false, fundamentals: false, macro: false },
     });
   }
-  return backendRequest<{
-    success: boolean;
-    sentiment?: { articles?: Array<{ publishedAt?: string | number; source?: string; title?: string; summary?: string; url?: string; sentimentLabel?: string }> };
-    fundamentals?: unknown;
-    macro?: unknown;
-    dataAvailable: { news: boolean; fundamentals: boolean; macro: boolean };
-    error?: string;
-    errorCode?: string;
-  }>("/api/v1/intelligence/alpha-vantage", {
+  return backendRequest<BackendAlphaVantageResult>("/api/v1/intelligence/alpha-vantage", {
     method: "POST", body: JSON.stringify({ instrument, instrumentType }),
   }, fetchImpl);
 }
