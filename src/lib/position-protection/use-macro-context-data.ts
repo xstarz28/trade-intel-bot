@@ -14,14 +14,12 @@
  * intelligence tab vs investor portfolio tab), so at most one instance is
  * mounted at any time — no duplicate fetches, no duplicate polling.
  *
- * All provider calls reuse the existing Convex actions
- * (api.treasury.fetchTreasuryYields, api.tradingEconomics.fetchCalendar).
- * Nothing here calculates intelligence — it only fetches and holds state.
+ * Provider calls use the authenticated self-hosted backend. Nothing here
+ * calculates intelligence — it only fetches and holds state.
  */
 
 import { useEffect, useMemo, useState } from "react";
-import { useAction } from "convex/react";
-import { api } from "../../convex/_generated/api";
+import { fetchBackendCalendar, fetchBackendTreasuryYields } from "@/lib/backend-api";
 import type { MonitoredPositionState } from "./use-position-protection";
 import type { TreasuryData } from "../data/treasury";
 import type { EconomicCalendarData } from "../data/calendar-types";
@@ -56,28 +54,24 @@ export function useMacroContextData(
 
   // ─── Treasury yields (nominal + real/TIPS) — slow-moving daily data ──
   const [treasuryData, setTreasuryData] = useState<TreasuryData | null>(null);
-  const fetchTreasury = useAction(api.treasury.fetchTreasuryYields);
   useEffect(() => {
     let cancelled = false;
-    fetchTreasury()
+    fetchBackendTreasuryYields()
       .then((result) => {
-        if (!cancelled && result.success) {
-          setTreasuryData(result.data);
-        }
+        if (!cancelled && result.success) setTreasuryData(result.data);
       })
       .catch(() => { /* provider failure → treasuryData stays null */ });
     return () => { cancelled = true; };
-  }, [fetchTreasury]);
+  }, []);
 
   // ─── Economic calendar (TickAtlas) — shared across positions ────────
   const [calendarData, setCalendarData] = useState<EconomicCalendarData | null>(null);
-  const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
   useEffect(() => {
     if (userPositions.length === 0) return;
     let cancelled = false;
     // Use first position's instrument/type for calendar fetch (shared macro data)
     const firstPos = userPositions[0];
-    fetchCalendar({ instrument: firstPos.instrument, instrumentType: firstPos.assetClass })
+    fetchBackendCalendar(firstPos.instrument, firstPos.assetClass)
       .then((result) => {
         if (!cancelled && result.success) {
           setCalendarData(result.data ?? null);
@@ -86,7 +80,6 @@ export function useMacroContextData(
       .catch(() => { /* provider failure → calendarData stays null */ });
     return () => { cancelled = true; };
   }, [
-    fetchCalendar,
     userPositions.length > 0 ? userPositions[0]?.instrument : null,
     userPositions.length > 0 ? userPositions[0]?.assetClass : null,
   ]);
