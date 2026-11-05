@@ -6,6 +6,8 @@ on:
     paths:
       - "src/lib/forward-forecast.ts"
       - "src/lib/backtest/forward-forecast-evaluation*"
+      - "src/lib/backtest/donchian-atr-hypothesis.live.test.ts"
+      - "src/lib/backtest/historical-ohlcv.ts"
       - ".github/workflows/forward-forecast-outcome-evaluation.yml"
   pull_request:
     branches: [main]
@@ -44,6 +46,31 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: trade-intel-forward-forecast-oos-report
+          path: artifacts/
+          if-no-files-found: warn
+          retention-days: 30
+
+  evaluate-donchian:
+    name: Replay pre-registered Donchian hypothesis on untouched Binance Spot assets
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+      - name: Run real Donchian forward hypothesis OOS replay
+        env:
+          RUN_REAL_DONCHIAN_ATR_EVALUATION: "1"
+        run: npx vitest run src/lib/backtest/donchian-atr-hypothesis.live.test.ts --testTimeout=900000
+      - name: Upload reproducible Donchian OHLCV and OOS report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trade-intel-donchian-atr-oos-report
           path: artifacts/
           if-no-files-found: warn
           retention-days: 30
