@@ -1163,7 +1163,7 @@ export default function Dashboard() {
       {/* Main */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
         <div className="mb-5">
-          {isActiveConvexUrl(import.meta.env.VITE_CONVEX_URL) && isAllowedConvexCloudUrl(import.meta.env.VITE_CONVEX_URL) ? (
+          {isActiveConvexUrl(import.meta.env.VITE_LEGACY_CONVEX_URL) && isAllowedConvexCloudUrl(import.meta.env.VITE_LEGACY_CONVEX_URL) ? (
             <Suspense fallback={null}><LegacyConvexMigrationProvider><AccountMigrationPanel /></LegacyConvexMigrationProvider></Suspense>
           ) : null}
         </div>
