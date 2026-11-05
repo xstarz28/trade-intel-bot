@@ -1,20 +1,9 @@
-const LEGACY_CONVEX_URL = "https://hushed-seal-237.convex.cloud";
+import { isAllowedConvexCloudUrl } from "./convex-url";
 
 /**
- * Identifies the one legacy Convex deployment that may be used only for
- * explicit account export. It is not an application-authentication setting.
+ * Identifies a syntactically valid legacy Convex URL for explicit one-time
+ * account export only. It is never an application-authentication setting.
  */
 export function isActiveConvexUrl(value: unknown): value is string {
-  if (typeof value !== "string") return false;
-  try {
-    const url = new URL(value.trim());
-    return url.origin === LEGACY_CONVEX_URL &&
-      (url.pathname === "/" || url.pathname === "") &&
-      !url.username &&
-      !url.password &&
-      !url.search &&
-      !url.hash;
-  } catch {
-    return false;
-  }
+  return isAllowedConvexCloudUrl(value);
 }
