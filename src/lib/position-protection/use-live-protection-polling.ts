@@ -1,8 +1,8 @@
 /**
  * Phase 75 — Live Protection Polling Hook
  *
- * Polls the Convex liveProtection.fetchLiveProtectionQuote action at a
- * configurable interval and feeds real market data into the existing
+ * Polls the authenticated self-hosted live-quote API at a configurable
+ * interval and feeds real market data into the existing
  * protection pipeline (bridgeQuoteToEvents → RealTimeEvent → ProtectionEngine).
  *
  * This is the REAL production activation — actual HTTP data, actual polling,
@@ -12,9 +12,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAction } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import type { LiveQuoteResult } from "../../convex/liveProtection";
+import {
+  fetchBackendLiveProtectionQuotes,
+  type BackendLiveQuoteResult,
+} from "@/lib/backend-api";
 import type { RealTimeEvent } from "./realtime-types";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 import { bridgeQuoteToEvents, type LiveMarketBridgeState, createBridgeState } from "../market-stream/live-market-bridge";
@@ -80,7 +81,6 @@ export function useLiveProtectionPolling(
     onEvent?: (events: RealTimeEvent[]) => void;
   },
 ): UseLiveProtectionPollingResult {
-  const fetchLiveQuotes = useAction(api.liveProtection.fetchLiveProtectionQuote);
   const pollIntervalMs = options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const enabled = options?.enabled !== false;
 
@@ -122,10 +122,8 @@ export function useLiveProtectionPolling(
 
     pollInFlightRef.current = true;
     try {
-      // Call the REAL Convex action that makes REAL HTTP requests
-      const results: LiveQuoteResult[] = await fetchLiveQuotes({
-        instruments: currentInstruments,
-      });
+      // The backend owns provider routing, validation, freshness, and fallback policy.
+      const results: BackendLiveQuoteResult[] = await fetchBackendLiveProtectionQuotes(currentInstruments);
 
       const now = Date.now();
       let anySuccess = false;
@@ -247,7 +245,7 @@ export function useLiveProtectionPolling(
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [fetchLiveQuotes, pollIntervalMs]);
+  }, [pollIntervalMs]);
 
   // ─── Start/Stop ────────────────────────────────────────
   const startPolling = useCallback(() => {
