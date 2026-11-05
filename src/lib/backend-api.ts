@@ -821,6 +821,12 @@ export function fetchBackendFxRate(from: string, to: string, fetchImpl?: typeof 
 
 /** Fetches stock fundamentals, sentiment and macro intelligence through the backend. */
 export function fetchBackendAlphaVantage(instrument: string, instrumentType: string, fetchImpl?: typeof fetch) {
+  if (instrumentType !== "stock") {
+    return Promise.resolve({
+      success: false,
+      dataAvailable: { news: false, fundamentals: false, macro: false },
+    });
+  }
   return backendRequest<{
     success: boolean;
     sentiment?: unknown;
