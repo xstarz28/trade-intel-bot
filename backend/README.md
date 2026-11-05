@@ -15,12 +15,12 @@ This deployment runs the Vite frontend, Node.js API, and SQLite database on infr
 - in-memory rate limits for anonymous/Google sign-in attempts and per-user market-analysis requests;
 - monitored-position persistence, bounded position-alert history/acknowledgement, stream cursors, custom alert rules/history, deduplicated notifications, read/dismiss lifecycle, and notification preferences;
 - authenticated on-demand OHLCV retrieval for mapped instruments through public OKX Spot and Yahoo Finance sources, reusing the existing technical-indicator, SMC, MTF, freshness, and cross-asset modules;
-- optional Alpha Vantage stock news/sentiment, news-derived macro context, overview and earnings integration through the existing shared normalizers (disabled unless `ALPHA_VANTAGE_API_KEY` is configured);
+- optional Alpha Vantage News & Sentiment for stocks, crypto, forex and topic-filtered commodity/macro coverage; stock-only overview, earnings and fundamentals use the existing shared normalizers (disabled unless `ALPHA_VANTAGE_API_KEY` is configured);
 - consistent SQLite snapshot backup and validated atomic restore commands.
 
 ## Important migration status
 
-The self-hosted backend is now the normal application runtime and authentication source. Browser login, guest accounts, Google OAuth, session restoration and logout use backend-owned sessions. Dashboard market analysis, exact OKX perpetual/dated-futures OHLCV, Alpha Vantage stock intelligence, CoinGlass/public derivatives, Tokenomist/PatternPlus/CoinGecko tokenomics fallbacks, DeFiLlama fundamentals, economic calendar, COT/EIA/Treasury, FX reference, OKX order-book/specification/open-interest, protection OHLCV, historical timelines, alert rules, notifications and runtime health are routed through authenticated backend APIs. Dashboard, Journal and position-protection consumers no longer mount the Convex provider. The only remaining active Convex UI path is the explicitly optional legacy account-export panel, shown only when a valid old Convex deployment is configured. The source tree and packages remain until the legacy account export/import is verified and the repository-wide dependency cleanup is complete. The migration is not a production cutover: no live account export/import reconciliation, DNS/TLS activation or production acceptance has been performed. Do not delete the old Convex data before reconciliation.
+The self-hosted backend is now the normal application runtime and authentication source. Browser login, guest accounts, Google OAuth, session restoration and logout use backend-owned sessions. Dashboard market analysis, exact OKX perpetual/dated-futures OHLCV, Alpha Vantage cross-asset news/sentiment and stock intelligence, CoinGlass/public derivatives, Tokenomist/PatternPlus/CoinGecko tokenomics fallbacks, DeFiLlama fundamentals, economic calendar, COT/EIA/Treasury, FX reference, OKX order-book/specification/open-interest, protection OHLCV, historical timelines, alert rules, notifications and runtime health are routed through authenticated backend APIs. Dashboard, Journal and position-protection consumers no longer mount the Convex provider. The only remaining active Convex UI path is the explicitly optional legacy account-export panel, shown only when a valid old Convex deployment is configured. The source tree and packages remain until the legacy account export/import is verified and the repository-wide dependency cleanup is complete. The migration is not a production cutover: no live account export/import reconciliation, DNS/TLS activation or production acceptance has been performed. Do not delete the old Convex data before reconciliation.
 
 The market-data lane supports public OKX Spot candles/ticker, exact OKX perpetual and dated-futures candles, and exact Yahoo Finance mappings for supported stocks, forex, commodities, and indices. Unsupported contracts or unmapped symbols fail closed; no spot/proxy substitution is allowed. Provider source and freshness remain explicit.
 
@@ -28,7 +28,7 @@ The market-data lane supports public OKX Spot candles/ticker, exact OKX perpetua
 
 All provider credentials are optional unless a feature specifically requires them. Keep them in `backend/.env`, never in frontend variables or source control:
 
-- `ALPHA_VANTAGE_API_KEY`: stock news, sentiment, overview and earnings;
+- `ALPHA_VANTAGE_API_KEY`: stock overview/earnings/fundamentals and premium News & Sentiment for stocks, crypto, forex, plus topic-filtered commodity/macro news;
 - `COINGLASS_API_KEY`: paid aggregated crypto derivatives; public exchange adapters are the fallback;
 - `TOKENOMIST_API_KEY`: verified token unlock calendar; PatternPlus/CoinGecko fallbacks remain available;
 - `TICKATLAS_API_KEY`: economic calendar;

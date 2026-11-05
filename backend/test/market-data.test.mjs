@@ -167,7 +167,7 @@ describe("self-hosted market analysis engine", () => {
             title: "Cross-asset macro and market update " + index,
             url: "https://example.test/cross-asset/" + index,
             source: "Test Wire",
-            time_published: "20261105090000",
+            time_published: index === 2 ? undefined : "20261105090000",
             overall_sentiment_score: "0.32",
             overall_sentiment_label: "Somewhat-Bullish",
             ticker_sentiment: item.related ? [{
@@ -185,6 +185,7 @@ describe("self-hosted market analysis engine", () => {
       assert.equal(result.dataAvailable.news, true, item.symbol);
       assert.equal(result.dataAvailable.fundamentals, false, item.symbol);
       assert.equal(result.sentiment.articles.length, 1, item.symbol);
+      if (item.type === "commodity") assert.equal(result.sentiment.articles[0].publishedAt, 0);
       assert.equal(JSON.stringify(result).includes(apiKey), false);
     }
   });

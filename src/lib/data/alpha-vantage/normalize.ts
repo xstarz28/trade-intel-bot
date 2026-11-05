@@ -60,7 +60,7 @@ export function normalizeNewsArticles(
         title: item.title!,
         source: item.source || "Unknown",
         url: item.url!,
-        publishedAt: item.time_published ? parseAVTime(item.time_published) : Date.now(),
+        publishedAt: item.time_published ? parseAVTime(item.time_published) : 0,
         summary: item.summary,
         sentimentScore: tickerSentiment?.ticker_sentiment_score
           ? parseFloat(tickerSentiment.ticker_sentiment_score)
