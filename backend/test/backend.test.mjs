@@ -8,6 +8,7 @@ import { afterEach, describe, it } from "node:test";
 import { createAppServer } from "../src/app.mjs";
 import { upsertGoogleUser, verifyGoogleIdToken } from "../src/auth.mjs";
 import { openDatabase } from "../src/database.mjs";
+import { restoreDatabase } from "../restore.mjs";
 
 const temporaryDirectories = [];
 
@@ -71,6 +72,36 @@ afterEach(() => {
 
 
 
+});
+
+describe("SQLite restore utility", () => {
+  it("validates a backup and atomically restores it without overwriting an active WAL database", () => {
+    const directory = mkdtempSync(join(tmpdir(), "trade-intel-restore-"));
+    temporaryDirectories.push(directory);
+    const migrations = fileURLToPath(new URL("../migrations/", import.meta.url));
+    const source = join(directory, "backup.sqlite");
+    const target = join(directory, "live.sqlite");
+    const sourceDatabase = openDatabase(source, migrations);
+    const now = Date.now();
+    sourceDatabase.raw.prepare(
+      "INSERT INTO users (id, name, is_anonymous, role, created_at, updated_at) VALUES (?, ?, 1, 'user', ?, ?)",
+    ).run("restore-user", "Restore Test", now, now);
+    sourceDatabase.close();
+
+    const restored = restoreDatabase(source, target);
+    assert.equal(restored.target, target);
+    assert.ok(restored.bytes > 0);
+
+    const restoredDatabase = openDatabase(target, migrations);
+    assert.equal(
+      restoredDatabase.raw.prepare("SELECT name FROM users WHERE id = ?").get("restore-user").name,
+      "Restore Test",
+    );
+    restoredDatabase.close();
+
+    writeFileSync(target + "-wal", "active");
+    assert.throws(() => restoreDatabase(source, target), /sidecar files exist/);
+  });
 });
 
 describe("self-hosted backend", () => {
