@@ -33,7 +33,8 @@ All provider credentials are optional unless a feature specifically requires the
 - `TOKENOMIST_API_KEY`: verified token unlock calendar; PatternPlus/CoinGecko fallbacks remain available;
 - `TICKATLAS_API_KEY`: economic calendar;
 - `EIA_API_KEY`: EIA inventory data; public FRED series are used when absent;
-- `SEC_USER_AGENT`: identifying SEC EDGAR application name and monitored contact email.
+- `SEC_USER_AGENT`: identifying SEC EDGAR application name and monitored contact email;
+- `VITE_LEGACY_CONVEX_URL`: optional allow-listed old deployment URL used only for one-time account export; leave blank for fully Convex-independent builds.
 
 ## Automated self-hosted production deployment
 
