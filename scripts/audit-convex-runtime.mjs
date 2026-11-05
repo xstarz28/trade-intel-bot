@@ -30,7 +30,7 @@ function read(relativePath) {
 
 for (const absolutePath of walk(sourceRoot)) {
   const path = relative(root, absolutePath).replaceAll("\\", "/");
-  if (path.startsWith("src/convex/") || /\.(?:test|spec)\.[^.]+$/.test(path)) continue;
+  if (path.startsWith("src/convex/")) continue;
 
   const source = readFileSync(absolutePath, "utf8");
   const hasRuntimeImport = importPattern.test(source);
