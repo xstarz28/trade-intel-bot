@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
 import { ConvexReactClient } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
+import { isActiveConvexUrl } from "@/lib/auth-provider-mode";
 
 /**
  * Optional legacy-data migration provider.
@@ -14,7 +14,7 @@ import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 export function LegacyConvexMigrationProvider({ children }: { children: React.ReactNode }) {
   const rawUrl = import.meta.env.VITE_LEGACY_CONVEX_URL;
   const convexUrl = typeof rawUrl === "string" ? rawUrl.trim() : "";
-  const configured = isAllowedConvexCloudUrl(convexUrl);
+  const configured = isActiveConvexUrl(convexUrl);
 
   const legacyClient = useMemo(() => {
     if (!configured) return null;
