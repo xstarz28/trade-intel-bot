@@ -384,8 +384,9 @@ describe("scoreFundamentals (via breakdown)", () => {
       } as AnalysisInput["technicalData"],
     }));
 
-    expect(result.breakdown.fundamental).toBe(-1);
+    expect(result.breakdown.fundamental).toBe(0);
     expect(result.fundamentalSummary).toContain("DXY futures proxy");
+    expect(result.fundamentalSummary).toContain("news-derived USD proxy excluded from scoring");
     expect(result.fundamentalSummary).not.toContain("ACTUAL DXY price data in use");
   });
 
