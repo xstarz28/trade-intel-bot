@@ -48,7 +48,6 @@ export async function runOpportunityBatch(input: {
   );
   const valid = fetched.filter(item => item.success && item.candles.length >= 20);
   const byTimeframe = new Map(valid.map(item => [item.timeframe, item]));
-  const durations = batch.timeframes.map(tf => TF_MS[tf] ?? 0);
   const updates: LiveCandidateSource[] = valid.map(item => {
     const last = item.candles[item.candles.length - 1]!;
     const higherIndex = batch.timeframes.findIndex((tf, i) =>
