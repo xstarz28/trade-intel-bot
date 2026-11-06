@@ -922,7 +922,7 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.entry).toBeUndefined();
     expect(forecast.investor.objective).toBeUndefined();
     expect(forecast.investor.potentialUpsideDownsideRatio).toBeUndefined();
-    expect(forecast.trader.limitations.join(" ")).toContain("Primary data quality is not GOOD");
+    expect(forecast.trader.limitations.join(" ")).toContain("Primary market data is stale or does not meet quality requirements");
   });
 
   it("keeps snapshots within the three-bar freshness window eligible for normal validation", () => {
