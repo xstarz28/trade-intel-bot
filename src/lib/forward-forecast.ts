@@ -404,7 +404,7 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
     "A conditional or projected setup is not an order. Re-run all execution, freshness, and risk gates before any trade.",
   ];
 
-  if (blocked) return { status: blocked, direction, horizon, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary data quality is not GOOD; numeric forecast levels are suppressed."] };
+  if (blocked) return { status: blocked, direction, horizon, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary market data is stale or does not meet quality requirements; numeric forecast levels are suppressed."] };
   if (!snapshot) return { status: "UNAVAILABLE", direction: "neutral", horizon, calibration: "UNVALIDATED", evidence, limitations: [...limitations, "A valid spot price and source timestamp are required."] };
 
   const traderUp = snapshot ? validLevel(result.keyLevels?.resistance, snapshot.price, "above") : undefined;
@@ -491,7 +491,7 @@ function investorForecast(
     "This is a higher-timeframe structural thesis, not a calibrated long-term price prediction.",
     "Spot structural levels do not model leverage, funding, borrow, liquidation, dividends, or corporate actions.",
   ];
-  if (blocked) return { status: blocked, direction, horizon, valuationStatus: fundamentalOutlook.valuationStatus, fundamentalOutlook, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary data quality is not GOOD; numeric forecast levels are suppressed."] };
+  if (blocked) return { status: blocked, direction, horizon, valuationStatus: fundamentalOutlook.valuationStatus, fundamentalOutlook, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary market data is stale or does not meet quality requirements; numeric forecast levels are suppressed."] };
   if (!snapshot) return { status: "UNAVAILABLE", direction: "neutral", horizon, valuationStatus: fundamentalOutlook.valuationStatus, fundamentalOutlook, calibration: "UNVALIDATED", evidence, limitations: [...limitations, "A valid spot price and source timestamp are required."] };
 
   const htfUp = validLevel(structure?.lastSwingHigh, snapshot.price, "above");
