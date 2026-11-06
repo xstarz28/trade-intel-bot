@@ -21,7 +21,7 @@ describe("account migration contract", () => {
     const importSource = read("../src/account-import.mjs");
     const exported = declaredStringList(exportSource, "EXPORT_TABLES");
     const imported = declaredStringList(importSource, "IMPORT_TABLES");
-    const userOwned = [...schema.matchAll(/CREATE TABLE ([a-z_]+) \\(([\\s\\S]*?)\\n\\);/g)]
+    const userOwned = [...schema.matchAll(/CREATE TABLE ([a-z_]+) \(([\\s\\S]*?)\\n\);/g)]
       .filter((match) => /user_id TEXT NOT NULL/.test(match[2]))
       .map((match) => match[1]);
 
@@ -33,7 +33,7 @@ describe("account migration contract", () => {
     const convexSource = read("../../src/convex/accountMigration.ts");
     const converter = read("../src/convex-account-import.mjs");
     const backendTables = declaredStringList(read("../src/account-import.mjs"), "IMPORT_TABLES");
-    const convexTables = [...convexSource.matchAll(/ctx\\.db\\.query\\("([A-Za-z]+)"\\)/g)]
+    const convexTables = [...convexSource.matchAll(/ctx\.db\.query\("([A-Za-z]+)"\)/g)]
       .map((match) => camelToSnake(match[1]));
     const normalizedTables = declaredStringList(converter, "TABLES").map(camelToSnake);
 
@@ -45,11 +45,11 @@ describe("account migration contract", () => {
     const exportSource = read("../src/account-export.mjs");
     const importSource = read("../src/account-import.mjs");
     const convexSource = read("../../src/convex/accountMigration.ts");
-    const exportRows = Number(exportSource.match(/MAX_EXPORT_ROWS = (\\d+)/)?.[1]);
-    const importRows = Number(importSource.match(/MAX_ROWS = (\\d+)/)?.[1]);
-    const importBytes = Number(importSource.match(/MAX_BODY_BYTES = (\\d+) \\* 1024 \\* 1024/)?.[1]) * 1024 * 1024;
-    const exportBytes = Number(exportSource.match(/MAX_EXPORT_BYTES = (\\d+) \\* 1024 \\* 1024/)?.[1]) * 1024 * 1024;
-    const convexRows = Number(convexSource.match(/MAX_ROWS_PER_TABLE = (\\d+)/)?.[1]);
+    const exportRows = Number(exportSource.match(/MAX_EXPORT_ROWS = (\d+)/)?.[1]);
+    const importRows = Number(importSource.match(/MAX_ROWS = (\d+)/)?.[1]);
+    const importBytes = Number(importSource.match(/MAX_BODY_BYTES = (\d+) \\* 1024 \\* 1024/)?.[1]) * 1024 * 1024;
+    const exportBytes = Number(exportSource.match(/MAX_EXPORT_BYTES = (\d+) \\* 1024 \\* 1024/)?.[1]) * 1024 * 1024;
+    const convexRows = Number(convexSource.match(/MAX_ROWS_PER_TABLE = (\d+)/)?.[1]);
 
     assert.equal(exportRows, importRows);
     assert.equal(exportRows, convexRows);
