@@ -53,6 +53,7 @@ export function selectPriorityScanBatch(
   universe: readonly BackgroundScanUniverseEntry[],
   sources: readonly BackgroundScanSource[],
   now: number,
+  attempts: Readonly<Record<string, number>> = {},
 ): {
   instrumentIndex: number;
   timeframePass: number;
@@ -81,7 +82,8 @@ export function selectPriorityScanBatch(
 
   const rotation = cursor % universe.length;
   const candidates = universe.map((entry, index) => {
-    const last = lastScanned.get(entry.instrument.toUpperCase()) ?? 0;
+    const instrumentKey = entry.instrument.toUpperCase();
+    const last = Math.max(lastScanned.get(instrumentKey) ?? 0, attempts[instrumentKey] ?? 0);
     const interval = Number.isFinite(entry.refreshIntervalMs) && entry.refreshIntervalMs > 0
       ? entry.refreshIntervalMs
       : 60_000;
