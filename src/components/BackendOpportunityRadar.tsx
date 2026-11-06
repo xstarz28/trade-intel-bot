@@ -146,9 +146,13 @@ export function BackendOpportunityRadar() {
               {projection && (
                 <div className="mt-2 rounded-md bg-muted/30 p-2 text-[11px]">
                   Investment thesis: {projection.status} · {projection.direction}
+                  {projection.entryReference !== undefined ? ` · Spot reference ${money(projection.entryReference)}` : ""}
+                  {projection.accumulationZone
+                    ? ` · Accumulation zone ${money(projection.accumulationZone.lower)}–${money(projection.accumulationZone.upper)} (${projection.accumulationZone.timeframe})`
+                    : " · No validated accumulation zone"}
                   {projection.objective ? ` · Objective ${money(projection.objective.price)}` : ""}
                   {projection.invalidation ? ` · Invalidation ${money(projection.invalidation.price)}` : ""}
-                  {projection.rewardRiskRatio ? ` · R:R ${projection.rewardRiskRatio.toFixed(2)}` : ""}
+                  {projection.rewardRiskRatio !== undefined ? ` · R:R ${projection.rewardRiskRatio.toFixed(2)}` : ""}
                 </div>
               )}
               {item.primaryReasons.length > 0 && <p className="mt-2 text-[11px] text-muted-foreground">{item.primaryReasons.slice(0, 3).join(" · ")}</p>}
