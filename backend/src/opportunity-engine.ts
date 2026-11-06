@@ -8,6 +8,7 @@ import type { MarketData } from "../../src/lib/data/market-types";
 import type { RadarOpportunity, RadarScanConfig } from "../../src/lib/market-radar/types";
 import type { TradingMode, InvestorHorizon } from "../../src/lib/recommendation-engine";
 
+const SCAN_UNIVERSE = DEFAULT_UNIVERSE.filter(entry => entry.assetClass !== "macro");
 const HORIZONS: RadarScanConfig["horizons"] = [
   "SCALPING", "INTRADAY", "SWING",
   "1-4_WEEKS", "1-3_MONTHS", "3-6_MONTHS",
@@ -41,8 +42,8 @@ export async function runOpportunityBatch(input: {
   fetchImpl?: typeof fetch;
 }) {
   const now = input.now ?? Date.now();
-  const batch = selectBackgroundScanBatch(input.cursor, DEFAULT_UNIVERSE.length);
-  const entry = DEFAULT_UNIVERSE[batch.instrumentIndex]!;
+  const batch = selectBackgroundScanBatch(input.cursor, SCAN_UNIVERSE.length);
+  const entry = SCAN_UNIVERSE[batch.instrumentIndex]!;
   const fetched = await fetchMarketCandlesBatch(
     [entry.instrument], [...batch.timeframes], 210, input.fetchImpl ?? fetch,
   );
