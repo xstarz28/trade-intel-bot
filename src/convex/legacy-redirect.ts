@@ -1,8 +1,8 @@
-const LEGACY_MIGRATION_ORIGINS = new Set(["https://xstarzganaliys.com"]);
+const LEGACY_MIGRATION_ORIGINS = new Set(["https://xstarzganalys.com"]);
 
 export function resolveLegacyMigrationRedirect(redirectTo: string, configuredSiteUrl?: string): string {
   const allowedOrigins = new Set(LEGACY_MIGRATION_ORIGINS);
-  let baseUrl = "https://xstarzganaliys.com";
+  let baseUrl = "https://xstarzganalys.com";
 
   if (configuredSiteUrl) {
     try {
