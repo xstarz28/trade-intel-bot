@@ -155,10 +155,13 @@ jobs:
             docker compose -p trade-intel build api
           docker compose -p trade-intel run --rm --no-deps api node scripts/verify-google-auth-config.mjs
 
-          if [ -n "$PREVIOUS" ]; then
-            docker compose -p trade-intel -f "$PREVIOUS/backend/compose.yaml" run --rm --no-deps api \
-              node backend/backup.mjs "/data/backups/predeploy-$SHA.sqlite" --if-exists
-          fi
+          # Snapshot the persistent data volume before every cutover, including
+          # the first self-hosted release when no previous release symlink exists.
+          # The new image contains the current backup verifier and shares the same
+          # named SQLite volume as the live API service.
+          docker compose -p trade-intel -f "$RELEASE_DIR/backend/compose.yaml" \
+            run --rm --no-deps api \
+            node backend/backup.mjs "/data/backups/predeploy-$SHA.sqlite" --if-exists
           printf '%s\n' "$PREVIOUS" > "$ROLLBACK_FILE"
           chmod 600 "$ROLLBACK_FILE"
 
