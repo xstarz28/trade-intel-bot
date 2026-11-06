@@ -65,22 +65,48 @@ export function createAccountExportHandler({ database, env = process.env }) {
       counts: {},
     };
 
+    for (const table of EXPORT_TABLES) {
+      exportData.data[table] = [];
+      exportData.counts[table] = 0;
+    }
+
     raw.exec("BEGIN");
     try {
+      let totalRows = 0;
+      let projectedBytes = Buffer.byteLength(JSON.stringify(exportData), "utf8");
       for (const table of EXPORT_TABLES) {
-        const rows = raw.prepare(`SELECT * FROM ${table} WHERE user_id = ? LIMIT ?`).all(user.id, MAX_EXPORT_ROWS + 1);
-        exportData.data[table] = rows;
-        exportData.counts[table] = rows.length;
-      }
-      const totalRows = Object.values(exportData.counts).reduce((total, count) => total + count, 0);
-      if (totalRows > MAX_EXPORT_ROWS) {
-        raw.exec("ROLLBACK");
-        sendJson(response, 413, {
-          error: "account_export_row_limit_exceeded",
-          maximum: MAX_EXPORT_ROWS,
-          totalRows,
-        });
-        return true;
+        const rows = raw.prepare(
+          `SELECT * FROM ${table} WHERE user_id = ? LIMIT ?`,
+        ).iterate(user.id, MAX_EXPORT_ROWS + 1);
+        for (const row of rows) {
+          if (totalRows >= MAX_EXPORT_ROWS) {
+            raw.exec("ROLLBACK");
+            sendJson(response, 413, {
+              error: "account_export_row_limit_exceeded",
+              maximum: MAX_EXPORT_ROWS,
+              observedRows: totalRows + 1,
+            });
+            return true;
+          }
+
+          const previousCount = exportData.counts[table];
+          const nextCount = previousCount + 1;
+          const rowBytes = Buffer.byteLength(JSON.stringify(row), "utf8");
+          projectedBytes += rowBytes + (previousCount > 0 ? 1 : 0) +
+            String(nextCount).length - String(previousCount).length;
+          if (projectedBytes > MAX_EXPORT_BYTES) {
+            raw.exec("ROLLBACK");
+            sendJson(response, 413, {
+              error: "account_export_size_limit_exceeded",
+              maximumBytes: MAX_EXPORT_BYTES,
+            });
+            return true;
+          }
+
+          exportData.data[table].push(row);
+          exportData.counts[table] = nextCount;
+          totalRows = nextCount + totalRows - previousCount;
+        }
       }
       raw.exec("COMMIT");
     } catch (error) {
