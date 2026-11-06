@@ -13,5 +13,5 @@ jobs:
     steps:
       - name: Refuse legacy deployment
         run: |
-          echo "::error::Vercel production deployment is retired. The production target is the self-hosted Docker/Caddy stack at xstarzganaliys.com."
+          echo "::error::Vercel production deployment is retired. The production target is the self-hosted Docker/Caddy stack at xstarzganalys.com."
           exit 1
