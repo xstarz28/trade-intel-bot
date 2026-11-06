@@ -12,6 +12,7 @@ This deployment runs the Vite frontend, Node.js API, and SQLite database on infr
 - user-scoped analysis history and journal CRUD/lifecycle routes;
 - position-owned historical snapshots/events with deterministic event deduplication and bounded retention;
 - user-scoped runtime-health snapshots with timestamp deduplication and bounded history;
+- autonomous multi-asset opportunity radar running inside the Node.js process, with a persisted scan cursor/lease, SQLite source snapshots, horizon-specific rankings, and an authenticated read/refresh API;
 - in-memory rate limits for anonymous/Google sign-in attempts and per-user market-analysis requests;
 - monitored-position persistence, bounded position-alert history/acknowledgement, stream cursors, custom alert rules/history, deduplicated notifications, read/dismiss lifecycle, and notification preferences;
 - authenticated on-demand OHLCV retrieval for mapped instruments through public OKX Spot and Yahoo Finance sources, reusing the existing technical-indicator, SMC, MTF, freshness, and cross-asset modules;
