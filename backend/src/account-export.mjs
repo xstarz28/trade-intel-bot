@@ -1,5 +1,8 @@
 import { getAuthenticatedUser } from "./auth.mjs";
 
+const MAX_EXPORT_ROWS = 10_000;
+const MAX_EXPORT_BYTES = 5 * 1024 * 1024;
+
 const EXPORT_TABLES = [
   "analyses",
   "journal",
@@ -65,14 +68,33 @@ export function createAccountExportHandler({ database, env = process.env }) {
     raw.exec("BEGIN");
     try {
       for (const table of EXPORT_TABLES) {
-        const rows = raw.prepare(`SELECT * FROM ${table} WHERE user_id = ?`).all(user.id);
+        const rows = raw.prepare(`SELECT * FROM ${table} WHERE user_id = ? LIMIT ?`).all(user.id, MAX_EXPORT_ROWS + 1);
         exportData.data[table] = rows;
         exportData.counts[table] = rows.length;
+      }
+      const totalRows = Object.values(exportData.counts).reduce((total, count) => total + count, 0);
+      if (totalRows > MAX_EXPORT_ROWS) {
+        raw.exec("ROLLBACK");
+        sendJson(response, 413, {
+          error: "account_export_row_limit_exceeded",
+          maximum: MAX_EXPORT_ROWS,
+          totalRows,
+        });
+        return true;
       }
       raw.exec("COMMIT");
     } catch (error) {
       raw.exec("ROLLBACK");
       throw error;
+    }
+
+    const serialized = JSON.stringify(exportData);
+    if (Buffer.byteLength(serialized, "utf8") > MAX_EXPORT_BYTES) {
+      sendJson(response, 413, {
+        error: "account_export_size_limit_exceeded",
+        maximumBytes: MAX_EXPORT_BYTES,
+      });
+      return true;
     }
 
     sendJson(response, 200, exportData);
