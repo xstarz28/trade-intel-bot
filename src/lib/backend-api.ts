@@ -3,6 +3,7 @@ import type { EiaData } from "@/lib/data/eia";
 import type { TreasuryData } from "@/lib/data/treasury";
 import type { MarketData, TechnicalData } from "@/lib/data/market-types";
 import type { AnalysisResult } from "@/types/analysis";
+import type { RadarOpportunity } from "@/lib/market-radar/types";
 import type { FxRateSnapshot } from "@/lib/risk";
 import type { OkxSpecData } from "@/lib/risk/okx-spec";
 import type { ExecutionData } from "@/lib/execution-quality";
@@ -1016,4 +1017,31 @@ export function fetchBackendTreasuryYields(fetchImpl?: typeof fetch) {
   return backendRequest<BackendProviderResult<TreasuryData>>("/api/v1/intelligence/treasury", {
     method: "POST", body: "{}",
   }, fetchImpl);
+}
+
+export interface BackendOpportunityResponse {
+  status: "available" | "warming_up";
+  lastScanAt: number;
+  cursor: number;
+  metrics: Record<string, number>;
+  errors: string[];
+  items: RadarOpportunity[];
+}
+export function fetchBackendOpportunities(
+  horizon: string,
+  fetchImpl?: typeof fetch,
+): Promise<BackendOpportunityResponse> {
+  const params = new URLSearchParams({ horizon, limit: "30" });
+  return backendRequest<BackendOpportunityResponse>(`/api/v1/opportunities?${params.toString()}`, {}, fetchImpl);
+}
+export function triggerBackendOpportunityScan(fetchImpl?: typeof fetch) {
+  return backendRequest<{
+    skipped: boolean;
+    reason?: string;
+    instrument?: string;
+    timeframes?: string[];
+    savedSources?: number;
+    rankedHorizons?: number;
+    errors?: string[];
+  }>("/api/v1/opportunities", { method: "POST" }, fetchImpl);
 }
