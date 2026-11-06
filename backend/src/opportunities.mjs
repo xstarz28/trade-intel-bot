@@ -64,11 +64,11 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
         }
         database.raw.exec("DELETE FROM market_radar_opportunities");
         const insertOpportunity = database.raw.prepare(
-          "INSERT INTO market_radar_opportunities (horizon,instrument,payload_json,updated_at) VALUES (?,?,?,?)",
+          "INSERT INTO market_radar_opportunities (horizon,instrument,payload_json,updated_at,asset_class,score) VALUES (?,?,?,?,?,?)",
         );
         for (const [horizon, items] of result.results) {
           for (const item of items) {
-            insertOpportunity.run(horizon, item.instrument, JSON.stringify(item), now);
+            insertOpportunity.run(horizon, item.instrument, JSON.stringify(item), now, item.assetClass ?? "unknown", Number.isFinite(item.score) ? item.score : 0);
           }
         }
         database.raw.prepare(`
@@ -151,11 +151,10 @@ export function createOpportunityHandler({ database, env = process.env, service 
     const limit = Number.isInteger(limitInput) ? Math.min(100, Math.max(1, limitInput)) : 50;
     const rows = database.raw.prepare(`
       SELECT payload_json FROM market_radar_opportunities
-      WHERE (? IS NULL OR horizon=?)
-      ORDER BY updated_at DESC, instrument ASC LIMIT ?
-    `).all(horizon, horizon, limit);
-    const items = rows.map(row => safeJson(row.payload_json, null)).filter(Boolean)
-      .filter(item => !assetClass || item.assetClass === assetClass);
+      WHERE (? IS NULL OR horizon=?) AND (? IS NULL OR asset_class=?)
+      ORDER BY score DESC, updated_at DESC, instrument ASC LIMIT ?
+    `).all(horizon, horizon, assetClass, assetClass, limit);
+    const items = rows.map(row => safeJson(row.payload_json, null)).filter(Boolean);
     json(response, 200, {
       lastScanAt: state.last_scan_at,
       cursor: state.cursor,
