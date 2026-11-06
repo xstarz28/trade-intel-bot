@@ -1,10 +1,26 @@
-import { fetchMarketCandlesBatch } from "./market-data-engine";
+import {
+  fetchAlphaVantageIntelligence,
+  fetchCotPositioning,
+  fetchCryptoDerivatives,
+  fetchCryptoFundamentals,
+  fetchEconomicCalendar,
+  fetchEiaInventory,
+  fetchMarketCandlesBatch,
+  fetchSecFundamentalObservations,
+  fetchTreasuryYields,
+} from "./market-data-engine";
 import { DEFAULT_UNIVERSE } from "../../src/lib/market-radar/universe";
 import { selectBackgroundScanBatch } from "../../src/lib/market-radar/background-schedule";
 import { scanRadar, type RadarState } from "../../src/lib/market-radar/radar";
 import { toRadarCandidateSource } from "../../src/lib/market-radar/candidate-builder";
+import { calculateTechnical } from "../../src/lib/data/technical";
+import { runAnalysis, type AnalysisInput } from "../../src/lib/analysis-engine";
+import { buildCryptoIntelligenceContext } from "../../src/lib/data/crypto/intelligence";
+import { parseCoinGlassResult } from "../../src/lib/data/crypto/coinglass-adapter";
+import { parseDeFiLlamaResult } from "../../src/lib/data/crypto/defillama-adapter";
 import type { LiveCandidateSource } from "../../src/lib/liveCandidateBuilder";
 import type { MarketData } from "../../src/lib/data/market-types";
+import type { AnalysisResult } from "../../src/types/analysis";
 import type { RadarOpportunity, RadarScanConfig } from "../../src/lib/market-radar/types";
 import type { TradingMode, InvestorHorizon } from "../../src/lib/recommendation-engine";
 
@@ -18,6 +34,8 @@ const TF_MS: Record<string, number> = {
   M5: 300_000, H1: 3_600_000, H4: 14_400_000,
   D1: 86_400_000, W1: 604_800_000,
 };
+const enrichmentCache = new Map<string, { value: unknown; expiresAt: number }>();
+
 function instrumentType(assetClass: string): MarketData["instrumentType"] {
   if (assetClass === "equity") return "stock";
   if (assetClass === "forex" || assetClass === "crypto" || assetClass === "commodity" || assetClass === "indices") return assetClass;
@@ -34,19 +52,115 @@ function freshness(timestamp: number, now: number, timeframe: string): MarketDat
 function key(source: LiveCandidateSource): string {
   return source.instrument.toUpperCase() + "|" + (source.marketData?.timeframe ?? "UNKNOWN").toUpperCase();
 }
+async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Promise<T> {
+  const existing = enrichmentCache.get(key);
+  if (existing && existing.expiresAt > Date.now()) return existing.value as T;
+  const value = await load();
+  enrichmentCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  if (enrichmentCache.size > 2_000) {
+    const now = Date.now();
+    for (const [cacheKey, item] of enrichmentCache) if (item.expiresAt <= now) enrichmentCache.delete(cacheKey);
+  }
+  return value;
+}
+async function optional<T>(name: string, task: Promise<T>, errors: string[]): Promise<T | undefined> {
+  try {
+    const value = await task;
+    const result = value as { success?: boolean; error?: string; errorCode?: string; status?: string };
+    if (result?.success === false) {
+      errors.push(`${name}: ${result.errorCode ?? result.status ?? result.error ?? "provider unavailable"}`);
+      return undefined;
+    }
+    return value;
+  } catch (error) {
+    errors.push(`${name}: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
+}
+
+async function acquireEnrichment(
+  entry: (typeof SCAN_UNIVERSE)[number],
+  env: Record<string, string | undefined>,
+  fetchImpl: typeof fetch,
+  errors: string[],
+  now: number,
+) {
+  const type = instrumentType(entry.assetClass);
+  const alphaPromise = env.ALPHA_VANTAGE_API_KEY?.trim()
+    ? optional("Alpha Vantage", fetchAlphaVantageIntelligence(entry.instrument, env.ALPHA_VANTAGE_API_KEY, fetchImpl, type), errors)
+    : Promise.resolve(undefined);
+  const calendarPromise = env.TICKATLAS_API_KEY?.trim()
+    ? optional("Economic calendar", fetchEconomicCalendar(entry.instrument, type, env.TICKATLAS_API_KEY, fetchImpl), errors)
+    : Promise.resolve(undefined);
+  const treasuryPromise = entry.assetClass === "forex" || entry.assetClass === "commodity"
+    ? optional("Treasury/FRED yields", cached("treasury", 30 * 60_000, () => fetchTreasuryYields(fetchImpl)), errors)
+    : Promise.resolve(undefined);
+  const cotPromise = entry.requiredCapabilities.includes("cot")
+    ? optional("CFTC COT", cached(`cot:${entry.instrument}`, 6 * 60 * 60_000, () => fetchCotPositioning(entry.instrument, fetchImpl)), errors)
+    : Promise.resolve(undefined);
+  const eiaPromise = entry.requiredCapabilities.includes("eia")
+    ? optional("EIA/FRED inventory", cached("eia:petroleum", 6 * 60 * 60_000, () => fetchEiaInventory(env.EIA_API_KEY, fetchImpl)), errors)
+    : Promise.resolve(undefined);
+  const derivativesPromise = entry.assetClass === "crypto"
+    ? optional("Public/paid crypto derivatives", fetchCryptoDerivatives(entry.instrument, env.COINGLASS_API_KEY, fetchImpl, env.TOKENOMIST_API_KEY), errors)
+    : Promise.resolve(undefined);
+  const defiPromise = entry.assetClass === "crypto"
+    ? optional("DeFiLlama fundamentals", fetchCryptoFundamentals(entry.instrument, fetchImpl), errors)
+    : Promise.resolve(undefined);
+  const secPromise = entry.assetClass === "equity" && entry.region === "us" &&
+      entry.requiredCapabilities.includes("fundamentals") && env.SEC_USER_AGENT?.trim()
+    ? optional("SEC EDGAR filings", cached(`sec:${entry.instrument}`, 6 * 60 * 60_000,
+        () => fetchSecFundamentalObservations(entry.instrument, env.SEC_USER_AGENT, fetchImpl)), errors)
+    : Promise.resolve(undefined);
+
+  const [alpha, calendar, treasury, cot, eia, derivatives, defi, sec] = await Promise.all([
+    alphaPromise, calendarPromise, treasuryPromise, cotPromise,
+    eiaPromise, derivativesPromise, defiPromise, secPromise,
+  ]);
+  let cryptoIntelligenceContext: AnalysisInput["cryptoIntelligenceContext"];
+  if (entry.assetClass === "crypto") {
+    const derivativeEnvelope = derivatives as { data?: Record<string, unknown> & { timestamp?: number }; tokenomics?: NonNullable<AnalysisInput["cryptoIntelligenceContext"]>["tokenomics"] } | undefined;
+    const defiEnvelope = defi as { data?: Record<string, unknown>; observedAt?: number } | undefined;
+    const derivativesContext = derivativeEnvelope?.data
+      ? parseCoinGlassResult(derivativeEnvelope.data, entry.instrument, derivativeEnvelope.data.timestamp ?? now)
+      : undefined;
+    const defiContext = defiEnvelope?.data
+      ? parseDeFiLlamaResult(defiEnvelope.data, entry.instrument, defiEnvelope.observedAt ?? now)
+      : undefined;
+    cryptoIntelligenceContext = buildCryptoIntelligenceContext(
+      entry.instrument, derivativesContext, defiContext, derivativeEnvelope?.tokenomics,
+    ) ?? undefined;
+  }
+  return {
+    alpha,
+    calendar: (calendar as { data?: AnalysisInput["calendarData"] } | undefined)?.data,
+    treasury: (treasury as { data?: AnalysisInput["treasuryData"] } | undefined)?.data,
+    cot: (cot as { data?: AnalysisInput["cotData"] } | undefined)?.data,
+    eia: (eia as { data?: AnalysisInput["eiaData"] } | undefined)?.data,
+    derivatives: (derivatives as { data?: AnalysisInput["derivativesData"] } | undefined)?.data,
+    cryptoIntelligenceContext,
+    secObservations: (sec as { observations?: AnalysisResult["secEdgarObservations"] } | undefined)?.observations,
+  };
+}
+
 export async function runOpportunityBatch(input: {
   cursor: number;
   sources: LiveCandidateSource[];
   previousResults: RadarOpportunity[];
   now?: number;
   fetchImpl?: typeof fetch;
+  env?: Record<string, string | undefined>;
 }) {
   const now = input.now ?? Date.now();
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const env = input.env ?? {};
   const batch = selectBackgroundScanBatch(input.cursor, SCAN_UNIVERSE.length);
   const entry = SCAN_UNIVERSE[batch.instrumentIndex]!;
-  const fetched = await fetchMarketCandlesBatch(
-    [entry.instrument], [...batch.timeframes], 210, input.fetchImpl ?? fetch,
-  );
+  const errors: string[] = [];
+  const [fetched, enrichment] = await Promise.all([
+    fetchMarketCandlesBatch([entry.instrument], [...batch.timeframes], 210, fetchImpl),
+    acquireEnrichment(entry, env, fetchImpl, errors, now),
+  ]);
   const valid = fetched.filter(item => item.success && item.candles.length >= 20);
   const byTimeframe = new Map(valid.map(item => [item.timeframe, item]));
   const updates: LiveCandidateSource[] = valid.map(item => {
@@ -69,7 +183,50 @@ export async function runOpportunityBatch(input: {
       } : {}),
       dataFreshness: freshness(last.timestamp, now, item.timeframe),
     };
-    return { instrument: entry.instrument, assetClass: entry.assetClass, marketData };
+    const technical = calculateTechnical(
+      item.candles,
+      higher?.candles,
+      higher?.timeframe ?? "HTF",
+    );
+    const alpha = enrichment.alpha as {
+      sentiment?: AnalysisInput["sentimentData"];
+      fundamentals?: AnalysisInput["fundamentalData"];
+      macro?: AnalysisInput["macroData"];
+    } | undefined;
+    const analysisInput: AnalysisInput = {
+      instrument: entry.instrument,
+      instrumentType: instrumentType(entry.assetClass),
+      timeframe: item.timeframe as AnalysisInput["timeframe"],
+      tradingStyle: item.timeframe === "M5" ? "scalping" : item.timeframe === "H1" ? "intraday" : "swing",
+      marketData,
+      technicalData: technical,
+      ...(alpha?.sentiment && alpha.sentiment.confidence !== "unavailable" ? { sentimentData: alpha.sentiment } : {}),
+      ...(alpha?.fundamentals?.available ? { fundamentalData: alpha.fundamentals } : {}),
+      ...(alpha?.macro && alpha.macro.confidence !== "unavailable" ? { macroData: alpha.macro } : {}),
+      ...(enrichment.derivatives ? { derivativesData: enrichment.derivatives } : {}),
+      ...(enrichment.calendar ? { calendarData: enrichment.calendar } : {}),
+      ...(enrichment.treasury?.available ? { treasuryData: enrichment.treasury } : {}),
+      ...(enrichment.cot?.available ? { cotData: enrichment.cot } : {}),
+      ...(enrichment.eia?.available ? { eiaData: enrichment.eia } : {}),
+      ...(enrichment.cryptoIntelligenceContext ? { cryptoIntelligenceContext: enrichment.cryptoIntelligenceContext } : {}),
+    };
+    let analysisResult = runAnalysis(analysisInput);
+    if (enrichment.secObservations?.length) {
+      analysisResult = { ...analysisResult, secEdgarObservations: enrichment.secObservations };
+    }
+    return {
+      instrument: entry.instrument,
+      assetClass: entry.assetClass,
+      marketData,
+      technicalData: technical,
+      analysisResult,
+      ...(enrichment.derivatives ? { derivativesData: enrichment.derivatives } : {}),
+      ...(enrichment.calendar ? { calendarData: enrichment.calendar } : {}),
+      ...(enrichment.treasury?.available ? { treasuryData: enrichment.treasury } : {}),
+      ...(enrichment.cot?.available ? { cotData: enrichment.cot } : {}),
+      ...(enrichment.eia?.available ? { eiaData: enrichment.eia } : {}),
+      ...(enrichment.cryptoIntelligenceContext ? { cryptoIntelligenceContext: enrichment.cryptoIntelligenceContext } : {}),
+    };
   });
   const merged = new Map(input.sources.map(source => [key(source), source]));
   for (const source of updates) merged.set(key(source), source);
@@ -98,7 +255,10 @@ export async function runOpportunityBatch(input: {
       unavailableCount: result.unavailableCount,
       durationMs: result.durationMs,
     },
-    errors: fetched.filter(item => !item.success).map(item => `${item.instrument} ${item.timeframe}: ${item.error ?? "provider unavailable"}`).slice(0, 20),
+    errors: [
+      ...fetched.filter(item => !item.success).map(item => `${item.instrument} ${item.timeframe}: ${item.error ?? "provider unavailable"}`),
+      ...errors,
+    ].slice(0, 30),
     scannedAt: now,
   };
 }
