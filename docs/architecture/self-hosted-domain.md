@@ -4,7 +4,7 @@
 
 The final target is a single self-hosted origin:
 
-- `https://xstarzganaliys.com` serves the Vite frontend from the Node.js application.
+- `https://xstarzganalys.com` serves the Vite frontend from the Node.js application.
 - The same Node.js process serves `/api/v1/*`.
 - SQLite stores user and application state in a persistent Docker volume.
 - Caddy is a self-hosted reverse proxy that obtains and renews HTTPS certificates.
@@ -15,7 +15,7 @@ GitHub Pages was considered as a no-cost static-hosting fallback but deliberatel
 
 ## Domain
 
-The hostname is written exactly as supplied by the user: `xstarzganaliys.com`. Confirm that this exact spelling matches the registered domain before changing DNS or registering the Google OAuth callback.
+The hostname is written exactly as supplied by the user: `xstarzganalys.com`. Confirm that this exact spelling matches the registered domain before changing DNS or registering the Google OAuth callback.
 
 The domain registrar remains the authoritative DNS provider. The apex A record must point to the public IPv4 address of the machine running the self-hosted stack. Add an AAAA record only if that host has a stable public IPv6 address. Preserve unrelated MX/TXT records.
 
