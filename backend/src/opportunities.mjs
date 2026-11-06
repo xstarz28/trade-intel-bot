@@ -44,7 +44,8 @@ export function createOpportunityService({ database, intervalMs = 300_000, fetch
         now,
         fetchImpl,
       });
-      const save = database.raw.transaction(() => {
+      database.raw.exec("BEGIN IMMEDIATE");
+      try {
         const upsertSource = database.raw.prepare(`
           INSERT INTO market_radar_sources
             (source_key,instrument,timeframe,asset_class,payload_json,observed_at,updated_at)
@@ -74,8 +75,11 @@ export function createOpportunityService({ database, intervalMs = 300_000, fetch
             metrics_json=?, errors_json=? WHERE id=1
         `).run(result.cursor, result.scannedAt, JSON.stringify(result.metrics),
           JSON.stringify(result.errors));
-      });
-      save();
+      database.raw.exec("COMMIT");
+      } catch (error) {
+        database.raw.exec("ROLLBACK");
+        throw error;
+      }
       return {
         skipped: false,
         instrument: result.instrument,
