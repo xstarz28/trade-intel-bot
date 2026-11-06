@@ -51,6 +51,26 @@ describe("self-hosted opportunity scanner persistence", () => {
   });
 
 
+
+  it("persists failed acquisition attempts so an unavailable instrument is not retried forever", async () => {
+    const { database } = fixture();
+    const service = createOpportunityService({
+      database,
+      env: {},
+      fetchImpl: async () => new Response("{}", { status: 503 }),
+    });
+    try {
+      const result = await service.runOneBatch();
+      assert.equal(result.skipped, false);
+      assert.equal(result.savedSources, 0);
+      const state = database.raw.prepare("SELECT metrics_json FROM market_radar_state WHERE id=1").get();
+      const metrics = JSON.parse(state.metrics_json);
+      assert.equal(metrics.scanAttemptTimestamps["BTC/USD"], result.lastScanAt);
+    } finally {
+      database.close();
+    }
+  });
+
   it("builds a persisted multi-horizon candidate from exact provider candles", async () => {
     const { database } = fixture();
     const { runOpportunityBatch } = await import("../dist/opportunity-engine.mjs");
