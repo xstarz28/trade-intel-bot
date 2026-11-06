@@ -37,10 +37,12 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
         "SELECT payload_json FROM market_radar_opportunities ORDER BY updated_at DESC LIMIT 300",
       ).all().map(row => safeJson(row.payload_json, null)).filter(Boolean);
       const engine = await import("../dist/opportunity-engine.mjs");
+      const persistedMetrics = safeJson(state.metrics_json, {});
       const result = await engine.runOpportunityBatch({
         cursor: state.cursor,
         sources,
         previousResults,
+        scanAttempts: persistedMetrics.scanAttemptTimestamps ?? {},
         now,
         fetchImpl,
         env,
@@ -74,7 +76,8 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
         database.raw.prepare(`
           UPDATE market_radar_state SET cursor=?, lease_until=0, last_scan_at=?,
             metrics_json=?, errors_json=? WHERE id=1
-        `).run(result.cursor, result.scannedAt, JSON.stringify(result.metrics),
+        `).run(result.cursor, result.scannedAt,
+          JSON.stringify({ ...result.metrics, scanAttemptTimestamps: result.scanAttempts }),
           JSON.stringify(result.errors));
       database.raw.exec("COMMIT");
       } catch (error) {
@@ -158,7 +161,10 @@ export function createOpportunityHandler({ database, env = process.env, service 
     json(response, 200, {
       lastScanAt: state.last_scan_at,
       cursor: state.cursor,
-      metrics: safeJson(state.metrics_json, {}),
+      metrics: (() => {
+        const { scanAttemptTimestamps: _internalAttempts, ...publicMetrics } = safeJson(state.metrics_json, {});
+        return publicMetrics;
+      })(),
       errors: safeJson(state.errors_json, []),
       items,
       status: state.last_scan_at > 0 ? "available" : "warming_up",
