@@ -105,7 +105,7 @@ export function createAccountExportHandler({ database, env = process.env }) {
 
           exportData.data[table].push(row);
           exportData.counts[table] = nextCount;
-          totalRows = nextCount + totalRows - previousCount;
+          totalRows += 1;
         }
       }
       raw.exec("COMMIT");
