@@ -157,6 +157,7 @@ export async function runOpportunityBatch(input: {
   cursor: number;
   sources: LiveCandidateSource[];
   previousResults: RadarOpportunity[];
+  scanAttempts?: Record<string, number>;
   now?: number;
   fetchImpl?: typeof fetch;
   env?: Record<string, string | undefined>;
@@ -164,7 +165,7 @@ export async function runOpportunityBatch(input: {
   const now = input.now ?? Date.now();
   const fetchImpl = input.fetchImpl ?? fetch;
   const env = input.env ?? {};
-  const batch = selectPriorityScanBatch(input.cursor, SCAN_UNIVERSE, input.sources, now);
+  const batch = selectPriorityScanBatch(input.cursor, SCAN_UNIVERSE, input.sources, now, input.scanAttempts);
   const entry = SCAN_UNIVERSE[batch.instrumentIndex]!;
   const errors: string[] = [];
   const [fetched, enrichment] = await Promise.all([
@@ -255,6 +256,7 @@ export async function runOpportunityBatch(input: {
   } satisfies RadarState, now);
   return {
     cursor: batch.nextCursor,
+    scanAttempts: { ...input.scanAttempts, [entry.instrument.toUpperCase()]: now },
     instrument: entry.instrument,
     timeframes: [...batch.timeframes],
     updates,
