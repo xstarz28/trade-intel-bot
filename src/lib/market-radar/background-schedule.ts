@@ -1,13 +1,13 @@
 /**
  * Deterministic acquisition rotation for the durable background scanner.
- * Each instrument receives two timeframe requests per visit. Three complete
- * universe passes cover every supported horizon family without burst-scanning
- * the entire universe in one provider-rate window.
+ * M5 is refreshed on every instrument visit to keep short-horizon setups
+ * actionable; the second slot rotates through H1/H4/D1/W1 for higher horizons.
  */
 export const BACKGROUND_SCAN_TIMEFRAME_PASSES = [
-  ["H1", "D1"],
-  ["H4", "W1"],
   ["M5", "H1"],
+  ["M5", "H4"],
+  ["M5", "D1"],
+  ["M5", "W1"],
 ] as const;
 
 export function selectBackgroundScanBatch(cursor: number, universeSize: number): {
