@@ -5,9 +5,9 @@ import { classifyGoogleAuthConfig } from "./verify-google-auth-config.mjs";
 const configured = {
   GOOGLE_CLIENT_ID: "123456789-example.apps.googleusercontent.com",
   GOOGLE_CLIENT_SECRET: "gocspx-abcdefghijklmnop",
-  APP_ORIGIN: "https://xstarzganaliys.com",
-  PUBLIC_BASE_URL: "https://xstarzganaliys.com",
-  DOMAIN: "xstarzganaliys.com",
+  APP_ORIGIN: "https://xstarzganalys.com",
+  PUBLIC_BASE_URL: "https://xstarzganalys.com",
+  DOMAIN: "xstarzganalys.com",
 };
 
 test("reports missing self-hosted OAuth variable names without values", () => {
@@ -25,7 +25,7 @@ test("accepts structurally valid self-hosted OAuth configuration and derives cal
   assert.deepEqual(result.invalid, []);
   assert.equal(
     result.callbackUrl,
-    "https://xstarzganaliys.com/api/v1/auth/google/callback",
+    "https://xstarzganalys.com/api/v1/auth/google/callback",
   );
   assert.equal(JSON.stringify(result).includes(configured.GOOGLE_CLIENT_SECRET), false);
 });
@@ -35,7 +35,7 @@ test("rejects malformed client IDs, weak secrets and non-HTTPS origins", () => {
     ...configured,
     GOOGLE_CLIENT_ID: "not-a-google-client-id",
     GOOGLE_CLIENT_SECRET: "short",
-    APP_ORIGIN: "http://xstarzganaliys.com",
+    APP_ORIGIN: "http://xstarzganalys.com",
   });
   assert.equal(result.state, "INVALID");
   assert.equal(result.invalid.length, 3);
@@ -46,7 +46,7 @@ test("rejects malformed client IDs, weak secrets and non-HTTPS origins", () => {
 test("requires frontend and backend origins to match for host-only cookies", () => {
   const result = classifyGoogleAuthConfig({
     ...configured,
-    PUBLIC_BASE_URL: "https://api.xstarzganaliys.com",
+    PUBLIC_BASE_URL: "https://api.xstarzganalys.com",
   });
   assert.equal(result.state, "INVALID");
   assert.ok(result.invalid.some((entry) => entry.includes("must match")));
@@ -64,7 +64,7 @@ test("rejects a Caddy domain that differs from the canonical application origin"
 test("rejects a DOMAIN value containing a URL scheme or port", () => {
   const result = classifyGoogleAuthConfig({
     ...configured,
-    DOMAIN: "https://xstarzganaliys.com:443",
+    DOMAIN: "https://xstarzganalys.com:443",
   });
   assert.equal(result.state, "INVALID");
   assert.ok(result.invalid.some((entry) => entry.includes("hostname without scheme")));
