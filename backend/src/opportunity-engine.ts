@@ -210,16 +210,21 @@ export async function runOpportunityBatch(input: {
       ...(enrichment.eia?.available ? { eiaData: enrichment.eia } : {}),
       ...(enrichment.cryptoIntelligenceContext ? { cryptoIntelligenceContext: enrichment.cryptoIntelligenceContext } : {}),
     };
-    let analysisResult = runAnalysis(analysisInput);
-    if (enrichment.secObservations?.length) {
-      analysisResult = { ...analysisResult, secEdgarObservations: enrichment.secObservations };
+    let analysisResult: AnalysisResult | undefined;
+    try {
+      analysisResult = runAnalysis(analysisInput);
+      if (enrichment.secObservations?.length) {
+        analysisResult = { ...analysisResult, secEdgarObservations: enrichment.secObservations };
+      }
+    } catch (error) {
+      errors.push(`${entry.instrument} ${item.timeframe} analysis: ${error instanceof Error ? error.message : String(error)}`);
     }
     return {
       instrument: entry.instrument,
       assetClass: entry.assetClass,
       marketData,
       technicalData: technical,
-      analysisResult,
+      ...(analysisResult ? { analysisResult } : {}),
       ...(enrichment.derivatives ? { derivativesData: enrichment.derivatives } : {}),
       ...(enrichment.calendar ? { calendarData: enrichment.calendar } : {}),
       ...(enrichment.treasury?.available ? { treasuryData: enrichment.treasury } : {}),
