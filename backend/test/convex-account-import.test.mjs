@@ -293,6 +293,35 @@ describe("native Convex account import endpoint", () => {
       });
       assert.equal(mismatched.status, 409);
       assert.equal((await mismatched.json()).error, "convex_account_identity_mismatch");
+
+      // A database trigger that mutates imported data must not produce a
+      // successful reconciliation receipt. The entire import stays atomic.
+      database.raw.exec(`
+        CREATE TRIGGER mutate_imported_analysis
+        AFTER INSERT ON analyses
+        WHEN NEW.id = 'trigger-mutated'
+        BEGIN
+          UPDATE analyses SET instrument = 'MUTATED' WHERE id = NEW.id;
+        END;
+      `);
+      const triggerMutated = await fetch(`${baseUrl}/api/v1/account/import`, {
+        method: "POST",
+        headers: {
+          Origin: env.APP_ORIGIN,
+          Cookie: cookie,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...exported,
+          data: {
+            analyses: [{ ...exported.data.analyses[0], _id: "trigger-mutated" }],
+          },
+        }),
+      });
+      assert.equal(triggerMutated.status, 409);
+      assert.equal((await triggerMutated.json()).error, "account_import_record_conflict");
+      assert.equal(database.raw.prepare("SELECT COUNT(*) AS count FROM analyses WHERE id = ?")
+        .get("trigger-mutated").count, 0);
     } finally {
       await new Promise((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
