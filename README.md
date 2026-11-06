@@ -27,7 +27,7 @@ XSTARZG is a multi-market trading intelligence platform for structured analysis 
 - Framer Motion
 - Vitest
 
-The production target is a single-origin self-hosted Docker/Caddy deployment at `https://xstarzganaliys.com`. The Node.js service serves the frontend and API; SQLite stores application data. GitHub Actions provides CI and a guarded SSH deployment workflow. Vercel is not part of the target runtime.
+The production target is a single-origin self-hosted Docker/Caddy deployment at `https://xstarzganalys.com`. The Node.js service serves the frontend and API; SQLite stores application data. GitHub Actions provides CI and a guarded SSH deployment workflow. Vercel is not part of the target runtime.
 
 ## Local development
 
@@ -58,7 +58,7 @@ npm test
 
 ## Production
 
-The self-hosted deployment workflow is manual and requires a prepared Linux host, pinned SSH credentials, a protected GitHub `production` environment, and a host-side `backend.env`. The requested domain is `xstarzganaliys.com`. No production DNS/TLS cutover is claimed until the host and domain are configured and the public health checks pass.
+The self-hosted deployment workflow is manual and requires a prepared Linux host, pinned SSH credentials, a protected GitHub `production` environment, and a host-side `backend.env`. The requested domain is `xstarzganalys.com`. No production DNS/TLS cutover is claimed until the host and domain are configured and the public health checks pass.
 
 Normal login, session restoration, market analysis, journal, position protection, alerts, notifications, and persistence use the self-hosted backend. Convex is isolated to the optional one-time legacy account-export panel; disabling Convex does not disable application login or normal runtime features.
 
