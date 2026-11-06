@@ -89,7 +89,7 @@ async function acquireEnrichment(
 ) {
   const type = instrumentType(entry.assetClass);
   const alphaPromise = env.ALPHA_VANTAGE_API_KEY?.trim()
-    ? optional("Alpha Vantage", fetchAlphaVantageIntelligence(entry.instrument, env.ALPHA_VANTAGE_API_KEY, fetchImpl, type), errors)
+    ? optional("Alpha Vantage", fetchAlphaVantageIntelligence(entry.instrument, env.ALPHA_VANTAGE_API_KEY, fetchImpl, entry.assetClass === "indices" ? "macro" : type), errors)
     : Promise.resolve(undefined);
   const calendarPromise = env.TICKATLAS_API_KEY?.trim()
     ? optional("Economic calendar", fetchEconomicCalendar(entry.instrument, type, env.TICKATLAS_API_KEY, fetchImpl), errors)
