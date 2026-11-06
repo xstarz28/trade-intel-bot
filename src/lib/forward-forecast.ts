@@ -478,7 +478,7 @@ function investorForecast(
   requestedHorizon: InvestorForecastHorizon = "1-3_YEARS",
 ): InvestorForwardForecast {
   const horizon = investorHorizon(snapshot?.timestamp ?? result.timestamp, requestedHorizon);
-  const blocked = dataStatus(result);
+  const blocked = dataStatus(result, snapshot);
   const fundamentalOutlook = buildInvestorFundamentalOutlook(result, blocked ? undefined : snapshot?.price);
   const structure = investorStructureContext(result, requestedHorizon);
   const direction: ForecastDirection = structure?.structure === "HH/HL"
