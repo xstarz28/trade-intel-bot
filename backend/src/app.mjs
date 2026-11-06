@@ -10,6 +10,7 @@ import { createFundamentalsHandler } from "./fundamentals.mjs";
 import { createHistoryHandler } from "./history.mjs";
 import { createAccountExportHandler } from "./account-export.mjs";
 import { createAccountImportHandler } from "./account-import.mjs";
+import { createOpportunityHandler } from "./opportunities.mjs";
 
 const MIME_TYPES = {
   ".html": "text/html; charset=utf-8",
@@ -81,7 +82,7 @@ function sendJson(response, status, payload) {
   response.end(body);
 }
 
-export function createAppServer({ database, env = process.env, fetchImpl = fetch, staticDirectory }) {
+export function createAppServer({ database, env = process.env, fetchImpl = fetch, staticDirectory, opportunityService }) {
   const authHandler = createAuthHandler({ database, env, fetchImpl });
   const domainHandler = database ? createDomainHandler({ database, env }) : null;
   const positionHandler = database ? createPositionHandler({ database, env }) : null;
@@ -91,6 +92,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
   const historyHandler = database ? createHistoryHandler({ database, env }) : null;
   const accountExportHandler = database ? createAccountExportHandler({ database, env }) : null;
   const accountImportHandler = database ? createAccountImportHandler({ database, env }) : null;
+  const opportunityHandler = database ? createOpportunityHandler({ database, env, service: opportunityService }) : null;
   const configuredOrigin = env.APP_ORIGIN?.trim();
   const allowedOrigin = configuredOrigin || (
     env.NODE_ENV === "production" ? "" : "http://localhost:5173"
@@ -170,6 +172,7 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
       if (await authHandler(request, response, url)) return;
       if (accountExportHandler && await accountExportHandler(request, response, url)) return;
       if (accountImportHandler && await accountImportHandler(request, response, url)) return;
+      if (opportunityHandler && await opportunityHandler(request, response, url)) return;
       if (domainHandler && await domainHandler(request, response, url)) return;
       if (positionHandler && await positionHandler(request, response, url)) return;
       if (alertHandler && await alertHandler(request, response, url)) return;
