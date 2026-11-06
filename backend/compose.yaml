@@ -21,6 +21,9 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://xstarzganaliys.com}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      XSTARZ_BUILD_COMMIT: ${XSTARZ_BUILD_COMMIT:-unknown}
+      XSTARZ_BUILD_REF: ${XSTARZ_BUILD_REF:-unknown}
+      XSTARZ_BUILD_WORKTREE_CLEAN: ${XSTARZ_BUILD_WORKTREE_CLEAN:-false}
     expose:
       - "8787"
     volumes:
