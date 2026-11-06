@@ -25,6 +25,9 @@ export function createDatabaseBackup(sourcePath, destinationPath) {
   try {
     const escaped = target.replace(/'/g, "''");
     database.exec(`VACUUM INTO '${escaped}'`);
+  } catch (error) {
+    if (existsSync(target)) rmSync(target);
+    throw error;
   } finally {
     process.umask(previousUmask);
     database.close();
@@ -47,6 +50,12 @@ export function createDatabaseBackup(sourcePath, destinationPath) {
       fsyncSync(descriptor);
     } finally {
       closeSync(descriptor);
+    }
+    const directoryDescriptor = openSync(dirname(target), "r");
+    try {
+      fsyncSync(directoryDescriptor);
+    } finally {
+      closeSync(directoryDescriptor);
     }
     return { target, bytes: statSync(target).size };
   } catch (error) {
