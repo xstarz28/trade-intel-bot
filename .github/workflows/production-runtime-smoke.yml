@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       expected_sha:
-        description: "Exact 40-character commit SHA deployed to xstarzganaliys.com"
+        description: "Exact 40-character commit SHA deployed to xstarzganalys.com"
         required: true
         type: string
 
@@ -22,7 +22,7 @@ jobs:
     environment: production
     timeout-minutes: 18
     env:
-      XSTARZ_SMOKE_URL: https://xstarzganaliys.com
+      XSTARZ_SMOKE_URL: https://xstarzganalys.com
       EXPECTED_SHA: ${{ inputs.expected_sha }}
     steps:
       - uses: actions/checkout@v4
