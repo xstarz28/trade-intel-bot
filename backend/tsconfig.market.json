@@ -8,10 +8,21 @@
     "skipLibCheck": true,
     "baseUrl": "..",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": [
+        "src/*"
+      ]
     },
-    "types": ["node"],
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ]
   },
-  "files": ["src/market-data-engine.ts"]
+  "files": [
+    "src/market-data-engine.ts",
+    "src/opportunity-engine.ts"
+  ]
 }
