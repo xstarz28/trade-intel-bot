@@ -88,8 +88,12 @@ async function acquireEnrichment(
   now: number,
 ) {
   const type = instrumentType(entry.assetClass);
+  const alphaType: "stock" | "crypto" | "forex" | "commodity" | "macro" =
+    entry.assetClass === "equity" ? "stock" :
+    entry.assetClass === "crypto" || entry.assetClass === "forex" || entry.assetClass === "commodity"
+      ? entry.assetClass : "macro";
   const alphaPromise = env.ALPHA_VANTAGE_API_KEY?.trim()
-    ? optional("Alpha Vantage", fetchAlphaVantageIntelligence(entry.instrument, env.ALPHA_VANTAGE_API_KEY, fetchImpl, entry.assetClass === "indices" ? "macro" : type), errors)
+    ? optional("Alpha Vantage", fetchAlphaVantageIntelligence(entry.instrument, env.ALPHA_VANTAGE_API_KEY, fetchImpl, alphaType), errors)
     : Promise.resolve(undefined);
   const calendarPromise = env.TICKATLAS_API_KEY?.trim()
     ? optional("Economic calendar", fetchEconomicCalendar(entry.instrument, type, env.TICKATLAS_API_KEY, fetchImpl), errors)
