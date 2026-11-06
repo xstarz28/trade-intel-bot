@@ -121,6 +121,7 @@ describe("SQLite restore utility", () => {
     const restored = restoreDatabase(source, target);
     assert.equal(restored.target, target);
     assert.ok(restored.bytes > 0);
+    assert.equal(statSync(target).mode & 0o777, 0o600);
 
     const restoredDatabase = openDatabase(target, migrations);
     assert.equal(
@@ -131,6 +132,13 @@ describe("SQLite restore utility", () => {
 
     writeFileSync(target + "-wal", "active");
     assert.throws(() => restoreDatabase(source, target), /sidecar files exist/);
+    rmSync(target + "-wal");
+
+    const corrupt = join(directory, "corrupt.sqlite");
+    writeFileSync(corrupt, "not a SQLite database");
+    const before = readFileSync(target);
+    assert.throws(() => restoreDatabase(corrupt, target));
+    assert.deepEqual(readFileSync(target), before, "invalid restore input must leave the live database untouched");
   });
 });
 
