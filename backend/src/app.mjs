@@ -141,6 +141,11 @@ export function createAppServer({ database, env = process.env, fetchImpl = fetch
         sendJson(response, 200, {
           status: "ready",
           checks: { database: "ok" },
+          release: {
+            commit: env.XSTARZ_BUILD_COMMIT?.trim() || null,
+            ref: env.XSTARZ_BUILD_REF?.trim() || null,
+            worktreeClean: env.XSTARZ_BUILD_WORKTREE_CLEAN === "true",
+          },
         });
       } catch {
         sendJson(response, 503, {
