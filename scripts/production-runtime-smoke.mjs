@@ -2,12 +2,12 @@ import { chromium } from "playwright";
 import { access } from "node:fs/promises";
 import { extractForecastStatus } from "./forecast-contract-validation.mjs";
 
-const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzganaliys.com";
+const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzganalys.com";
 const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
 
 const targetUrl = new URL(url);
-if (targetUrl.origin !== "https://xstarzganaliys.com" || !["", "/"].includes(targetUrl.pathname) || targetUrl.search || targetUrl.hash) {
-  throw new Error(`Refusing non-canonical runtime target; only https://xstarzganaliys.com is allowed: ${url}`);
+if (targetUrl.origin !== "https://xstarzganalys.com" || !["", "/"].includes(targetUrl.pathname) || targetUrl.search || targetUrl.hash) {
+  throw new Error(`Refusing non-canonical runtime target; only https://xstarzganalys.com is allowed: ${url}`);
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -749,7 +749,7 @@ try {
     }
     const redirectUri = new URL(redirectUriRaw);
     const validCallback =
-      redirectUri.origin === "https://xstarzganaliys.com" &&
+      redirectUri.origin === "https://xstarzganalys.com" &&
       redirectUri.pathname === "/api/v1/auth/google/callback";
     evidence.googleOAuth.redirectUri = redirectUri.origin + redirectUri.pathname;
     evidence.googleOAuth.redirectUriMismatch = !validCallback;
