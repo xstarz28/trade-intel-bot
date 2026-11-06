@@ -47,6 +47,7 @@ import { getAllInstruments } from "@/lib/data/universal/instruments";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
+import { BackendOpportunityRadar } from "@/components/BackendOpportunityRadar";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
 import {
@@ -1166,6 +1167,7 @@ export default function Dashboard() {
             <Suspense fallback={null}><LegacyConvexMigrationProvider><AccountMigrationPanel /></LegacyConvexMigrationProvider></Suspense>
           ) : null}
         </div>
+        <BackendOpportunityRadar />
         {historyError && (
           <p className="mb-4 text-xs text-destructive">
             Analysis history is temporarily unavailable: {historyError}
