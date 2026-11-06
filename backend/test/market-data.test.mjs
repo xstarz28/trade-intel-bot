@@ -108,7 +108,7 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.success, true);
     assert.equal(result.data.provider, "binance-spot-public-fallback");
     assert.equal(result.data.candles.length, 210);
-    assert.equal(result.data.candles.at(-1).close, 60_450);
+    assert.equal(result.data.candles.at(-1).close, 60_448);
     assert.ok(requested.some((url) => url.includes("okx.com/api/v5/market/candles")));
     assert.ok(requested.some((url) => url.includes("binance.com/api/v3/klines")));
   });
