@@ -21,7 +21,7 @@ mkdirSync(dirname(databasePath), { recursive: true });
 const database = openDatabase(databasePath, migrationsDirectory);
 const opportunityService = createOpportunityService({
   database,
-  intervalMs: Number.parseInt(process.env.OPPORTUNITY_SCAN_INTERVAL_MS ?? "300000", 10),
+  intervalMs: Math.min(600_000, Math.max(30_000, Number.parseInt(process.env.OPPORTUNITY_SCAN_INTERVAL_MS ?? "60000", 10) || 60_000)),
 });
 const server = createAppServer({ database, staticDirectory, opportunityService });
 
