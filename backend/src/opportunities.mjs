@@ -161,10 +161,10 @@ export function createOpportunityHandler({ database, env = process.env, service 
     json(response, 200, {
       lastScanAt: state.last_scan_at,
       cursor: state.cursor,
-      metrics: (() => {
-        const { scanAttemptTimestamps: _internalAttempts, ...publicMetrics } = safeJson(state.metrics_json, {});
-        return publicMetrics;
-      })(),
+      metrics: Object.fromEntries(
+        Object.entries(safeJson(state.metrics_json, {}))
+          .filter(([key]) => key !== "scanAttemptTimestamps"),
+      ),
       errors: safeJson(state.errors_json, []),
       items,
       status: state.last_scan_at > 0 ? "available" : "warming_up",
