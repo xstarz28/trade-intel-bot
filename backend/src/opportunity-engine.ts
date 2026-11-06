@@ -10,7 +10,7 @@ import {
   fetchTreasuryYields,
 } from "./market-data-engine";
 import { DEFAULT_UNIVERSE } from "../../src/lib/market-radar/universe";
-import { selectBackgroundScanBatch } from "../../src/lib/market-radar/background-schedule";
+import { selectPriorityScanBatch } from "../../src/lib/market-radar/background-schedule";
 import { scanRadar, type RadarState } from "../../src/lib/market-radar/radar";
 import { toRadarCandidateSource } from "../../src/lib/market-radar/candidate-builder";
 import { calculateTechnical } from "../../src/lib/data/technical";
@@ -160,7 +160,7 @@ export async function runOpportunityBatch(input: {
   const now = input.now ?? Date.now();
   const fetchImpl = input.fetchImpl ?? fetch;
   const env = input.env ?? {};
-  const batch = selectBackgroundScanBatch(input.cursor, SCAN_UNIVERSE.length);
+  const batch = selectPriorityScanBatch(input.cursor, SCAN_UNIVERSE, input.sources, now);
   const entry = SCAN_UNIVERSE[batch.instrumentIndex]!;
   const errors: string[] = [];
   const [fetched, enrichment] = await Promise.all([
