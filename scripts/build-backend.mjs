@@ -20,4 +20,17 @@ await build({
   legalComments:"none",
   logLevel:"info",
 });
-console.info("Built self-hosted market-data engine from shared analysis modules.");
+await build({
+  absWorkingDir:root,
+  entryPoints:["backend/src/opportunity-engine.ts"],
+  outfile:"backend/dist/opportunity-engine.mjs",
+  bundle:true,
+  platform:"node",
+  format:"esm",
+  target:"node22",
+  alias:{"@":path.join(root,"src")},
+  sourcemap:false,
+  legalComments:"none",
+  logLevel:"info",
+});
+console.info("Built self-hosted market-data and autonomous opportunity engines.");
