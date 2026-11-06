@@ -19,7 +19,7 @@ describe("persistent background scanner rotation", () => {
     });
   });
 
-  it("covers M5, H1, H4, D1, and W1 across three complete passes", () => {
+  it("covers M5, H1, H4, D1, and W1 across four complete passes", () => {
     const observed = new Set<string>();
     for (let cursor = 0; cursor < 4 * 2; cursor++) {
       for (const timeframe of selectBackgroundScanBatch(cursor, 2).timeframes) observed.add(timeframe);
