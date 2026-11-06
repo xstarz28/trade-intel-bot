@@ -51,6 +51,18 @@ describe("persistent background scanner rotation", () => {
     expect(overdue.overdueByMs).toBe(700_000);
   });
 
+
+  it("uses persisted failed-attempt timestamps so one unavailable provider cannot starve the universe", () => {
+    const universe = [
+      { instrument: "BTC/USD", priority: 1, refreshIntervalMs: 5 * 60_000 },
+      { instrument: "ETH/USD", priority: 2, refreshIntervalMs: 5 * 60_000 },
+    ];
+    const selected = selectPriorityScanBatch(1, universe, [], 10_000_000, {
+      "BTC/USD": 9_999_000,
+    });
+    expect(selected.instrumentIndex).toBe(1);
+  });
+
   it("uses priority and cursor rotation as deterministic tie-breakers", () => {
     const universe = [
       { instrument: "LOW", priority: 20, refreshIntervalMs: 60_000 },
