@@ -300,7 +300,7 @@ async function fetchBinanceSpotCandles(
   const symbol = instrumentInput.trim().toUpperCase().replace(/[/-]/g, "");
   // Only use Binance when the requested quote currency is identical. Never
   // silently replace USD, BTC, ETH, or a derivative contract with a proxy.
-  if (!/^[A-Z0-9]{4,30}(USDT|USDC)$/.test(symbol)) {
+  if (!/^[A-Z0-9]{2,30}(USDT|USDC)$/.test(symbol)) {
     throw new Error("No exact Binance spot symbol is available for this quote currency.");
   }
   const interval = ({ M1: "1m", M5: "5m", M15: "15m", H1: "1h", H4: "4h", D1: "1d", W1: "1w" } as Record<string,string>)[timeframe];
