@@ -17,8 +17,8 @@ services:
       DB_PATH: /data/trade-intel.sqlite
       STATIC_DIR: /app/dist
       NODE_ENV: ${NODE_ENV:-production}
-      APP_ORIGIN: ${APP_ORIGIN:-https://xstarzganaliys.com}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://xstarzganaliys.com}
+      APP_ORIGIN: ${APP_ORIGIN:-https://xstarzganalys.com}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://xstarzganalys.com}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
       XSTARZ_BUILD_COMMIT: ${XSTARZ_BUILD_COMMIT:-unknown}
