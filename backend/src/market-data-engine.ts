@@ -286,13 +286,73 @@ function legacyContext(entry: NonNullable<ReturnType<typeof buildMtfContext>["ti
   };
 }
 
+interface CandleFetchResult {
+  candles: OhlcvCandle[];
+  provider: string;
+}
+
+async function fetchBinanceSpotCandles(
+  instrumentInput: string,
+  timeframe: string,
+  count: number,
+  fetchImpl: typeof fetch,
+): Promise<OhlcvCandle[]> {
+  const symbol = instrumentInput.trim().toUpperCase().replace(/[/-]/g, "");
+  // Only use Binance when the requested quote currency is identical. Never
+  // silently replace USD, BTC, ETH, or a derivative contract with a proxy.
+  if (!/^[A-Z0-9]{4,30}(USDT|USDC)$/.test(symbol)) {
+    throw new Error("No exact Binance spot symbol is available for this quote currency.");
+  }
+  const interval = ({ M1: "1m", M5: "5m", M15: "15m", H1: "1h", H4: "4h", D1: "1d", W1: "1w" } as Record<string,string>)[timeframe];
+  if (!interval) throw new Error("Unsupported Binance spot timeframe: " + timeframe);
+  const query = new URLSearchParams({ symbol, interval, limit: String(Math.min(1000, Math.max(20, Math.floor(count)))) });
+  const failures: string[] = [];
+  for (const host of ["https://api.binance.com", "https://data-api.binance.vision"]) {
+    try {
+      const response = await fetchImpl(host + "/api/v3/klines?" + query, {
+        headers: { accept: "application/json" },
+        signal: AbortSignal.timeout(5000),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !Array.isArray(payload)) {
+        failures.push(host + " HTTP " + response.status);
+        continue;
+      }
+      const candles = payload
+        .filter((row: unknown) => Array.isArray(row) && row.length >= 6)
+        .map((row: unknown[]) => ({
+          timestamp: Number(row[0]),
+          open: Number(row[1]),
+          high: Number(row[2]),
+          low: Number(row[3]),
+          close: Number(row[4]),
+          volume: Number(row[5]),
+        }))
+        .filter((row: OhlcvCandle) => [row.timestamp,row.open,row.high,row.low,row.close,row.volume].every(Number.isFinite) &&
+          Number.isSafeInteger(row.timestamp) && row.timestamp > 0 && row.open > 0 &&
+          row.high >= Math.max(row.open,row.close,row.low) &&
+          row.low <= Math.min(row.open,row.close,row.high) && row.volume >= 0)
+        .sort((a: OhlcvCandle,b: OhlcvCandle) => a.timestamp-b.timestamp)
+        .slice(-count);
+      if (candles.length < 20) {
+        failures.push(host + " returned fewer than 20 valid candles");
+        continue;
+      }
+      return candles;
+    } catch (error) {
+      failures.push(host + ": " + (error instanceof Error ? error.message : "request failed"));
+    }
+  }
+  throw new Error("Binance exact-symbol fallback unavailable: " + failures.join("; "));
+}
+
 async function fetchCandles(
   request:MarketAnalysisRequest,
   timeframe:string,
   count:number,
   okx:OkxSpotMarketAdapter,
   fetchImpl:typeof fetch,
-):Promise<OhlcvCandle[]> {
+):Promise<CandleFetchResult> {
   if(request.instrumentType==="crypto") {
     const instrument = request.instrument.toUpperCase();
     if (instrument.endsWith("-SWAP") || /-[0-9]{6}$/.test(instrument)) {
@@ -321,15 +381,30 @@ async function fetchCandles(
         .sort((a: OhlcvCandle,b: OhlcvCandle) => a.timestamp-b.timestamp)
         .slice(-count);
       if (candles.length < 20) throw Object.assign(new Error("OKX returned fewer than 20 valid candles for exact contract " + instrument), { code: "API_UNAVAILABLE" });
-      return candles;
+      return { candles, provider: instrument.endsWith("-SWAP") ? "okx-perpetual-public" : "okx-dated-futures-public" };
     }
-    return okx.fetchCandles(request.instrument,timeframe,count);
+    try {
+      const candles = await okx.fetchCandles(request.instrument,timeframe,count);
+      return { candles, provider: OKX_SPOT_MARKET_PROVIDER };
+    } catch (primaryError) {
+      try {
+        const candles = await fetchBinanceSpotCandles(instrument,timeframe,count,fetchImpl);
+        return { candles, provider: "binance-spot-public-fallback" };
+      } catch (fallbackError) {
+        const primaryMessage = primaryError instanceof Error ? primaryError.message : "OKX spot request failed";
+        const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Binance fallback failed";
+        throw Object.assign(new Error("Primary OKX spot feed failed (" + primaryMessage + "). Exact-quote Binance fallback also failed (" + fallbackMessage + ")."), {
+          code: (primaryError as { code?: string })?.code ?? "API_UNAVAILABLE",
+        });
+      }
+    }
   }
   const symbol=resolveYahooSymbol(request.instrumentType,request.instrument);
   if(!symbol) {
     throw Object.assign(new Error("No exact Yahoo Finance ticker mapping exists for this instrument. No correlated proxy or substitute instrument was used."),{code:"UNSUPPORTED"});
   }
-  return fetchYahooFinanceCandles(symbol,timeframe,count,fetchImpl);
+  const candles = await fetchYahooFinanceCandles(symbol,timeframe,count,fetchImpl);
+  return { candles, provider: "yahoo-finance-public" };
 }
 
 
@@ -370,7 +445,7 @@ export async function fetchMarketCandlesBatch(
   return Promise.all(requests.map(async ({ instrument, timeframe }) => {
     try {
       const instrumentType = inferInstrumentType(instrument);
-      const candles = await fetchCandles({
+      const result = await fetchCandles({
         instrument: instrument.trim().toUpperCase(),
         instrumentType,
         timeframe: timeframe.trim().toUpperCase(),
@@ -379,11 +454,8 @@ export async function fetchMarketCandlesBatch(
         instrument: instrument.trim().toUpperCase(),
         timeframe: timeframe.trim().toUpperCase(),
         success: true,
-        candles,
-        provider: instrumentType === "crypto"
-          ? (instrument.toUpperCase().endsWith("-SWAP") ? "OKX perpetual" :
-             /-[0-9]{6}$/.test(instrument.toUpperCase()) ? "OKX dated futures" : "OKX spot")
-          : "Yahoo Finance",
+        candles: result.candles,
+        provider: result.provider,
       };
     } catch (error) {
       return {
@@ -401,12 +473,14 @@ async function calculate(request:MarketAnalysisRequest,fetchImpl:typeof fetch):P
   const symbol=request.instrument.trim().toUpperCase();
   const now=Date.now();
   const okx=new OkxSpotMarketAdapter(fetchImpl);
-  const provider=request.instrumentType==="crypto"
+  let provider=request.instrumentType==="crypto"
     ? (/-SWAP$/.test(symbol) ? "okx-perpetual-public" : /-[0-9]{6}$/.test(symbol) ? "okx-dated-futures-public" : OKX_SPOT_MARKET_PROVIDER)
     : "yahoo-finance-public";
 
   try {
-    const candles=await fetchCandles(request,request.timeframe,210,okx,fetchImpl);
+    const candleResult=await fetchCandles(request,request.timeframe,210,okx,fetchImpl);
+    const candles=candleResult.candles;
+    provider=candleResult.provider;
     if(candles.length<20) {
       return {success:false,error:`Only ${candles.length} verified candles returned; at least 20 are required for independent structure analysis.`,errorCode:"API_UNAVAILABLE"};
     }
@@ -437,7 +511,7 @@ async function calculate(request:MarketAnalysisRequest,fetchImpl:typeof fetch):P
       if(!preferred.some(p=>p.timeframe===slot.timeframe)) {
         throw new Error("Timeframe not fetched under the bounded on-demand data budget.");
       }
-      return fetchCandles(request,slot.timeframe,slot.role==="trigger"?100:120,okx,fetchImpl);
+      return (await fetchCandles(request,slot.timeframe,slot.role==="trigger"?100:120,okx,fetchImpl)).candles;
     }));
     const mtfInputs=slots.map((slot,index)=>{
       const result=mtfResults[index];
