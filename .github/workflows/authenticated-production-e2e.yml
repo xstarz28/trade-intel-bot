@@ -24,6 +24,7 @@ jobs:
     env:
       XSTARZ_SMOKE_URL: https://xstarzganalys.com
       XSTARZ_SMOKE_TIMEOUT_MS: "120000"
+      EXPECTED_SHA: ${{ inputs.expected_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -63,11 +64,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          [[ "${{ inputs.expected_sha }}" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "::error::expected_sha must be a full 40-character commit SHA."; exit 1; }
-          test "$(git rev-parse HEAD)" = "${{ inputs.expected_sha }}" || { echo "::error::Checked-out source does not match expected_sha."; exit 1; }
+          [[ "$EXPECTED_SHA" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "::error::expected_sha must be a full 40-character commit SHA."; exit 1; }
+          expected_sha="${EXPECTED_SHA,,}"
+          test "$(git rev-parse HEAD)" = "$expected_sha" || { echo "::error::Checked-out source does not match expected_sha."; exit 1; }
           metadata="$(curl --fail --silent --show-error --max-time 10 "${XSTARZ_SMOKE_URL}/build-info.json")"
           deployed_sha="$(printf '%s' "$metadata" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{try{console.log(JSON.parse(s).commit||"")}catch{console.log("")}})')"
-          test "${deployed_sha,,}" = "${{ inputs.expected_sha }}" || { echo "::error::Production serves ${deployed_sha:-unknown}, not requested commit ${{ inputs.expected_sha }}."; exit 1; }
+          test "${deployed_sha,,}" = "$expected_sha" || { echo "::error::Production serves ${deployed_sha:-unknown}, not requested commit $expected_sha."; exit 1; }
           echo "Authenticated acceptance is pinned to deployed commit $deployed_sha."
 
       - name: Install repository and browser dependencies
