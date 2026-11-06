@@ -16,7 +16,7 @@ describe("self-hosted deployment safety contract", () => {
     assert.ok(backup < switchRelease, "database snapshot must finish before release cutover");
 
     const backupBlock = workflow.slice(workflow.indexOf("# Snapshot the persistent data volume"), switchRelease);
-    assert.match(backupBlock, /"$RELEASE_DIR\/backend\/compose\.yaml"/);
+    assert.match(backupBlock, /"\$RELEASE_DIR\/backend\/compose\.yaml"/);
     assert.doesNotMatch(backupBlock, /if \[ -n "\$PREVIOUS" \]/,
       "first self-hosted deployment must also snapshot an existing persistent volume");
   });
