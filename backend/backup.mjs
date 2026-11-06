@@ -40,7 +40,7 @@ export function createDatabaseBackup(sourcePath, destinationPath) {
       validation.close();
     }
 
-    const descriptor = openSync(target, "r");
+    const descriptor = openSync(target, "r+");
     try {
       fsyncSync(descriptor);
     } finally {
