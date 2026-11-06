@@ -144,7 +144,7 @@ Store backups outside the host and periodically test restoring one. The live dat
 - `GET /health/live`, `GET /health/ready`
 - `GET /api/v1/auth/session`, `POST /api/v1/auth/anonymous`, `POST /api/v1/auth/logout`
 - `GET /api/v1/auth/google` and `GET /api/v1/auth/google/callback`
-- `GET /api/v1/account/export` (authenticated, user-scoped JSON export; excludes sessions/OAuth secrets and global provider observations)
+- `GET /api/v1/account/export` (authenticated, user-scoped JSON export; excludes sessions/OAuth secrets and global provider observations); bounded to 10,000 total records and 5 MiB, matching the importer limits.
 - `POST /api/v1/account/import` (authenticated restore from a versioned self-hosted export or native Convex export; ownership is reassigned to the active backend account, with duplicate rows skipped). Native Convex exports must come from the authenticated `accountMigration:exportMyAccount` query and must match the backend account email; email-less guest exports require explicit source-account ID confirmation.
 
 The Dashboard's **Migrasi ke backend mandiri** panel is an optional one-time data-transfer tool: it invokes the authenticated legacy Convex export query and posts the snapshot to this importer under the active backend account. Before using it, ensure the read-only Convex export function is deployed and backend Google OAuth is configured. This panel does not route normal application login, analysis, journal, position protection, alerts, or notifications through Convex. After account reconciliation is complete, the legacy panel and Convex packages can be retired.
