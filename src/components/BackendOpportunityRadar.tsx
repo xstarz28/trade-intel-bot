@@ -39,10 +39,30 @@ export function BackendOpportunityRadar() {
   }, [horizon]);
 
   useEffect(() => {
-    void load();
-    const timer = window.setInterval(() => void load(), 60_000);
-    return () => window.clearInterval(timer);
-  }, [load]);
+    let active = true;
+    const refresh = () => {
+      void fetchBackendOpportunities(horizon)
+        .then((result) => {
+          if (!active) return;
+          setItems(result.items);
+          setLastScanAt(result.lastScanAt);
+          setStatus(result.status);
+          setError(null);
+        })
+        .catch((cause: unknown) => {
+          if (active) setError(cause instanceof Error ? cause.message : "Opportunity radar unavailable");
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 60_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [horizon]);
 
   const scan = async () => {
     setScanning(true);
