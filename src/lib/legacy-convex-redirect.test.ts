@@ -3,8 +3,8 @@ import { resolveLegacyMigrationRedirect } from "../convex/legacy-redirect";
 
 describe("legacy Convex migration redirect allowlist", () => {
   it("allows the exact self-hosted production origin", () => {
-    expect(resolveLegacyMigrationRedirect("https://xstarzganaliys.com/dashboard"))
-      .toBe("https://xstarzganaliys.com/dashboard");
+    expect(resolveLegacyMigrationRedirect("https://xstarzganalys.com/dashboard"))
+      .toBe("https://xstarzganalys.com/dashboard");
   });
 
   it("allows relative paths on the configured legacy site origin", () => {
@@ -13,13 +13,13 @@ describe("legacy Convex migration redirect allowlist", () => {
   });
 
   it("allows an explicit redirect to the new domain while retaining the configured old origin", () => {
-    expect(resolveLegacyMigrationRedirect("https://xstarzganaliys.com/dashboard", "https://old.example.com"))
-      .toBe("https://xstarzganaliys.com/dashboard");
+    expect(resolveLegacyMigrationRedirect("https://xstarzganalys.com/dashboard", "https://old.example.com"))
+      .toBe("https://xstarzganalys.com/dashboard");
   });
 
   it.each([
     "https://evil.example/dashboard",
-    "https://xstarzganaliys.com.evil.example/dashboard",
+    "https://xstarzganalys.com.evil.example/dashboard",
     "javascript:alert(1)",
     "//evil.example/dashboard",
   ])("rejects an unapproved redirect target: %s", (target) => {
