@@ -58,7 +58,7 @@ export function AccountMigrationPanel() {
       const detail = cause instanceof Error ? cause.message : "legacy_google_sign_in_failed";
       setLegacyAuthError(
         detail.toLowerCase().includes("redirect")
-          ? "Login akun lama ditolak konfigurasi redirect Convex. Domain xstarzganaliys.com harus diizinkan pada deployment lama."
+          ? "Login akun lama ditolak konfigurasi redirect Convex. Domain xstarzganalys.com harus diizinkan pada deployment lama."
           : "Login akun Convex lama gagal. Pastikan Google OAuth pada deployment lama masih aktif.",
       );
     } finally {
