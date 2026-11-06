@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,6 +8,7 @@ import { afterEach, describe, it } from "node:test";
 import { createAppServer } from "../src/app.mjs";
 import { upsertGoogleUser, verifyGoogleIdToken } from "../src/auth.mjs";
 import { openDatabase } from "../src/database.mjs";
+import { createDatabaseBackup } from "../backup.mjs";
 import { restoreDatabase } from "../restore.mjs";
 
 const temporaryDirectories = [];
@@ -72,6 +73,35 @@ afterEach(() => {
 
 
 
+});
+
+describe("SQLite backup utility", () => {
+  it("creates a private, integrity-checked snapshot and refuses to overwrite an existing backup", () => {
+    const directory = mkdtempSync(join(tmpdir(), "trade-intel-backup-"));
+    temporaryDirectories.push(directory);
+    const migrations = fileURLToPath(new URL("../migrations/", import.meta.url));
+    const source = join(directory, "live.sqlite");
+    const target = join(directory, "backups", "snapshot.sqlite");
+    const database = openDatabase(source, migrations);
+    const now = Date.now();
+    database.raw.prepare(
+      "INSERT INTO users (id, name, is_anonymous, role, created_at, updated_at) VALUES (?, ?, 1, 'user', ?, ?)",
+    ).run("backup-user", "Backup Test", now, now);
+    database.close();
+
+    const backup = createDatabaseBackup(source, target);
+    assert.equal(backup.target, target);
+    assert.ok(backup.bytes > 0);
+    assert.equal(statSync(target).mode & 0o777, 0o600);
+    assert.throws(() => createDatabaseBackup(source, target), /already exists/);
+
+    const restored = openDatabase(target, migrations);
+    assert.equal(
+      restored.raw.prepare("SELECT name FROM users WHERE id = ?").get("backup-user").name,
+      "Backup Test",
+    );
+    restored.close();
+  });
 });
 
 describe("SQLite restore utility", () => {
