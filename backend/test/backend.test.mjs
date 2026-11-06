@@ -544,6 +544,50 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("rejects account exports that exceed the matching import row or byte limits", async () => {
+    const database = createTemporaryDatabase();
+    const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const { user } = await signIn.json();
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const insert = database.raw.prepare(`
+          INSERT INTO notifications (
+            id,user_id,notification_id,alert_identity,rule_id,rule_name,timestamp,
+            severity,title,message,category,impact,source,condition
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `);
+        for (let index = 0; index <= 10_000; index++) {
+          insert.run(
+            `export-limit-${index}`, user.id, `export-limit-${index}`,
+            `identity-${index}`, "rule", "Rule", index, "INFO",
+            "Bounded export", "", "SYSTEM", "LOW", "test", "test",
+          );
+        }
+        const rowLimited = await fetch(`${baseUrl}/api/v1/account/export`, {
+          headers: { Cookie: cookie },
+        });
+        assert.equal(rowLimited.status, 413);
+        assert.equal((await rowLimited.json()).error, "account_export_row_limit_exceeded");
+        database.raw.prepare("DELETE FROM notifications WHERE user_id = ?").run(user.id);
+        insert.run(
+          "export-large-payload", user.id, "export-large-payload",
+          "identity-large", "rule", "Rule", Date.now(), "INFO",
+          "Large export", "x".repeat(5 * 1024 * 1024), "SYSTEM", "LOW", "test", "test",
+        );
+        const byteLimited = await fetch(`${baseUrl}/api/v1/account/export`, {
+          headers: { Cookie: cookie },
+        });
+        assert.equal(byteLimited.status, 413);
+        assert.equal((await byteLimited.json()).error, "account_export_size_limit_exceeded");
+      }, { env });
+    } finally {
+      database.close();
+    }
+  });
   it("restores a portable export and overwrites untrusted imported ownership", async () => {
     const database = createTemporaryDatabase();
     const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
