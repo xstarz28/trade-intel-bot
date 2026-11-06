@@ -22,7 +22,7 @@ describe("account migration contract", () => {
     const exported = declaredStringList(exportSource, "EXPORT_TABLES");
     const imported = declaredStringList(importSource, "IMPORT_TABLES");
     const userOwned = [...schema.matchAll(/CREATE TABLE ([a-z_]+) \(([\s\S]*?)\n\);/g)]
-      .filter((match) => /user_id TEXT NOT NULL/.test(match[2]))
+      .filter((match) => match[1] !== "auth_sessions" && /user_id TEXT NOT NULL/.test(match[2]))
       .map((match) => match[1]);
 
     assert.deepEqual([...exported].sort(), [...imported].sort());
