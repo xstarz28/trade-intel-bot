@@ -57,7 +57,7 @@ One-time host preparation:
 1. Install Docker Engine and the Docker Compose plugin.
 2. Create the deploy user, grant Docker permissions, and create `/opt/trade-intel/shared` owned by that user.
 3. Create `/opt/trade-intel/shared/backend.env` with the production values from `backend/.env.example`; restrict it to mode `0600`. Do not commit this file.
-4. Point `xstarzganaliys.com` to the host and allow inbound TCP ports 80 and 443.
+4. Point `xstarzganalys.com` to the host and allow inbound TCP ports 80 and 443.
 5. Dispatch the workflow with the intended commit and the confirmation phrase.
 
 The API readiness response includes non-sensitive release provenance (`commit`, `ref`, and `worktreeClean`). The deploy workflow checks that the local container and canonical public HTTPS endpoint report the exact requested commit, not merely HTTP 200; rollback checks the restored release identity too. The deploy workflow cannot provision a host, create DNS records, or manufacture SSH credentials. It will refuse to run if the required production secrets or host-side environment file are absent. A successful CI build is not evidence that public DNS/TLS or production deployment is live.
@@ -91,7 +91,7 @@ No managed cloud database or application-hosting subscription is required. Publi
 ## Deploy on a host
 
 1. Copy `backend/.env.example` to `backend/.env`.
-2. Confirm the domain spelling and set `DOMAIN`, `APP_ORIGIN`, and `PUBLIC_BASE_URL` to the exact registered hostname. The current requested target is `xstarzganaliys.com`.
+2. Confirm the domain spelling and set `DOMAIN`, `APP_ORIGIN`, and `PUBLIC_BASE_URL` to the exact registered hostname. The current requested target is `xstarzganalys.com`.
 3. Point the domain's A record to the host's public IPv4 address. If using IPv6, add the correct AAAA record. Do not change mail-related MX/TXT records.
 4. Allow inbound TCP 80 and 443 (and optionally UDP 443) through the host firewall/router.
 5. From `backend/`, run:
@@ -102,7 +102,7 @@ docker compose -p trade-intel up --build -d
 
 The Node service listens only inside the Docker network. Caddy obtains and renews the HTTPS certificate and forwards requests to the application. The same hostname serves both the frontend and `/api/v1/*`; no separate API subdomain or cross-origin cookie configuration is needed.
 
-Google OAuth remains disabled until `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured and the exact callback URL `https://xstarzganaliys.com/api/v1/auth/google/callback` is registered in the Google OAuth client. Credentials must be supplied through the host's environment file, never committed to Git.
+Google OAuth remains disabled until `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured and the exact callback URL `https://xstarzganalys.com/api/v1/auth/google/callback` is registered in the Google OAuth client. Credentials must be supplied through the host's environment file, never committed to Git.
 
 ## Local development
 
