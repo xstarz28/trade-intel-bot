@@ -338,7 +338,7 @@ describe("self-hosted backend", () => {
     const database = createTemporaryDatabase();
     const env = {
       NODE_ENV: "production",
-      APP_ORIGIN: "https://xstarzganaliys.com",
+      APP_ORIGIN: "https://xstarzganalys.com",
     };
     try {
       await withServer(database, async (baseUrl) => {
@@ -370,7 +370,7 @@ describe("self-hosted backend", () => {
     const database = createTemporaryDatabase();
     const env = {
       NODE_ENV: "production",
-      APP_ORIGIN: "https://xstarzganaliys.com",
+      APP_ORIGIN: "https://xstarzganalys.com",
     };
     try {
       await withServer(database, async (baseUrl) => {
@@ -661,7 +661,7 @@ describe("self-hosted backend", () => {
       }, {
         env: {
           NODE_ENV: "production",
-          APP_ORIGIN: "https://xstarzganaliys.com",
+          APP_ORIGIN: "https://xstarzganalys.com",
         },
       });
     } finally {
@@ -1215,8 +1215,8 @@ describe("self-hosted backend", () => {
     const clientId = "123456789-example.apps.googleusercontent.com";
     const env = {
       NODE_ENV: "production",
-      APP_ORIGIN: "https://xstarzganaliys.com",
-      PUBLIC_BASE_URL: "https://xstarzganaliys.com",
+      APP_ORIGIN: "https://xstarzganalys.com",
+      PUBLIC_BASE_URL: "https://xstarzganalys.com",
       GOOGLE_CLIENT_ID: clientId,
       GOOGLE_CLIENT_SECRET: "gocspx-production-test-secret",
     };
@@ -1231,7 +1231,7 @@ describe("self-hosted backend", () => {
         assert.equal(form.get("client_id"), clientId);
         assert.equal(form.get("client_secret"), env.GOOGLE_CLIENT_SECRET);
         assert.equal(form.get("code_verifier"), oauthFlow.code_verifier);
-        assert.equal(form.get("redirect_uri"), "https://xstarzganaliys.com/api/v1/auth/google/callback");
+        assert.equal(form.get("redirect_uri"), "https://xstarzganalys.com/api/v1/auth/google/callback");
         return new Response(JSON.stringify({ id_token: idToken }), {
           status: 200,
           headers: { "content-type": "application/json" },
@@ -1258,7 +1258,7 @@ describe("self-hosted backend", () => {
         assert.equal(authorization.origin, "https://accounts.google.com");
         assert.equal(authorization.pathname, "/o/oauth2/v2/auth");
         assert.equal(authorization.searchParams.get("client_id"), clientId);
-        assert.equal(authorization.searchParams.get("redirect_uri"), "https://xstarzganaliys.com/api/v1/auth/google/callback");
+        assert.equal(authorization.searchParams.get("redirect_uri"), "https://xstarzganalys.com/api/v1/auth/google/callback");
         assert.equal(authorization.searchParams.get("response_type"), "code");
         assert.equal(authorization.searchParams.get("code_challenge_method"), "S256");
         assert.equal(authorization.searchParams.get("scope"), "openid email profile");
@@ -1299,7 +1299,7 @@ describe("self-hosted backend", () => {
           },
         );
         assert.equal(callback.status, 302);
-        assert.equal(callback.headers.get("location"), "https://xstarzganaliys.com/dashboard");
+        assert.equal(callback.headers.get("location"), "https://xstarzganalys.com/dashboard");
 
         const callbackCookies = callback.headers.get("set-cookie") ?? "";
         const sessionCookie = callbackCookies.match(/__Host-xstarz_session=[^;,]+/)?.[0];
