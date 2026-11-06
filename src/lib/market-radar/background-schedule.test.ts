@@ -15,17 +15,17 @@ describe("persistent background scanner rotation", () => {
     expect(selectBackgroundScanBatch(size, size)).toMatchObject({
       instrumentIndex: 0,
       timeframePass: 1,
-      timeframes: ["H4", "W1"],
+      timeframes: ["M5", "H4"],
     });
   });
 
   it("covers M5, H1, H4, D1, and W1 across three complete passes", () => {
     const observed = new Set<string>();
-    for (let cursor = 0; cursor < 3 * 2; cursor++) {
+    for (let cursor = 0; cursor < 4 * 2; cursor++) {
       for (const timeframe of selectBackgroundScanBatch(cursor, 2).timeframes) observed.add(timeframe);
     }
     expect([...observed].sort()).toEqual(["D1", "H1", "H4", "M5", "W1"]);
-    expect(BACKGROUND_SCAN_TIMEFRAME_PASSES).toHaveLength(3);
+    expect(BACKGROUND_SCAN_TIMEFRAME_PASSES).toHaveLength(4);
   });
 
 
@@ -41,7 +41,7 @@ describe("persistent background scanner rotation", () => {
     ];
     const first = selectPriorityScanBatch(0, universe, sources, 9_000_001);
     expect(first.instrumentIndex).toBe(2);
-    expect(first.timeframes).toEqual(["H1", "D1"]);
+    expect(first.timeframes).toEqual(["M5", "H1"]);
 
     const overdue = selectPriorityScanBatch(1, universe, [
       ...sources,
