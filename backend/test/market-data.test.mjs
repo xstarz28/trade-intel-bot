@@ -78,6 +78,57 @@ describe("self-hosted market analysis engine", () => {
     }
   });
 
+  it("falls back from OKX to Binance only for the identical USDT spot pair", async () => {
+    const now = Date.now();
+    const requested = [];
+    const binanceRows = Array.from({ length: 220 }, (_, index) => {
+      const timestamp = now - (220 - index) * 60 * 60 * 1000;
+      const open = 60_000 + index * 2;
+      return [timestamp, String(open), String(open + 50), String(open - 30), String(open + 10), "125"];
+    });
+    const fetchImpl = async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.includes("okx.com/api/v5/market/candles")) {
+        return new Response(JSON.stringify({ code: "50011", msg: "Rate limit reached", data: [] }), { status: 429 });
+      }
+      if (url.includes("binance.com/api/v3/klines") || url.includes("binance.vision/api/v3/klines")) {
+        assert.equal(new URL(url).searchParams.get("symbol"), "BTCUSDT");
+        return new Response(JSON.stringify(binanceRows), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    };
+
+    const result = await analyzeMarket({
+      instrument: "BTC/USDT",
+      instrumentType: "crypto",
+      timeframe: "H1",
+    }, fetchImpl);
+
+    assert.equal(result.success, true);
+    assert.equal(result.data.provider, "binance-spot-public-fallback");
+    assert.equal(result.data.candles.length, 210);
+    assert.equal(result.data.candles.at(-1).close, 60_450);
+    assert.ok(requested.some((url) => url.includes("okx.com/api/v5/market/candles")));
+    assert.ok(requested.some((url) => url.includes("binance.com/api/v3/klines")));
+  });
+
+  it("does not substitute Binance USDT pricing for a USD-quoted crypto instrument", async () => {
+    const requested = [];
+    const result = await analyzeMarket({
+      instrument: "BTC/USD",
+      instrumentType: "crypto",
+      timeframe: "H1",
+    }, async (input) => {
+      requested.push(String(input));
+      return new Response("rate limited", { status: 429 });
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.errorCode, "RATE_LIMIT");
+    assert.ok(requested.every((url) => !url.includes("binance.com/api/v3/klines")));
+  });
+
   it("uses exact Yahoo Finance mappings for equities and preserves delayed freshness", async () => {
     const now = Date.now();
     const payload = yahooPayload(now - 2 * 60 * 60 * 1000);
