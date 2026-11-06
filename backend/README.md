@@ -60,7 +60,7 @@ One-time host preparation:
 4. Point `xstarzganaliys.com` to the host and allow inbound TCP ports 80 and 443.
 5. Dispatch the workflow with the intended commit and the confirmation phrase.
 
-The deploy workflow cannot provision a host, create DNS records, or manufacture SSH credentials. It will refuse to run if the required production secrets or host-side environment file are absent. A successful CI build is not evidence that public DNS/TLS or production deployment is live.
+The API readiness response includes non-sensitive release provenance (`commit`, `ref`, and `worktreeClean`). The deploy workflow checks that the local container and canonical public HTTPS endpoint report the exact requested commit, not merely HTTP 200; rollback checks the restored release identity too. The deploy workflow cannot provision a host, create DNS records, or manufacture SSH credentials. It will refuse to run if the required production secrets or host-side environment file are absent. A successful CI build is not evidence that public DNS/TLS or production deployment is live.
 
 ## SQLite backup and restore
 
