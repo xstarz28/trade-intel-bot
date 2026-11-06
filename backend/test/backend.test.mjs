@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync, statSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync, readFileSync, mkdirSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
