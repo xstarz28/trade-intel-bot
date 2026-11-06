@@ -13,7 +13,7 @@ const HORIZONS = [
 ] as const;
 const money = (value?: number) => value === undefined || !Number.isFinite(value)
   ? "—" : new Intl.NumberFormat("en-US", { maximumFractionDigits: 6 }).format(value);
-const label = (value: string) => value.replaceAll("_", " ").toLowerCase();
+const label = (value: string) => value.replace(/_/g, " ").toLowerCase();
 
 export function BackendOpportunityRadar() {
   const [horizon, setHorizon] = useState<string>("INTRADAY");
