@@ -125,7 +125,18 @@ describe("self-hosted backend", () => {
         assert.deepEqual(await response.json(), {
           status: "ready",
           checks: { database: "ok" },
+          release: {
+            commit: "test-commit",
+            ref: "test-ref",
+            worktreeClean: true,
+          },
         });
+      }, {
+        env: {
+          XSTARZ_BUILD_COMMIT: "test-commit",
+          XSTARZ_BUILD_REF: "test-ref",
+          XSTARZ_BUILD_WORKTREE_CLEAN: "true",
+        },
       });
     } finally {
       database.close();
