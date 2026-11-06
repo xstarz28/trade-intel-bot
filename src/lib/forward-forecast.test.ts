@@ -902,4 +902,52 @@ describe("Phase 46 — forward forecast contract", () => {
     expect(forecast.investor.objective).toBeUndefined();
   });
 
+  it("blocks trader and investor forecasts when the price snapshot is stale without provider quality metadata", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      timestamp,
+      priceSnapshot: {
+        price: 100_000,
+        timestamp: timestamp - 4 * 60 * 60 * 1000,
+        source: "provider-without-quality-metadata",
+      },
+      dataQualityContext: undefined,
+    }));
+
+    expect(forecast.trader.status).toBe("BLOCKED_DATA_QUALITY");
+    expect(forecast.trader.entry).toBeUndefined();
+    expect(forecast.trader.objective).toBeUndefined();
+    expect(forecast.trader.rewardRisk).toBeUndefined();
+    expect(forecast.investor.status).toBe("BLOCKED_DATA_QUALITY");
+    expect(forecast.investor.entry).toBeUndefined();
+    expect(forecast.investor.objective).toBeUndefined();
+    expect(forecast.investor.potentialUpsideDownsideRatio).toBeUndefined();
+    expect(forecast.trader.limitations.join(" ")).toContain("Primary data quality is not GOOD");
+  });
+
+  it("keeps snapshots within the three-bar freshness window eligible for normal validation", () => {
+    const timestamp = 1_800_000_000_000;
+    const forecast = buildForwardForecast(baseResult({
+      timestamp,
+      priceSnapshot: {
+        price: 100_000,
+        timestamp: timestamp - 3 * 60 * 60 * 1000,
+        source: "fresh-enough-provider",
+      },
+      projectedTradePlan: {
+        direction: "long",
+        entry: "100000",
+        entryBasis: "Breakout retest",
+        stopLoss: "98000",
+        slBasis: "Retest swing low",
+        takeProfit: "104000",
+        tpBasis: "Prior external high",
+        riskReward: 2,
+      },
+    }));
+
+    expect(forecast.trader.status).toBe("CONDITIONAL");
+    expect(forecast.trader.rewardRisk).toBe(2);
+  });
+
 });
