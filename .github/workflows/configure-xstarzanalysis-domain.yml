@@ -13,5 +13,5 @@ jobs:
     steps:
       - name: Refuse legacy domain changes
         run: |
-          echo "::error::Vercel domain configuration is retired. The canonical hostname is xstarzganaliys.com and is managed through DNS plus the self-hosted Caddy endpoint."
+          echo "::error::Vercel domain configuration is retired. The canonical hostname is xstarzganalys.com and is managed through DNS plus the self-hosted Caddy endpoint."
           exit 1
