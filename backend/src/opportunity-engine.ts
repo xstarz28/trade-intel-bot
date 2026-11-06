@@ -56,7 +56,9 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   const existing = enrichmentCache.get(key);
   if (existing && existing.expiresAt > Date.now()) return existing.value as T;
   const value = await load();
-  enrichmentCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  if ((value as { success?: boolean } | null)?.success !== false) {
+    enrichmentCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+  }
   if (enrichmentCache.size > 2_000) {
     const now = Date.now();
     for (const [cacheKey, item] of enrichmentCache) if (item.expiresAt <= now) enrichmentCache.delete(cacheKey);
