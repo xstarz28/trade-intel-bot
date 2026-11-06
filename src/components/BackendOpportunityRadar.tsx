@@ -152,6 +152,8 @@ export function BackendOpportunityRadar() {
                 </div>
               )}
               {item.primaryReasons.length > 0 && <p className="mt-2 text-[11px] text-muted-foreground">{item.primaryReasons.slice(0, 3).join(" · ")}</p>}
+              {item.conflictingEvidence.length > 0 && <p className="mt-1 text-[10px] text-amber-500">Conflicts: {item.conflictingEvidence.slice(0, 2).join(" · ")}</p>}
+              {item.missingInformation.length > 0 && <p className="mt-1 text-[10px] text-muted-foreground">Missing context: {item.missingInformation.slice(0, 3).join(" · ")}</p>}
             </div>
           );
         })}
