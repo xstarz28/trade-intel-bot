@@ -1,5 +1,6 @@
-import { closeSync, copyFileSync, existsSync, fsyncSync, openSync, renameSync, rmSync, statSync } from "node:fs";
-import { resolve } from "node:path";
+import { constants, closeSync, copyFileSync, existsSync, chmodSync, fsyncSync, openSync, renameSync, rmSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 
@@ -26,10 +27,10 @@ export function restoreDatabase(sourcePath, targetPath) {
     validation.close();
   }
 
-  const temporary = target + ".restore-" + process.pid;
-  if (existsSync(temporary)) rmSync(temporary);
+  const temporary = target + ".restore-" + process.pid + "-" + randomUUID();
   try {
-    copyFileSync(source, temporary);
+    copyFileSync(source, temporary, constants.COPYFILE_EXCL);
+    chmodSync(temporary, 0o600);
     const descriptor = openSync(temporary, "r+");
     try {
       fsyncSync(descriptor);
@@ -37,6 +38,12 @@ export function restoreDatabase(sourcePath, targetPath) {
       closeSync(descriptor);
     }
     renameSync(temporary, target);
+    const directoryDescriptor = openSync(dirname(target), "r");
+    try {
+      fsyncSync(directoryDescriptor);
+    } finally {
+      closeSync(directoryDescriptor);
+    }
     return { source, target, bytes: statSync(target).size };
   } catch (error) {
     if (existsSync(temporary)) rmSync(temporary);
