@@ -170,13 +170,28 @@ export function createAccountImportHandler({ database, env = process.env }) {
               statementCache.set(safeColumns.join(","), statement);
             }
             const result = statement.run(...values);
-            if (result.changes === 1) inserted[table] += 1;
-            else {
+            if (result.changes !== 1) {
               throw Object.assign(new Error(`Conflicting unique key in ${table}`), {
                 status: 409,
                 code: "account_import_record_conflict",
               });
             }
+
+            // Verify the committed row shape inside the same transaction. A
+            // trigger or database-side transformation must never let the API
+            // report a successful reconciliation for data that differs from
+            // the source export.
+            const persisted = findById.get(row.id);
+            const persistedMatches = persisted &&
+              persisted.user_id === user.id &&
+              safeColumns.every((name, index) => persisted[name] === values[index]);
+            if (!persistedMatches) {
+              throw Object.assign(new Error(`Imported record failed read-back verification in ${table}`), {
+                status: 409,
+                code: "account_import_record_conflict",
+              });
+            }
+            inserted[table] += 1;
           }
         }
         raw.exec("COMMIT");
