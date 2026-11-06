@@ -36,7 +36,9 @@ describe("self-hosted opportunity scanner persistence", () => {
       "market_radar_state",
     ]);
     const state = database.raw.prepare("SELECT cursor, lease_until, last_scan_at FROM market_radar_state WHERE id=1").get();
-    assert.deepEqual(state, { cursor: 0, lease_until: 0, last_scan_at: 0 });
+    assert.equal(state.cursor, 0);
+    assert.equal(state.lease_until, 0);
+    assert.equal(state.last_scan_at, 0);
     database.close();
   });
 
