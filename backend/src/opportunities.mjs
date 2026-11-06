@@ -14,7 +14,7 @@ function safeJson(value, fallback) {
   try { return JSON.parse(value); } catch { return fallback; }
 }
 
-export function createOpportunityService({ database, intervalMs = 300_000, fetchImpl = fetch }) {
+export function createOpportunityService({ database, intervalMs = 60_000, fetchImpl = fetch, env = process.env }) {
   let timer;
   let running = false;
   async function runOneBatch() {
@@ -43,6 +43,7 @@ export function createOpportunityService({ database, intervalMs = 300_000, fetch
         previousResults,
         now,
         fetchImpl,
+        env,
       });
       database.raw.exec("BEGIN IMMEDIATE");
       try {
