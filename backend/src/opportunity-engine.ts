@@ -92,11 +92,15 @@ async function acquireEnrichment(
     entry.assetClass === "equity" ? "stock" :
     entry.assetClass === "crypto" || entry.assetClass === "forex" || entry.assetClass === "commodity"
       ? entry.assetClass : "macro";
+  // Respect provider quotas: news/fundamental enrichment is slower-moving
+  // than candles and must not be requested on every radar acquisition visit.
   const alphaPromise = env.ALPHA_VANTAGE_API_KEY?.trim()
-    ? optional("Alpha Vantage", fetchAlphaVantageIntelligence(entry.instrument, env.ALPHA_VANTAGE_API_KEY, fetchImpl, alphaType), errors)
+    ? optional("Alpha Vantage", cached(`alpha:${entry.instrument}`, 15 * 60_000,
+        () => fetchAlphaVantageIntelligence(entry.instrument, env.ALPHA_VANTAGE_API_KEY!, fetchImpl, alphaType)), errors)
     : Promise.resolve(undefined);
   const calendarPromise = env.TICKATLAS_API_KEY?.trim()
-    ? optional("Economic calendar", fetchEconomicCalendar(entry.instrument, type, env.TICKATLAS_API_KEY, fetchImpl), errors)
+    ? optional("Economic calendar", cached(`calendar:${entry.instrument}`, 5 * 60_000,
+        () => fetchEconomicCalendar(entry.instrument, type, env.TICKATLAS_API_KEY!, fetchImpl)), errors)
     : Promise.resolve(undefined);
   const treasuryPromise = entry.assetClass === "forex" || entry.assetClass === "commodity"
     ? optional("Treasury/FRED yields", cached("treasury", 30 * 60_000, () => fetchTreasuryYields(fetchImpl)), errors)
