@@ -15,5 +15,5 @@ jobs:
     steps:
       - name: Refuse legacy smoke target
         run: |
-          echo "::error::Convex development runtime smoke is retired. Use the self-hosted production acceptance workflow after xstarzganaliys.com is deployed."
+          echo "::error::Convex development runtime smoke is retired. Use the self-hosted production acceptance workflow after xstarzganalys.com is deployed."
           exit 1
