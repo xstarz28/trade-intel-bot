@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createAppServer } from "./src/app.mjs";
 import { openDatabase } from "./src/database.mjs";
+import { createOpportunityService } from "./src/opportunities.mjs";
 
 const root = dirname(fileURLToPath(import.meta.url));
 const host = process.env.HOST ?? "127.0.0.1";
@@ -18,12 +19,17 @@ if (!Number.isInteger(port) || port < 1 || port > 65_535) {
 
 mkdirSync(dirname(databasePath), { recursive: true });
 const database = openDatabase(databasePath, migrationsDirectory);
-const server = createAppServer({ database, staticDirectory });
+const opportunityService = createOpportunityService({
+  database,
+  intervalMs: Number.parseInt(process.env.OPPORTUNITY_SCAN_INTERVAL_MS ?? "300000", 10),
+});
+const server = createAppServer({ database, staticDirectory, opportunityService });
 
 server.listen(port, host, () => {
   console.info(`Trade Intel self-hosted app listening on http://${host}:${port}`);
   console.info(`Static frontend: ${staticDirectory}`);
   console.info(`SQLite database: ${databasePath}`);
+  opportunityService.start();
 });
 
 let shuttingDown = false;
@@ -31,6 +37,7 @@ function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.info(`Received ${signal}; shutting down backend.`);
+  opportunityService.stop();
   server.close(() => {
     database.close();
     process.exit(0);
