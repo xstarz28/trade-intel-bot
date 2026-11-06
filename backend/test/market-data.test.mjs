@@ -116,7 +116,7 @@ describe("self-hosted market analysis engine", () => {
   it("does not substitute Binance USDT pricing for a USD-quoted crypto instrument", async () => {
     const requested = [];
     const result = await analyzeMarket({
-      instrument: "BTC/USD",
+      instrument: "DOGE/USD",
       instrumentType: "crypto",
       timeframe: "H1",
     }, async (input) => {
