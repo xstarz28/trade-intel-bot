@@ -173,6 +173,8 @@ describe("self-hosted backend", () => {
         .prepare("SELECT version, checksum FROM schema_migrations ORDER BY version")
         .all();
       assert.equal(rows.length, 2);
+      assert.equal(database.raw.prepare("PRAGMA journal_mode").get().journal_mode, "wal");
+      assert.equal(database.raw.prepare("PRAGMA synchronous").get().synchronous, 2);
       assert.deepEqual(rows.map((row) => row.version), [
         "0001_app_metadata.sql",
         "0002_trade_intel_domain.sql",
