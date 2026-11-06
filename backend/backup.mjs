@@ -21,10 +21,12 @@ export function createDatabaseBackup(sourcePath, destinationPath) {
 
   mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
   const database = new DatabaseSync(source);
+  const previousUmask = process.umask(0o077);
   try {
     const escaped = target.replace(/'/g, "''");
     database.exec(`VACUUM INTO '${escaped}'`);
   } finally {
+    process.umask(previousUmask);
     database.close();
   }
 
