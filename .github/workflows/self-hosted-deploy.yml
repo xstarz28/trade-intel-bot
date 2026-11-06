@@ -140,6 +140,10 @@ jobs:
           test "$(cat "$RELEASE_DIR/.deploy-commit")" = "$SHA"
           test "$(cat "$RELEASE_DIR/.deploy-epoch")" = "$EPOCH"
           [[ "$EPOCH" =~ ^[0-9]+$ ]]
+          export XSTARZ_BUILD_COMMIT="$SHA"
+          export XSTARZ_BUILD_REF="$SHA"
+          export XSTARZ_BUILD_WORKTREE_CLEAN=true
+          export SOURCE_DATE_EPOCH="$EPOCH"
           ln -sfn "$APP_DIR/shared/backend.env" "$RELEASE_DIR/backend/.env"
 
           # Build and validate the exact release before switching the live symlink.
@@ -165,6 +169,8 @@ jobs:
             if [ -n "$PREVIOUS" ]; then
               PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
               PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
+              export XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA"
+              export XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH"
               ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
               mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
               cd "$APP_DIR/current/backend"
@@ -178,7 +184,7 @@ jobs:
           healthy=false
           for attempt in $(seq 1 30); do
             if docker compose -p trade-intel exec -T api node -e \
-              "fetch('http://127.0.0.1:8787/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              "fetch('http://127.0.0.1:8787/health/ready').then(async r=>{const body=await r.json();process.exit(r.ok && body.release?.commit===process.env.XSTARZ_BUILD_COMMIT ? 0 : 1)}).catch(()=>process.exit(1))"; then
               healthy=true
               break
             fi
@@ -207,8 +213,9 @@ jobs:
         run: |
           set -euo pipefail
           for attempt in $(seq 1 12); do
-            if curl --fail --silent --show-error --max-time 10 https://xstarzganaliys.com/health/ready >/dev/null; then
-              echo "Canonical HTTPS endpoint is healthy."
+            response="$(curl --fail --silent --show-error --max-time 10 https://xstarzganaliys.com/health/ready || true)"
+            if [ -n "$response" ] && [ "$(printf '%s' "$response" | jq -r '.release.commit // empty')" = "$DEPLOY_SHA" ]; then
+              echo "Canonical HTTPS endpoint is healthy on the exact deployed commit $DEPLOY_SHA."
               exit 0
             fi
             echo "Waiting for canonical hostname/TLS: attempt $attempt/12"
@@ -254,6 +261,8 @@ jobs:
           fi
           PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
           PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
+          export XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA"
+          export XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH"
           ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
           mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
           cd "$APP_DIR/current/backend"
@@ -263,7 +272,7 @@ jobs:
           healthy=false
           for attempt in $(seq 1 30); do
             if docker compose -p trade-intel exec -T api node -e \
-              "fetch('http://127.0.0.1:8787/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"; then
+              "fetch('http://127.0.0.1:8787/health/ready').then(async r=>{const body=await r.json();process.exit(r.ok && body.release?.commit===process.env.XSTARZ_BUILD_COMMIT ? 0 : 1)}).catch(()=>process.exit(1))"; then
               healthy=true
               break
             fi
