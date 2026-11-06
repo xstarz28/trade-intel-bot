@@ -50,6 +50,43 @@ describe("self-hosted opportunity scanner persistence", () => {
     database.close();
   });
 
+
+  it("builds a persisted multi-horizon candidate from exact provider candles", async () => {
+    const { database } = fixture();
+    const { runOpportunityBatch } = await import("../dist/opportunity-engine.mjs");
+    const fetchImpl = async (input) => {
+      const url = new URL(String(input));
+      const interval = url.searchParams.get("bar") === "1D" ? 86_400_000 : 3_600_000;
+      const now = Date.now();
+      const data = Array.from({ length: 80 }, (_, index) => {
+        const timestamp = now - (79 - index) * interval;
+        const open = 100 + index * 0.25;
+        return [String(timestamp), String(open), String(open + 1), String(open - 1), String(open + 0.5), "1200"];
+      });
+      return new Response(JSON.stringify({ code: "0", data }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    try {
+      const result = await runOpportunityBatch({
+        cursor: 0,
+        sources: [],
+        previousResults: [],
+        fetchImpl,
+        env: {},
+      });
+      assert.equal(result.cursor, 1);
+      assert.equal(result.updates.length, 2);
+      assert.ok(result.updates.every(source => source.marketData?.candles.length === 80));
+      assert.ok(result.updates.every(source => source.technicalData));
+      assert.equal(result.results.length, 9);
+      assert.ok(result.metrics.totalScanned >= 1);
+    } finally {
+      database.close();
+    }
+  });
+
   it("requires an authenticated backend session before exposing opportunities", async () => {
     const { database } = fixture();
     const handler = createOpportunityHandler({ database });
