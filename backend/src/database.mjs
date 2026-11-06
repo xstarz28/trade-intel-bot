@@ -9,7 +9,7 @@ export function openDatabase(databasePath, migrationsDirectory) {
   database.exec(`
     PRAGMA foreign_keys = ON;
     PRAGMA journal_mode = WAL;
-    PRAGMA synchronous = NORMAL;
+    PRAGMA synchronous = FULL;
     PRAGMA busy_timeout = 5000;
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version TEXT PRIMARY KEY,
