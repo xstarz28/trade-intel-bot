@@ -178,7 +178,7 @@ describe("self-hosted market analysis engine", () => {
         meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
         statistics: {
           valuations_metrics: { market_capitalization: "1000000000000", trailing_pe: "18.2", price_to_book_mrq: "4.1" },
-          financials: { profit_margin: "22.5", return_on_equity_ttm: "19.2", income_statement: { revenue_ttm: "90000000000", revenue_per_share_ttm: "320", quarterly_revenue_growth: "12.5", quarterly_earnings_growth_yoy: "8.4" } },
+          financials: { profit_margin: "22.5", return_on_equity_ttm: "19.2", income_statement: { revenue_ttm: "90000000000", revenue_per_share_ttm: "320", diluted_eps_ttm: "500", quarterly_revenue_growth: "12.5", quarterly_earnings_growth_yoy: "8.4" } },
           stock_price_summary: { day_50_ma: "9500", day_200_ma: "9100", fifty_two_week_high: "10500", fifty_two_week_low: "7800" },
           dividends_and_splits: { trailing_annual_dividend_rate: "250", trailing_annual_dividend_yield: "2.1" },
         },
@@ -194,6 +194,8 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.marketCap, 1_000_000_000_000);
     assert.equal(result.peRatio, 18.2);
     assert.equal(result.revenueTTM, 90_000_000_000);
+    assert.equal(result.dilutedEPS, 500);
+    assert.equal(result.earningsPerShare, 500);
     assert.equal(result.profitMargin, 0.225);
     assert.equal(result.returnOnEquity, 0.192);
     assert.equal(result.revenuePerShare, 320);
