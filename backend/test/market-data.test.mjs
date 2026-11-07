@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchTwelveDataIdxFundamentals, fetchYahooIdxFundamentals, fetchEconomicCalendar, isIdxListedEquity, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchTwelveDataIdxFundamentals, fetchYahooIdxFundamentals, fetchYahooUsFundamentals, fetchEconomicCalendar, isIdxListedEquity, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -212,6 +212,60 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(JSON.stringify(result).includes(apiKey), false);
   });
 
+
+  it("loads US equity fundamentals from the free Yahoo public session and verifies the exact ticker", async () => {
+    const calls = [];
+    const modules = {
+      price: { symbol: "AAPL", longName: "Apple Inc.", marketCap: { raw: 3_000_000_000_000 } },
+      summaryDetail: { trailingPE: { raw: 31.2 }, forwardPE: { raw: 28.4 } },
+      defaultKeyStatistics: { trailingEps: { raw: 6.1 }, beta: { raw: 1.1 }, priceToBook: { raw: 48 } },
+      financialData: { revenueGrowth: { raw: 0.08 }, earningsGrowth: { raw: 0.12 }, profitMargins: { raw: 0.25 }, returnOnEquity: { raw: 1.45 } },
+    };
+    const fetchImpl = async (input, init = {}) => {
+      const url = String(input);
+      calls.push(url);
+      if (url === "https://fc.yahoo.com/") {
+        return new Response("", { status: 404, headers: { "set-cookie": "A1=us-free-session; Path=/; Secure; HttpOnly" } });
+      }
+      if (url.includes("/v1/test/getcrumb")) {
+        assert.match(init.headers.cookie, /A1=us-free-session/);
+        return new Response("us-free-crumb", { status: 200 });
+      }
+      if (url.includes("/v10/finance/quoteSummary/AAPL")) {
+        assert.match(init.headers.cookie, /A1=us-free-session/);
+        assert.equal(new URL(url).searchParams.get("crumb"), "us-free-crumb");
+        return new Response(JSON.stringify({ quoteSummary: { result: [modules] } }), {
+          status: 200, headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected URL", { status: 404 });
+    };
+    const result = await fetchYahooUsFundamentals("AAPL", fetchImpl);
+    assert.equal(result.symbol, "AAPL");
+    assert.equal(result.provider, "yahoo-finance-public");
+    assert.equal(result.marketCap, 3_000_000_000_000);
+    assert.equal(result.peRatio, 31.2);
+    assert.equal(result.revenueGrowth, 0.08);
+    assert.equal(result.available, true);
+    assert.equal(calls.length, 3);
+    assert.equal(await fetchYahooUsFundamentals("BBCA", async () => {
+      throw new Error("IDX listing must not enter the US adapter");
+    }), null);
+    assert.ok(!JSON.stringify(result).includes("us-free-crumb"));
+  });
+
+  it("rejects Yahoo US fundamentals when Yahoo returns a different ticker", async () => {
+    const fetchImpl = async (input) => {
+      const url = String(input);
+      if (url === "https://fc.yahoo.com/") return new Response("", { status: 404, headers: { "set-cookie": "A1=session; Path=/" } });
+      if (url.includes("/v1/test/getcrumb")) return new Response("crumb", { status: 200 });
+      if (url.includes("/v10/finance/quoteSummary/AAPL")) return new Response(JSON.stringify({
+        quoteSummary: { result: [{ price: { symbol: "MSFT" }, summaryDetail: { trailingPE: { raw: 30 } } }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response("unexpected", { status: 404 });
+    };
+    await assert.rejects(fetchYahooUsFundamentals("AAPL", fetchImpl), /symbol identity mismatch/);
+  });
 
   it("loads IDX fundamentals from the free Yahoo public session and verifies the exact .JK symbol", async () => {
     const calls = [];
