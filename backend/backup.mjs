@@ -41,6 +41,10 @@ export function createDatabaseBackup(sourcePath, destinationPath) {
       if (result?.quick_check !== "ok") {
         throw new Error("Created backup failed SQLite quick_check.");
       }
+      const foreignKeyViolation = validation.prepare("PRAGMA foreign_key_check").get();
+      if (foreignKeyViolation) {
+        throw new Error("Created backup failed SQLite foreign_key_check.");
+      }
     } finally {
       validation.close();
     }
