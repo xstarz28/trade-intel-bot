@@ -216,7 +216,23 @@ describe("self-hosted market analysis engine", () => {
     let called = false;
     assert.equal(isIdxListedEquity("BBCA"), true);
     assert.equal(isIdxListedEquity("BBCA.JK"), true);
+    assert.equal(isIdxListedEquity("ASII"), true);
+    assert.equal(isIdxListedEquity("UNVR"), true);
+    assert.equal(isIdxListedEquity("UNTR.JK"), true);
     assert.equal(isIdxListedEquity("AAPL"), false);
+    const idxRequests = [];
+    for (const ticker of ["ASII", "UNVR"]) {
+      const result = await fetchTwelveDataIdxFundamentals(ticker, "secret", async (input) => {
+        const url = new URL(String(input));
+        idxRequests.push(url);
+        return new Response(JSON.stringify({
+          meta: { symbol: ticker + ".JK", exchange: "IDX", mic_code: "XIDX" },
+          statistics: { valuations_metrics: { trailing_pe: "12" } },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      });
+      assert.equal(result.symbol, ticker);
+    }
+    assert.deepEqual(idxRequests.map((url) => url.searchParams.get("symbol")), ["ASII.JK", "UNVR.JK"]);
     assert.equal(await fetchTwelveDataIdxFundamentals("AAPL", "secret", async () => {
       called = true; throw new Error("US issuer must not be queried via IDX");
     }), null);
