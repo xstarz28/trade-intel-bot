@@ -201,8 +201,11 @@ function normalizeProviderPercent(value: number | undefined): number | undefined
 
 /** True only for instruments explicitly registered on the Indonesian exchange. */
 export function isIdxListedEquity(tickerInput: string): boolean {
-  const ticker = tickerInput.trim().toUpperCase().replace(/\.JK$/, "");
-  const canonical = resolveInstrument(ticker);
+  const normalized = tickerInput.trim().toUpperCase();
+  // An explicit Yahoo/IDX suffix is sufficient exchange identity even when
+  // the symbol is not yet in the curated canonical registry.
+  if (normalized.endsWith(".JK")) return true;
+  const canonical = resolveInstrument(normalized);
   return Boolean(canonical && canonical.assetClass === "equity" && canonical.primaryExchange === "IDX");
 }
 
