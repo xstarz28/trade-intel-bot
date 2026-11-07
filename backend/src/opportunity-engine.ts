@@ -8,6 +8,7 @@ import {
   fetchMarketCandlesBatch,
   fetchSecFundamentalObservations,
   fetchYahooIdxFundamentals,
+  fetchYahooUsFundamentals,
   fetchTreasuryYields,
 } from "./market-data-engine";
 import { DEFAULT_UNIVERSE } from "../../src/lib/market-radar/universe";
@@ -102,6 +103,10 @@ async function acquireEnrichment(
     ? optional("Yahoo Finance IDX fundamentals", cached(`idx-fundamentals:${entry.instrument}`, 6 * 60 * 60_000,
         () => fetchYahooIdxFundamentals(entry.instrument, fetchImpl)), errors)
     : Promise.resolve(undefined);
+  const usFundamentalsPromise = entry.assetClass === "equity" && entry.region === "us"
+    ? optional("Yahoo Finance US fundamentals", cached(`us-fundamentals:${entry.instrument}`, 6 * 60 * 60_000,
+        () => fetchYahooUsFundamentals(entry.instrument, fetchImpl)), errors)
+    : Promise.resolve(undefined);
   const calendarPromise = env.TICKATLAS_API_KEY?.trim()
     ? optional("Economic calendar", cached(`calendar:${entry.instrument}`, 5 * 60_000,
         () => fetchEconomicCalendar(entry.instrument, type, env.TICKATLAS_API_KEY!, fetchImpl)), errors)
@@ -127,8 +132,8 @@ async function acquireEnrichment(
         () => fetchSecFundamentalObservations(entry.instrument, env.SEC_USER_AGENT, fetchImpl)), errors)
     : Promise.resolve(undefined);
 
-  const [alpha, idxFundamentals, calendar, treasury, cot, eia, derivatives, defi, sec] = await Promise.all([
-    alphaPromise, idxFundamentalsPromise, calendarPromise, treasuryPromise, cotPromise,
+  const [alpha, idxFundamentals, usFundamentals, calendar, treasury, cot, eia, derivatives, defi, sec] = await Promise.all([
+    alphaPromise, idxFundamentalsPromise, usFundamentalsPromise, calendarPromise, treasuryPromise, cotPromise,
     eiaPromise, derivativesPromise, defiPromise, secPromise,
   ]);
   let cryptoIntelligenceContext: AnalysisInput["cryptoIntelligenceContext"];
@@ -150,8 +155,14 @@ async function acquireEnrichment(
     fundamentals?: AnalysisInput["fundamentalData"];
     macro?: AnalysisInput["macroData"];
   } | undefined;
-  const combinedAlpha = alphaResult || idxFundamentals
-    ? { ...(alphaResult ?? {}), ...(idxFundamentals ? { fundamentals: idxFundamentals } : {}) }
+  const publicFundamentals = idxFundamentals ?? usFundamentals;
+  const combinedAlpha = alphaResult || publicFundamentals
+    ? {
+        ...(alphaResult ?? {}),
+        ...(publicFundamentals && !alphaResult?.fundamentals?.available
+          ? { fundamentals: publicFundamentals }
+          : {}),
+      }
     : undefined;
   return {
     alpha: combinedAlpha,
