@@ -1,4 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { getAuthenticatedUser, isAllowedOrigin } from "./auth.mjs";
+
+const SCAN_LEASE_DURATION_MS = 120_000;
+const SCAN_LEASE_HEARTBEAT_MS = 30_000;
 
 function json(response, status, value) {
   const body = JSON.stringify(value);
@@ -21,15 +25,45 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
     if (running) return { skipped: true, reason: "scan already running" };
     running = true;
     let leaseAcquired = false;
+    let heartbeat;
+    const leaseOwner = randomUUID();
+    const assertLeaseOwnership = () => {
+      const lease = database.raw.prepare(
+        "SELECT lease_owner, lease_until FROM market_radar_state WHERE id=1",
+      ).get();
+      if (lease?.lease_owner !== leaseOwner || lease.lease_until <= Date.now()) {
+        throw new Error("Opportunity scanner lease was lost before persistence.");
+      }
+    };
     try {
       const now = Date.now();
       const claim = database.raw.prepare(
-        "UPDATE market_radar_state SET lease_until=? WHERE id=1 AND lease_until<=?",
-      ).run(now + 120_000, now);
+        "UPDATE market_radar_state SET lease_owner=?, lease_until=? WHERE id=1 AND lease_until<=?",
+      ).run(leaseOwner, now + SCAN_LEASE_DURATION_MS, now);
       if (Number(claim.changes) !== 1) {
         return { skipped: true, reason: "scan lease held" };
       }
       leaseAcquired = true;
+      heartbeat = setInterval(() => {
+        try {
+          const heartbeatNow = Date.now();
+          const renewed = database.raw.prepare(
+            "UPDATE market_radar_state SET lease_until=? WHERE id=1 AND lease_owner=? AND lease_until>?",
+          ).run(heartbeatNow + SCAN_LEASE_DURATION_MS, leaseOwner, heartbeatNow);
+          if (Number(renewed.changes) !== 1) {
+            clearInterval(heartbeat);
+            heartbeat = undefined;
+          }
+        } catch (error) {
+          // Fail closed: a worker that cannot prove it still owns the lease
+          // must not publish results over a newer worker's scan.
+          console.error("[opportunities] scanner lease heartbeat failed:", error);
+          clearInterval(heartbeat);
+          heartbeat = undefined;
+        }
+      }, SCAN_LEASE_HEARTBEAT_MS);
+      heartbeat.unref?.();
+
       const state = database.raw.prepare("SELECT * FROM market_radar_state WHERE id=1").get();
       const sources = database.raw.prepare(
         "SELECT payload_json FROM market_radar_sources ORDER BY updated_at DESC LIMIT 300",
@@ -48,6 +82,10 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
         fetchImpl,
         env,
       });
+
+      // A lease may expire or be taken over while upstream providers are
+      // responding. Never let a stale worker overwrite the current scan.
+      assertLeaseOwnership();
       database.raw.exec("BEGIN IMMEDIATE");
       try {
         const upsertSource = database.raw.prepare(`
@@ -74,12 +112,15 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
             insertOpportunity.run(horizon, item.instrument, JSON.stringify(item), now, item.assetClass ?? "unknown", Number.isFinite(item.score) ? item.score : 0);
           }
         }
-        database.raw.prepare(`
-          UPDATE market_radar_state SET cursor=?, lease_until=0, last_scan_at=?,
-            metrics_json=?, errors_json=? WHERE id=1
+        const completed = database.raw.prepare(`
+          UPDATE market_radar_state SET cursor=?, lease_until=0, lease_owner='', last_scan_at=?,
+            metrics_json=?, errors_json=? WHERE id=1 AND lease_owner=? AND lease_until>?
         `).run(result.cursor, result.scannedAt,
           JSON.stringify({ ...result.metrics, scanAttemptTimestamps: result.scanAttempts }),
-          JSON.stringify(result.errors));
+          JSON.stringify(result.errors), leaseOwner, Date.now());
+        if (Number(completed.changes) !== 1) {
+          throw new Error("Opportunity scanner lease was lost during persistence.");
+        }
         database.raw.exec("COMMIT");
       } catch (error) {
         database.raw.exec("ROLLBACK");
@@ -100,14 +141,15 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
         const message = error instanceof Error ? error.message : String(error);
         try {
           database.raw.prepare(
-            "UPDATE market_radar_state SET lease_until=0, errors_json=? WHERE id=1",
-          ).run(JSON.stringify([message.slice(0, 500)]));
+            "UPDATE market_radar_state SET lease_until=0, lease_owner='', errors_json=? WHERE id=1 AND lease_owner=?",
+          ).run(JSON.stringify([message.slice(0, 500)]), leaseOwner);
         } catch (releaseError) {
           console.error("[opportunities] failed to release scanner lease:", releaseError);
         }
       }
       throw error;
     } finally {
+      if (heartbeat) clearInterval(heartbeat);
       running = false;
     }
   }
