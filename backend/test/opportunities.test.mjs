@@ -189,16 +189,23 @@ describe("self-hosted opportunity scanner persistence", () => {
     const requested = [];
     const env = {
       ALPHA_VANTAGE_API_KEY: "must-not-be-used-for-idx",
-      TWELVE_DATA_API_KEY: "test-idx-radar-key",
     };
     const fetchImpl = async (input) => {
       const url = new URL(String(input));
       requested.push(url);
-      if (url.hostname === "api.twelvedata.com" && url.pathname === "/statistics") {
-        return new Response(JSON.stringify({
-          meta: { symbol: "BBCA", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
-          statistics: { valuations_metrics: { trailing_pe: "18.2" }, financials: { profit_margin: "0.22", return_on_equity_ttm: "0.19" } },
-        }), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.hostname === "fc.yahoo.com") {
+        return new Response("", { status: 404, headers: { "set-cookie": "A1=radar-test-session; Path=/; Secure" } });
+      }
+      if (url.hostname === "query1.finance.yahoo.com" && url.pathname === "/v1/test/getcrumb") {
+        return new Response("radar-test-crumb", { status: 200 });
+      }
+      if (url.hostname === "query1.finance.yahoo.com" && url.pathname.includes("/v10/finance/quoteSummary/")) {
+        return new Response(JSON.stringify({ quoteSummary: { result: [{
+          price: { symbol: "BBCA.JK", longName: "Bank Central Asia" },
+          summaryDetail: { trailingPE: { raw: 18.2 } },
+          defaultKeyStatistics: {},
+          financialData: { profitMargins: { raw: 0.22 }, returnOnEquity: { raw: 0.19 } },
+        }] } }), { status: 200, headers: { "content-type": "application/json" } });
       }
       if (url.hostname === "www.alphavantage.co" || url.hostname === "www.sec.gov" || url.hostname === "data.sec.gov") {
         throw new Error("IDX radar must not request US-only issuer data");
@@ -232,10 +239,9 @@ describe("self-hosted opportunity scanner persistence", () => {
       env,
     });
     assert.equal(result.instrument, "BBCA");
-    assert.ok(requested.some((url) => url.pathname === "/statistics" &&
-      url.searchParams.get("symbol") === "BBCA" && url.searchParams.get("mic_code") === "XIDX"));
+    assert.ok(requested.some((url) => url.pathname.includes("/v10/finance/quoteSummary/BBCA.JK")));
     assert.ok(requested.every((url) => !["www.alphavantage.co", "www.sec.gov", "data.sec.gov"].includes(url.hostname)));
-    assert.ok(result.updates.every((source) => source.analysisResult?.fundamentalData?.provider === "twelve-data-statistics"));
+    assert.ok(result.updates.every((source) => source.analysisResult?.fundamentalData?.provider === "yahoo-finance-public"));
   });
 
   it("rate-limits manual radar scans per authenticated user without blocking other users", async () => {
