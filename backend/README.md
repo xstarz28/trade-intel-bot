@@ -29,7 +29,7 @@ The market-data lane supports public OKX Spot candles/ticker, exact OKX perpetua
 
 All provider credentials are optional unless a feature specifically requires them. Keep them in `backend/.env`, never in frontend variables or source control:
 
-- `TWELVE_DATA_API_KEY`: live FX/commodity quotes and exact IDX-listed equity statistics via `/statistics` with MIC `XIDX`; the statistics endpoint requires Twelve Data Pro/Venture entitlement. If unavailable, IDX fundamentals remain explicitly unavailable and are never substituted with SEC/US issuer data.
+- `TWELVE_DATA_API_KEY`: optional live FX/commodity quote enrichment. IDX equity fundamentals use the free Yahoo Finance public-session fallback with strict `.JK` symbol verification; no paid key is required for that path.
 - `ALPHA_VANTAGE_API_KEY`: stock overview/earnings/fundamentals and premium News & Sentiment for stocks, crypto, forex, plus topic-filtered commodity/macro news;
 - `COINGLASS_API_KEY`: paid aggregated crypto derivatives; public exchange adapters are the fallback;
 - `TOKENOMIST_API_KEY`: verified token unlock calendar; PatternPlus/CoinGecko fallbacks remain available;
