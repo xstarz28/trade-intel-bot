@@ -52,6 +52,35 @@ describe("self-hosted opportunity scanner persistence", () => {
 
 
 
+  it("does not let a stale scanner overwrite results after another worker takes the lease", async () => {
+    const { database } = fixture();
+    let takeover = false;
+    const service = createOpportunityService({
+      database,
+      env: {},
+      fetchImpl: async () => {
+        if (!takeover) {
+          takeover = true;
+          database.raw.prepare(
+            "UPDATE market_radar_state SET lease_owner=?, lease_until=? WHERE id=1",
+          ).run("replacement-worker", Date.now() + 120_000);
+        }
+        return new Response("{}", { status: 503 });
+      },
+    });
+    try {
+      await assert.rejects(service.runOneBatch(), /lease was lost/);
+      const state = database.raw.prepare(
+        "SELECT lease_owner, lease_until, last_scan_at FROM market_radar_state WHERE id=1",
+      ).get();
+      assert.equal(state.lease_owner, "replacement-worker");
+      assert.ok(state.lease_until > Date.now());
+      assert.equal(state.last_scan_at, 0);
+    } finally {
+      database.close();
+    }
+  });
+
   it("persists failed acquisition attempts so an unavailable instrument is not retried forever", async () => {
     const { database } = fixture();
     const service = createOpportunityService({
@@ -79,7 +108,7 @@ describe("self-hosted opportunity scanner persistence", () => {
       get(target, property) {
         if (property === "prepare") {
           return (sql) => {
-            if (failFirstClaim && sql.includes("UPDATE market_radar_state SET lease_until=")) {
+            if (failFirstClaim && sql.includes("UPDATE market_radar_state SET lease_owner=")) {
               failFirstClaim = false;
               throw new Error("temporary sqlite busy");
             }
