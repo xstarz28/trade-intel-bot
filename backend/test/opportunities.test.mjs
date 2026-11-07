@@ -196,7 +196,7 @@ describe("self-hosted opportunity scanner persistence", () => {
       requested.push(url);
       if (url.hostname === "api.twelvedata.com" && url.pathname === "/statistics") {
         return new Response(JSON.stringify({
-          meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
+          meta: { symbol: "BBCA", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
           statistics: { valuations_metrics: { trailing_pe: "18.2" }, financials: { profit_margin: "0.22", return_on_equity_ttm: "0.19" } },
         }), { status: 200, headers: { "content-type": "application/json" } });
       }
@@ -233,7 +233,7 @@ describe("self-hosted opportunity scanner persistence", () => {
     });
     assert.equal(result.instrument, "BBCA");
     assert.ok(requested.some((url) => url.pathname === "/statistics" &&
-      url.searchParams.get("symbol") === "BBCA.JK" && url.searchParams.get("mic_code") === "XIDX"));
+      url.searchParams.get("symbol") === "BBCA" && url.searchParams.get("mic_code") === "XIDX"));
     assert.ok(requested.every((url) => !["www.alphavantage.co", "www.sec.gov", "data.sec.gov"].includes(url.hostname)));
     assert.ok(result.updates.every((source) => source.analysisResult?.fundamentalData?.provider === "twelve-data-statistics"));
   });
