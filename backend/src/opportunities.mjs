@@ -20,15 +20,16 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
   async function runOneBatch() {
     if (running) return { skipped: true, reason: "scan already running" };
     running = true;
-    const now = Date.now();
-    const claim = database.raw.prepare(
-      "UPDATE market_radar_state SET lease_until=? WHERE id=1 AND lease_until<=?",
-    ).run(now + 120_000, now);
-    if (Number(claim.changes) !== 1) {
-      running = false;
-      return { skipped: true, reason: "scan lease held" };
-    }
+    let leaseAcquired = false;
     try {
+      const now = Date.now();
+      const claim = database.raw.prepare(
+        "UPDATE market_radar_state SET lease_until=? WHERE id=1 AND lease_until<=?",
+      ).run(now + 120_000, now);
+      if (Number(claim.changes) !== 1) {
+        return { skipped: true, reason: "scan lease held" };
+      }
+      leaseAcquired = true;
       const state = database.raw.prepare("SELECT * FROM market_radar_state WHERE id=1").get();
       const sources = database.raw.prepare(
         "SELECT payload_json FROM market_radar_sources ORDER BY updated_at DESC LIMIT 300",
@@ -79,7 +80,7 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
         `).run(result.cursor, result.scannedAt,
           JSON.stringify({ ...result.metrics, scanAttemptTimestamps: result.scanAttempts }),
           JSON.stringify(result.errors));
-      database.raw.exec("COMMIT");
+        database.raw.exec("COMMIT");
       } catch (error) {
         database.raw.exec("ROLLBACK");
         throw error;
@@ -95,10 +96,16 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
         lastScanAt: result.scannedAt,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      database.raw.prepare(
-        "UPDATE market_radar_state SET lease_until=0, errors_json=? WHERE id=1",
-      ).run(JSON.stringify([message.slice(0, 500)]));
+      if (leaseAcquired) {
+        const message = error instanceof Error ? error.message : String(error);
+        try {
+          database.raw.prepare(
+            "UPDATE market_radar_state SET lease_until=0, errors_json=? WHERE id=1",
+          ).run(JSON.stringify([message.slice(0, 500)]));
+        } catch (releaseError) {
+          console.error("[opportunities] failed to release scanner lease:", releaseError);
+        }
+      }
       throw error;
     } finally {
       running = false;
