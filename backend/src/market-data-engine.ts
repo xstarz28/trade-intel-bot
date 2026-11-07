@@ -432,7 +432,7 @@ export async function fetchYahooUsFundamentals(
   fetchImpl: typeof fetch = fetch,
 ): Promise<FundamentalData | null> {
   const ticker = tickerInput.trim().toUpperCase();
-  if (!/^[A-Z][A-Z0-9.-]{0,14}$/.test(ticker) || /\\.JK$/.test(ticker)) return null;
+  if (!/^[A-Z][A-Z0-9.-]{0,14}$/.test(ticker) || ticker.endsWith(".JK")) return null;
   const canonical = resolveInstrument(ticker);
   if (!canonical || canonical.assetClass !== "equity" || canonical.primaryExchange === "IDX") return null;
   const cached = yahooUsFundamentalsCache.get(ticker);
