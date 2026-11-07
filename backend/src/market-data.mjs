@@ -25,6 +25,34 @@ async function readBody(request) {
   } catch { throw Object.assign(new Error("Invalid JSON object"),{status:400}); }
 }
 
+export function createUserRateLimiter(maximum=20,windowMs=60_000,maxBuckets=5_000,clock=Date.now) {
+  if(!Number.isSafeInteger(maximum)||maximum<1||!Number.isFinite(windowMs)||windowMs<=0||
+    !Number.isSafeInteger(maxBuckets)||maxBuckets<1||typeof clock!=="function") {
+    throw new Error("Invalid user rate limiter configuration.");
+  }
+  const buckets=new Map();
+  return(userId)=>{
+    if(typeof userId!=="string"||!userId) return false;
+    const now=clock();
+    let bucket=buckets.get(userId);
+    if(!bucket||now-bucket.startedAt>=windowMs) {
+      if(buckets.size>=maxBuckets) {
+        for(const [key,value] of buckets) {
+          if(now-value.startedAt>=windowMs) buckets.delete(key);
+        }
+        // Do not evict an active user's bucket to admit a new identity.
+        // Fail closed when all bounded slots are occupied.
+        if(buckets.size>=maxBuckets) return false;
+      }
+      bucket={startedAt:now,count:0};
+      buckets.set(userId,bucket);
+    }
+    if(bucket.count>=maximum) return false;
+    bucket.count+=1;
+    return true;
+  };
+}
+
 const SEC_REFRESH_INTERVAL_MS=6*60*60*1000;
 const SEC_RETRY_INTERVAL_MS=15*60*1000;
 const secRefreshAttempts=new Map();
@@ -66,21 +94,7 @@ async function refreshSecObservationsIfStale(database,ticker,userAgent,fetchImpl
 }
 
 export function createMarketDataHandler({database,env=process.env,fetchImpl=fetch}) {
-  const buckets=new Map();
-  const allowAnalysis=(userId)=>{
-    const now=Date.now();
-    let bucket=buckets.get(userId);
-    if(!bucket||now-bucket.startedAt>=60_000) {
-      bucket={startedAt:now,count:0};
-      buckets.set(userId,bucket);
-    }
-    if(bucket.count>=20) return false;
-    bucket.count+=1;
-    if(buckets.size>5000) {
-      for(const [key,value] of buckets) if(now-value.startedAt>=60_000) buckets.delete(key);
-    }
-    return true;
-  };
+  const allowAnalysis=createUserRateLimiter(20,60_000,5_000);
   return async(request,response,url)=>{
     const providerPaths=new Set([
       "/api/v1/intelligence/cot",
