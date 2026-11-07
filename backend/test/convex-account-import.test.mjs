@@ -91,6 +91,24 @@ describe("native Convex account export mapping", () => {
     assert.equal(exported.data.notification_preferences[0].show_dismissed_notifications, 0);
   });
 
+  it("rejects rows whose ownership does not match the declared Convex source account", () => {
+    assert.throws(
+      () => normalizeConvexAccountExport({
+        format: "trade-intel-convex-account-export",
+        version: 1,
+        account: { id: "convex-user-1", email: "trader@example.test" },
+        data: {
+          analyses: [{
+            _id: "foreign-analysis",
+            userId: "another-convex-user",
+            instrument: "BTC-USDT",
+          }],
+        },
+      }, targetUser),
+      (error) => error.status === 409 && error.code === "convex_export_row_owner_mismatch",
+    );
+  });
+
   it("rejects a Convex export whose email does not match the backend account", () => {
     assert.throws(
       () => normalizeConvexAccountExport({
