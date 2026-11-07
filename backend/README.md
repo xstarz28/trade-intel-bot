@@ -29,9 +29,9 @@ The market-data lane supports public OKX Spot candles/ticker, exact OKX perpetua
 
 All provider credentials are optional unless a feature specifically requires them. Keep them in `backend/.env`, never in frontend variables or source control:
 
-- `TWELVE_DATA_API_KEY`: optional live FX/commodity quote enrichment. IDX equity fundamentals use the free Yahoo Finance public-session fallback with strict `.JK` symbol verification; no paid key is required for that path.
-- `ALPHA_VANTAGE_API_KEY`: stock overview/earnings/fundamentals and premium News & Sentiment for stocks, crypto, forex, plus topic-filtered commodity/macro news;
-- `COINGLASS_API_KEY`: paid aggregated crypto derivatives; public exchange adapters are the fallback;
+- `TWELVE_DATA_API_KEY`: optional live FX/commodity quote enrichment. Public Yahoo Finance remains the no-key source for supported quotes/candles; IDX fundamentals use its public-session path with strict `.JK` identity verification.
+- `ALPHA_VANTAGE_API_KEY`: optional stock and cross-asset news/sentiment and company-fundamentals enrichment; the core market-data and technical-analysis paths do not depend on it;
+- `COINGLASS_API_KEY`: optional aggregated crypto derivatives enrichment; public Binance/Bybit/OKX exchange adapters remain available;
 - `TOKENOMIST_API_KEY`: verified token unlock calendar; PatternPlus/CoinGecko fallbacks remain available;
 - `TICKATLAS_API_KEY`: optional secondary economic-calendar source; the free public Forex Factory weekly feed is the default and is cached once per hour across all instruments;
 - `EIA_API_KEY`: EIA inventory data; public FRED series are used when absent;
