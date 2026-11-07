@@ -576,6 +576,40 @@ describe("self-hosted backend", () => {
     }
   });
 
+  it("rolls back Google account linking when persisted identity verification fails", () => {
+    const database = createTemporaryDatabase();
+    try {
+      const now = Date.now();
+      database.raw.prepare(
+        "INSERT INTO users (id, name, is_anonymous, role, created_at, updated_at) VALUES (?, ?, 1, 'user', ?, ?)",
+      ).run("guest-rollback", "Guest Trader", now, now);
+      database.raw.exec(`
+        CREATE TRIGGER alter_google_identity_after_link
+        AFTER UPDATE OF google_subject ON users
+        WHEN NEW.google_subject IS NOT NULL AND OLD.google_subject IS NULL
+        BEGIN
+          UPDATE users SET email = 'unexpected@example.test' WHERE id = NEW.id;
+        END;
+      `);
+
+      assert.throws(() => upsertGoogleUser(database, {
+        subject: "google-subject-rollback",
+        email: "verified@example.test",
+        name: "Verified Trader",
+        image: null,
+      }, { id: "guest-rollback", isAnonymous: true }), /identity failed persistence verification/);
+
+      const user = database.raw.prepare(
+        "SELECT email, google_subject, is_anonymous FROM users WHERE id = ?",
+      ).get("guest-rollback");
+      assert.equal(user.email, null);
+      assert.equal(user.google_subject, null);
+      assert.equal(user.is_anonymous, 1);
+    } finally {
+      database.close();
+    }
+  });
+
   it("does not switch away from a guest account when Google identity belongs to another account", () => {
     const database = createTemporaryDatabase();
     try {
