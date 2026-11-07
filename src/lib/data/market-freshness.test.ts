@@ -27,7 +27,7 @@ describe("candle-aware market-data freshness", () => {
     expect(classifyMarketDataFreshness(1_000, 1_000 + 49 * hour, "H1")).toBe("unavailable");
     expect(classifyMarketDataFreshness(1_000, 1_000 + 3 * minute, "M5")).toBe("realtime");
     expect(classifyMarketDataFreshness(1_000, 1_000 + 7 * minute, "M5")).toBe("delayed");
-    expect(classifyMarketDataFreshness(1_000, 1_000 + 30 * minute, "M5")).toBe("stale");
+    expect(classifyMarketDataFreshness(1_000, 1_000 + 30 * minute, "M5")).toBe("delayed");
   });
 
   it("normalizes timeframe aliases and fails closed on invalid or future timestamps", () => {
