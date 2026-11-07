@@ -240,31 +240,38 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
         json(response,result.success?200:503,result);
         return true;
       }
-      const {analyzeMarket,fetchAlphaVantageIntelligence}=await import("../dist/market-data-engine.mjs");
+      const {analyzeMarket,fetchAlphaVantageIntelligence,fetchTwelveDataIdxFundamentals}=await import("../dist/market-data-engine.mjs");
       const instrument=typeof input.instrument==="string"?input.instrument.trim().toUpperCase():"";
       const instrumentType=input.instrumentType;
       let fundamentalData;
       if(instrumentType==="stock"&&/^[A-Z0-9.-]{1,15}$/.test(instrument)) {
-        // Refresh stale SEC evidence when configured; keep persisted evidence usable during outages.
-        try { await refreshSecObservationsIfStale(database,instrument,env.SEC_USER_AGENT,fetchImpl); }
-        catch(error) { console.warn("[market-data] SEC refresh unavailable; using persisted observations:",error instanceof Error?error.message:"unknown error"); }
-        const observations=database.raw.prepare(
-          "SELECT eps,revenue,fiscal_period_end,filing_date,last_retrieved_at FROM sec_edgar_observations WHERE ticker=? ORDER BY filing_date DESC,fiscal_period_end DESC LIMIT 12",
-        ).all(instrument);
-        // Keep the analysis payload bounded while reporting the true persisted
-        // history size rather than the size of this latest-observation window.
-        const observationCount=database.raw.prepare(
-          "SELECT COUNT(*) AS count FROM sec_edgar_observations WHERE ticker=?",
-        ).get(instrument).count;
-        const latest=observations[0];
-        if(latest&&(latest.eps!==null||latest.revenue!==null)) {
-          fundamentalData={
-            provider:"sec-edgar",timestamp:latest.last_retrieved_at,
-            instrumentType:"stock",symbol:instrument,available:true,
-            ...(latest.eps!==null?{earningsPerShare:latest.eps,dilutedEPS:latest.eps}:{}),
-            latestEarnings:{date:latest.fiscal_period_end,...(latest.revenue!==null?{revenue:latest.revenue}:{}),...(latest.eps!==null?{eps:latest.eps}:{})},
-            pointInTimeHistory:{status:"PERSISTED",providerObservationCount:observationCount,newlyPersistedCount:0},
-          };
+        // IDX issuers are not SEC registrants: request their exact XIDX listing
+        // from Twelve Data when configured. Never pass an IDX ticker to SEC.
+        try {
+          const idxFundamentals=await fetchTwelveDataIdxFundamentals(instrument,env.TWELVE_DATA_API_KEY,fetchImpl);
+          if(idxFundamentals) fundamentalData=idxFundamentals;
+        } catch(error) {
+          console.warn("[market-data] Twelve Data IDX fundamentals unavailable:",error instanceof Error?error.message:"unknown error");
+        }
+        if(!fundamentalData) {
+          try { await refreshSecObservationsIfStale(database,instrument,env.SEC_USER_AGENT,fetchImpl); }
+          catch(error) { console.warn("[market-data] SEC refresh unavailable; using persisted observations:",error instanceof Error?error.message:"unknown error"); }
+          const observations=database.raw.prepare(
+            "SELECT eps,revenue,fiscal_period_end,filing_date,last_retrieved_at FROM sec_edgar_observations WHERE ticker=? ORDER BY filing_date DESC,fiscal_period_end DESC LIMIT 12",
+          ).all(instrument);
+          const observationCount=database.raw.prepare(
+            "SELECT COUNT(*) AS count FROM sec_edgar_observations WHERE ticker=?",
+          ).get(instrument).count;
+          const latest=observations[0];
+          if(latest&&(latest.eps!==null||latest.revenue!==null)) {
+            fundamentalData={
+              provider:"sec-edgar",timestamp:latest.last_retrieved_at,
+              instrumentType:"stock",symbol:instrument,available:true,
+              ...(latest.eps!==null?{earningsPerShare:latest.eps,dilutedEPS:latest.eps}:{}),
+              latestEarnings:{date:latest.fiscal_period_end,...(latest.revenue!==null?{revenue:latest.revenue}:{}),...(latest.eps!==null?{eps:latest.eps}:{})},
+              pointInTimeHistory:{status:"PERSISTED",providerObservationCount:observationCount,newlyPersistedCount:0},
+            };
+          }
         }
       }
       let sentimentData;
