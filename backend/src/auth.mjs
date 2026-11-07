@@ -250,52 +250,71 @@ export async function verifyGoogleIdToken(idToken, { clientId, nonce, fetchImpl 
 }
 
 export function upsertGoogleUser(database, profile, currentUser = null) {
-  const now = Date.now();
-  const existing = database.raw.prepare(
-    "SELECT id, google_subject FROM users WHERE google_subject = ? OR email = ? COLLATE NOCASE LIMIT 1",
-  ).get(profile.subject, profile.email);
+  // Serialize identity lookup and mutation. Without an immediate transaction,
+  // two OAuth callbacks can both observe an unclaimed email and race to create
+  // separate accounts; unique constraints prevent duplication but turn a
+  // legitimate sign-in into an intermittent 500.
+  const raw = database.raw;
+  raw.exec("BEGIN IMMEDIATE");
+  try {
+    const now = Date.now();
+    const existing = raw.prepare(
+      "SELECT id, google_subject FROM users WHERE google_subject = ? OR email = ? COLLATE NOCASE LIMIT 1",
+    ).get(profile.subject, profile.email);
 
-  if (existing?.google_subject && existing.google_subject !== profile.subject) {
-    throw new Error("This email is already linked to a different Google account.");
-  }
-
-  // Preserve a guest's existing data by upgrading that same account when the
-  // Google identity is not already attached to another account.
-  if (currentUser?.isAnonymous) {
-    if (existing && existing.id !== currentUser.id) {
-      const error = new Error("This Google account already has a separate Trade Intel account.");
-      error.code = "anonymous_account_link_conflict";
-      throw error;
+    if (existing?.google_subject && existing.google_subject !== profile.subject) {
+      throw new Error("This email is already linked to a different Google account.");
     }
-    const result = database.raw.prepare(`
-      UPDATE users
-      SET name = ?, image = ?, email = ?, email_verified_at = ?, is_anonymous = 0,
-          google_subject = ?, updated_at = ?
-      WHERE id = ? AND is_anonymous = 1
-    `).run(profile.name, profile.image, profile.email, now, profile.subject, now, currentUser.id);
-    if (result.changes !== 1) {
-      throw new Error("The anonymous account could not be linked safely.");
+
+    let userId;
+    if (currentUser?.isAnonymous) {
+      if (existing && existing.id !== currentUser.id) {
+        const error = new Error("This Google account already has a separate Trade Intel account.");
+        error.code = "anonymous_account_link_conflict";
+        throw error;
+      }
+      const result = raw.prepare(`
+        UPDATE users
+        SET name = ?, image = ?, email = ?, email_verified_at = ?, is_anonymous = 0,
+            google_subject = ?, updated_at = ?
+        WHERE id = ? AND is_anonymous = 1
+      `).run(profile.name, profile.image, profile.email, now, profile.subject, now, currentUser.id);
+      if (result.changes !== 1) {
+        throw new Error("The anonymous account could not be linked safely.");
+      }
+      userId = currentUser.id;
+    } else if (existing) {
+      raw.prepare(`
+        UPDATE users
+        SET name = ?, image = ?, email = ?, email_verified_at = ?, is_anonymous = 0,
+            google_subject = ?, updated_at = ?
+        WHERE id = ?
+      `).run(profile.name, profile.image, profile.email, now, profile.subject, now, existing.id);
+      userId = existing.id;
+    } else {
+      userId = randomUUID();
+      raw.prepare(`
+        INSERT INTO users
+          (id, name, image, email, email_verified_at, is_anonymous, role, google_subject, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, 0, 'user', ?, ?, ?)
+      `).run(userId, profile.name, profile.image, profile.email, now, profile.subject, now, now);
     }
-    return currentUser.id;
-  }
 
-  if (existing) {
-    database.raw.prepare(`
-      UPDATE users
-      SET name = ?, image = ?, email = ?, email_verified_at = ?, is_anonymous = 0,
-          google_subject = ?, updated_at = ?
-      WHERE id = ?
-    `).run(profile.name, profile.image, profile.email, now, profile.subject, now, existing.id);
-    return existing.id;
+    // Read back the identity before commit so a trigger or unexpected schema
+    // behavior cannot result in a session being issued for the wrong account.
+    const persisted = raw.prepare(
+      "SELECT id, email, google_subject, is_anonymous FROM users WHERE id = ?",
+    ).get(userId);
+    if (!persisted || persisted.email?.toLowerCase() !== profile.email.toLowerCase() ||
+        persisted.google_subject !== profile.subject || persisted.is_anonymous !== 0) {
+      throw new Error("Google account identity failed persistence verification.");
+    }
+    raw.exec("COMMIT");
+    return userId;
+  } catch (error) {
+    raw.exec("ROLLBACK");
+    throw error;
   }
-
-  const userId = randomUUID();
-  database.raw.prepare(`
-    INSERT INTO users
-      (id, name, image, email, email_verified_at, is_anonymous, role, google_subject, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 0, 'user', ?, ?, ?)
-  `).run(userId, profile.name, profile.image, profile.email, now, profile.subject, now, now);
-  return userId;
 }
 
 export function createAuthHandler({ database, env = process.env, fetchImpl = fetch }) {
