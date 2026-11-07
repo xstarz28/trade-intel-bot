@@ -118,6 +118,76 @@ describe("authenticated self-hosted live quote API", () => {
     }
   });
 
+
+  it("routes IDX equity analysis to exact XIDX fundamentals and never to SEC or US stock enrichment", async () => {
+    const database = createTemporaryDatabase();
+    const now = Date.now();
+    const requested = [];
+    const env = {
+      NODE_ENV: "development",
+      APP_ORIGIN: "http://localhost:5173",
+      TWELVE_DATA_API_KEY: "test-idx-fundamentals-key",
+      SEC_USER_AGENT: "TradeIntelTest (ops@example.test)",
+      ALPHA_VANTAGE_API_KEY: "test-alpha-key",
+    };
+    const timestamps = Array.from({ length: 220 }, (_, index) => Math.floor((now - (220-index) * 86_400_000) / 1000));
+    const opens = timestamps.map((_, index) => 7000 + index * 2);
+    const fetchImpl = async (input) => {
+      const url = new URL(String(input));
+      requested.push(url);
+      if (url.hostname === "api.twelvedata.com" && url.pathname === "/statistics") {
+        return new Response(JSON.stringify({
+          meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
+          statistics: { valuations_metrics: { trailing_pe: "18.2" }, financials: { return_on_equity: "19.2" } },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.hostname === "www.sec.gov" || url.hostname === "data.sec.gov" ||
+          url.hostname === "www.alphavantage.co") {
+        throw new Error("IDX issuer must not be queried through US-only fundamentals providers");
+      }
+      if (url.hostname === "query1.finance.yahoo.com") {
+        return new Response(JSON.stringify({
+          chart: { result: [{
+            meta: { regularMarketPrice: 7438, regularMarketTime: Math.floor(now / 1000), currency: "IDR" },
+            timestamp: timestamps,
+            indicators: { quote: [{
+              open: opens,
+              high: opens.map((value) => value + 10),
+              low: opens.map((value) => value - 10),
+              close: opens.map((value) => value + 3),
+              volume: opens.map(() => 1_000_000),
+            }] },
+          }] },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("unexpected provider", { status: 404 });
+    };
+
+    try {
+      await withServer(database, async (baseUrl) => {
+        const signIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
+          method: "POST", headers: { Origin: env.APP_ORIGIN },
+        });
+        const cookie = signIn.headers.get("set-cookie").split(";")[0];
+        const response = await fetch(`${baseUrl}/api/v1/market-data/analyze`, {
+          method: "POST",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ instrument: "BBCA", instrumentType: "stock", timeframe: "D1" }),
+        });
+        assert.equal(response.status, 200);
+        const payload = await response.json();
+        assert.equal(payload.analysis.fundamentalData.provider, "twelve-data-statistics");
+        assert.equal(payload.analysis.fundamentalData.symbol, "BBCA");
+        assert.equal(payload.analysis.fundamentalData.peRatio, 18.2);
+        assert.ok(requested.some((url) => url.pathname === "/statistics" &&
+          url.searchParams.get("symbol") === "BBCA.JK" && url.searchParams.get("mic_code") === "XIDX"));
+        assert.ok(requested.every((url) => !["www.sec.gov", "data.sec.gov", "www.alphavantage.co"].includes(url.hostname)));
+      }, { env, fetchImpl });
+    } finally {
+      database.close();
+    }
+  });
+
   it("requires a backend session and bounds the requested quote batch", async () => {
     const database = createTemporaryDatabase();
     const env = { NODE_ENV: "development", APP_ORIGIN: "http://localhost:5173" };
