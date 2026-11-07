@@ -116,10 +116,12 @@ async function acquireEnrichment(
     ? optional("EIA/FRED inventory", cached("eia:petroleum", 6 * 60 * 60_000, () => fetchEiaInventory(env.EIA_API_KEY, fetchImpl)), errors)
     : Promise.resolve(undefined);
   const derivativesPromise = entry.assetClass === "crypto"
-    ? optional("Public/paid crypto derivatives", fetchCryptoDerivatives(entry.instrument, env.COINGLASS_API_KEY, fetchImpl, env.TOKENOMIST_API_KEY), errors)
+    ? optional("Public/paid crypto derivatives", cached(`derivatives:${entry.instrument}`, 5 * 60_000,
+        () => fetchCryptoDerivatives(entry.instrument, env.COINGLASS_API_KEY, fetchImpl, env.TOKENOMIST_API_KEY)), errors)
     : Promise.resolve(undefined);
   const defiPromise = entry.assetClass === "crypto"
-    ? optional("DeFiLlama fundamentals", fetchCryptoFundamentals(entry.instrument, fetchImpl), errors)
+    ? optional("DeFiLlama fundamentals", cached(`defi-fundamentals:${entry.instrument}`, 6 * 60 * 60_000,
+        () => fetchCryptoFundamentals(entry.instrument, fetchImpl)), errors)
     : Promise.resolve(undefined);
   const secPromise = entry.assetClass === "equity" && entry.region === "us" &&
       entry.requiredCapabilities.includes("fundamentals") && env.SEC_USER_AGENT?.trim()
