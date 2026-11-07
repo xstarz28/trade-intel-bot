@@ -48,7 +48,7 @@ export function classifyMarketDataFreshness(
     return "unavailable";
   }
 
-  const normalized = timeframe.trim().toUpperCase().replace(/\\s+/g, "");
+  const normalized = timeframe.trim().toUpperCase().replace(/\s+/g, "");
   const canonical = TIMEFRAME_ALIASES[normalized] ?? normalized;
   const intervalMs = TIMEFRAME_MS[canonical];
   const ageMs = now - timestamp;
