@@ -245,7 +245,7 @@ describe("self-hosted market analysis engine", () => {
         assert.match(init.headers.cookie, /A1=free-session/);
         return new Response("free-crumb", { status: 200 });
       }
-      if (url.includes("/v10/finance/quoteSummary/BBRI.JK")) {
+      if (url.includes("/v10/finance/quoteSummary/BBCA.JK")) {
         assert.match(init.headers.cookie, /A1=free-session/);
         assert.equal(new URL(url).searchParams.get("crumb"), "free-crumb");
         return new Response(JSON.stringify({ quoteSummary: { result: [modules] } }), {
@@ -254,7 +254,7 @@ describe("self-hosted market analysis engine", () => {
       }
       return new Response("unexpected URL", { status: 404 });
     };
-    const result = await fetchYahooIdxFundamentals("BBRI", fetchImpl);
+    const result = await fetchYahooIdxFundamentals("BBCA", fetchImpl);
     assert.equal(result.symbol, "BBCA");
     assert.equal(result.provider, "yahoo-finance-public");
     assert.equal(result.marketCap, 1_200_000_000_000);
@@ -276,7 +276,7 @@ describe("self-hosted market analysis engine", () => {
       }), { status: 200, headers: { "content-type": "application/json" } });
       return new Response("unexpected", { status: 404 });
     };
-    await assert.rejects(fetchYahooIdxFundamentals("BBRI", fetchImpl), /symbol identity mismatch/);
+    await assert.rejects(fetchYahooIdxFundamentals("BBNI", fetchImpl), /symbol identity mismatch/);
   });
 
   it("classifies IDX listings strictly and never queries Twelve Data for US stocks or without credentials", async () => {
