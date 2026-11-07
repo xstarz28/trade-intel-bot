@@ -255,6 +255,7 @@ export async function fetchTwelveDataIdxFundamentals(
     earningsGrowth: normalizeProviderPercent(readProviderNumber(market, ["quarterly_earnings_growth_yoy", "earnings_growth_yoy"])),
     grossProfitTTM: readProviderNumber(market, ["gross_profit_ttm", "grossProfitTTM"]),
     dilutedEPS: readProviderNumber(market, ["diluted_eps_ttm", "dilutedEPS"]),
+    earningsPerShare: readProviderNumber(market, ["diluted_eps_ttm", "earnings_per_share", "eps"]),
     beta: readProviderNumber(market, ["beta"]),
     sharesOutstanding: readProviderNumber(market, ["shares_outstanding", "sharesOutstanding"]),
     bookValue: readProviderNumber(market, ["book_value_per_share", "book_value"]),
