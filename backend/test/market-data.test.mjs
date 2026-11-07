@@ -259,12 +259,12 @@ describe("self-hosted market analysis engine", () => {
       const url = String(input);
       if (url === "https://fc.yahoo.com/") return new Response("", { status: 404, headers: { "set-cookie": "A1=session; Path=/" } });
       if (url.includes("/v1/test/getcrumb")) return new Response("crumb", { status: 200 });
-      if (url.includes("/v10/finance/quoteSummary/AAPL")) return new Response(JSON.stringify({
-        quoteSummary: { result: [{ price: { symbol: "MSFT" }, summaryDetail: { trailingPE: { raw: 30 } } }] },
+      if (url.includes("/v10/finance/quoteSummary/MSFT")) return new Response(JSON.stringify({
+        quoteSummary: { result: [{ price: { symbol: "NVDA" }, summaryDetail: { trailingPE: { raw: 30 } } }] },
       }), { status: 200, headers: { "content-type": "application/json" } });
       return new Response("unexpected", { status: 404 });
     };
-    await assert.rejects(fetchYahooUsFundamentals("AAPL", fetchImpl), /symbol identity mismatch/);
+    await assert.rejects(fetchYahooUsFundamentals("MSFT", fetchImpl), /symbol identity mismatch/);
   });
 
   it("loads IDX fundamentals from the free Yahoo public session and verifies the exact .JK symbol", async () => {
