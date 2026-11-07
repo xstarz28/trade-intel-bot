@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, describe, it } from "node:test";
 import { createAppServer } from "../src/app.mjs";
 import { createRateLimiter, upsertGoogleUser, verifyGoogleIdToken } from "../src/auth.mjs";
+import { createUserRateLimiter } from "../src/market-data.mjs";
 import { openDatabase } from "../src/database.mjs";
 import { createDatabaseBackup } from "../backup.mjs";
 import { restoreDatabase } from "../restore.mjs";
@@ -1501,6 +1502,21 @@ describe("self-hosted backend", () => {
       }),
       /claims failed validation/,
     );
+  });
+
+  it("bounds per-user market-analysis rate-limit buckets without evicting active users", () => {
+    let now=10_000;
+    const allow=createUserRateLimiter(2,1_000,2,()=>now);
+    assert.equal(allow("user-a"),true);
+    assert.equal(allow("user-a"),true);
+    assert.equal(allow("user-a"),false);
+    assert.equal(allow("user-b"),true);
+    assert.equal(allow("user-c"),false,"a full active bucket table must fail closed");
+    assert.equal(allow("user-a"),false,"admitting another identity must not reset an active user's quota");
+    now+=1_001;
+    assert.equal(allow("user-c"),true,"expired buckets are reclaimed before rejecting new identities");
+    assert.equal(allow("user-c"),true);
+    assert.equal(allow("user-c"),false);
   });
 
   it("rate-limits repeated anonymous account creation from one client", async () => {
