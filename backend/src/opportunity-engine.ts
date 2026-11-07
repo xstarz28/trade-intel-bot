@@ -7,6 +7,7 @@ import {
   fetchEiaInventory,
   fetchMarketCandlesBatch,
   fetchSecFundamentalObservations,
+  fetchTwelveDataIdxFundamentals,
   fetchTreasuryYields,
 } from "./market-data-engine";
 import { DEFAULT_UNIVERSE } from "../../src/lib/market-radar/universe";
@@ -90,9 +91,16 @@ async function acquireEnrichment(
       ? entry.assetClass : "macro";
   // Respect provider quotas: news/fundamental enrichment is slower-moving
   // than candles and must not be requested on every radar acquisition visit.
-  const alphaPromise = env.ALPHA_VANTAGE_API_KEY?.trim()
+  const isIdxEquity = entry.assetClass === "equity" && entry.region === "idx";
+  // IDX tickers must never be sent to Alpha Vantage's US-oriented stock
+  // overview path. Their exchange-qualified fundamentals use XIDX instead.
+  const alphaPromise = env.ALPHA_VANTAGE_API_KEY?.trim() && !isIdxEquity
     ? optional("Alpha Vantage", cached(`alpha:${entry.instrument}`, 15 * 60_000,
         () => fetchAlphaVantageIntelligence(entry.instrument, env.ALPHA_VANTAGE_API_KEY!, fetchImpl, alphaType)), errors)
+    : Promise.resolve(undefined);
+  const idxFundamentalsPromise = isIdxEquity && env.TWELVE_DATA_API_KEY?.trim()
+    ? optional("Twelve Data IDX fundamentals", cached(`idx-fundamentals:${entry.instrument}`, 6 * 60 * 60_000,
+        () => fetchTwelveDataIdxFundamentals(entry.instrument, env.TWELVE_DATA_API_KEY!, fetchImpl)), errors)
     : Promise.resolve(undefined);
   const calendarPromise = env.TICKATLAS_API_KEY?.trim()
     ? optional("Economic calendar", cached(`calendar:${entry.instrument}`, 5 * 60_000,
@@ -119,8 +127,8 @@ async function acquireEnrichment(
         () => fetchSecFundamentalObservations(entry.instrument, env.SEC_USER_AGENT, fetchImpl)), errors)
     : Promise.resolve(undefined);
 
-  const [alpha, calendar, treasury, cot, eia, derivatives, defi, sec] = await Promise.all([
-    alphaPromise, calendarPromise, treasuryPromise, cotPromise,
+  const [alpha, idxFundamentals, calendar, treasury, cot, eia, derivatives, defi, sec] = await Promise.all([
+    alphaPromise, idxFundamentalsPromise, calendarPromise, treasuryPromise, cotPromise,
     eiaPromise, derivativesPromise, defiPromise, secPromise,
   ]);
   let cryptoIntelligenceContext: AnalysisInput["cryptoIntelligenceContext"];
@@ -137,8 +145,16 @@ async function acquireEnrichment(
       entry.instrument, derivativesContext, defiContext, derivativeEnvelope?.tokenomics,
     ) ?? undefined;
   }
+  const alphaResult = alpha as {
+    sentiment?: AnalysisInput["sentimentData"];
+    fundamentals?: AnalysisInput["fundamentalData"];
+    macro?: AnalysisInput["macroData"];
+  } | undefined;
+  const combinedAlpha = alphaResult || idxFundamentals
+    ? { ...(alphaResult ?? {}), ...(idxFundamentals ? { fundamentals: idxFundamentals } : {}) }
+    : undefined;
   return {
-    alpha,
+    alpha: combinedAlpha,
     calendar: (calendar as { data?: AnalysisInput["calendarData"] } | undefined)?.data,
     treasury: (treasury as { data?: AnalysisInput["treasuryData"] } | undefined)?.data,
     cot: (cot as { data?: AnalysisInput["cotData"] } | undefined)?.data,
