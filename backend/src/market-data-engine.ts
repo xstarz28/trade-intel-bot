@@ -1322,7 +1322,6 @@ export async function fetchEconomicCalendar(
   }
 
   const countryParam = relevantCurrencies.map((item) => encodeURIComponent(item.country)).join(",");
-  const relevantCountries = new Map(relevantCurrencies.map((item) => [item.currency, item.country]));
   const dateFrom = new Date(now).toISOString().slice(0, 10);
   const dateTo = new Date(now + 7 * 86400000).toISOString().slice(0, 10);
   const datePast = new Date(now - 7 * 86400000).toISOString().slice(0, 10);
