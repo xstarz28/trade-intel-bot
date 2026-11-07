@@ -86,25 +86,38 @@ export function isAllowedOrigin(request, env) {
   return origin === configured;
 }
 
-function createRateLimiter(maximum,windowMs) {
-  const buckets=new Map();
-  return (request)=>{
-    const forwarded=request.headers["x-forwarded-for"];
-    const address=(typeof forwarded==="string"?forwarded.split(",").at(-1).trim():"")||
-      request.socket.remoteAddress||"unknown";
-    const now=Date.now();
-    let bucket=buckets.get(address);
-    if(!bucket||now-bucket.startedAt>=windowMs) {
-      bucket={startedAt:now,count:0};
-      buckets.set(address,bucket);
-    }
-    if(bucket.count>=maximum) return false;
-    bucket.count+=1;
-    if(buckets.size>5000) {
-      for(const [key,value] of buckets) {
-        if(now-value.startedAt>=windowMs) buckets.delete(key);
+export function createRateLimiter(maximum, windowMs, maxBuckets = 5_000, clock = Date.now) {
+  if (!Number.isSafeInteger(maximum) || maximum < 1 ||
+      !Number.isFinite(windowMs) || windowMs <= 0 ||
+      !Number.isSafeInteger(maxBuckets) || maxBuckets < 1 ||
+      typeof clock !== "function") {
+    throw new Error("Invalid rate limiter configuration.");
+  }
+
+  const buckets = new Map();
+  return (request) => {
+    const forwarded = request.headers["x-forwarded-for"];
+    const address = (typeof forwarded === "string" ? forwarded.split(",").at(-1).trim() : "") ||
+      request.socket.remoteAddress || "unknown";
+    const now = clock();
+    let bucket = buckets.get(address);
+
+    if (!bucket || now - bucket.startedAt >= windowMs) {
+      if (buckets.size >= maxBuckets) {
+        for (const [key, value] of buckets) {
+          if (now - value.startedAt >= windowMs) buckets.delete(key);
+        }
+        // Fail closed when the active-client table is full. Do not evict a
+        // live client's bucket: doing so would let high-cardinality traffic
+        // reset another client's rate limit and grow memory without bound.
+        if (buckets.size >= maxBuckets) return false;
       }
+      bucket = { startedAt: now, count: 0 };
+      buckets.set(address, bucket);
     }
+
+    if (bucket.count >= maximum) return false;
+    bucket.count += 1;
     return true;
   };
 }
