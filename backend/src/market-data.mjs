@@ -276,7 +276,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
       }
       let sentimentData;
       let macroData;
-      if(instrumentType==="stock"&&env.ALPHA_VANTAGE_API_KEY?.trim()) {
+      if(instrumentType==="stock"&&env.ALPHA_VANTAGE_API_KEY?.trim()&&!isIdxListedEquity(instrument)) {
         const intelligence=await fetchAlphaVantageIntelligence(instrument,env.ALPHA_VANTAGE_API_KEY,fetchImpl);
         if(intelligence.fundamentals?.available) fundamentalData=intelligence.fundamentals;
         if(intelligence.sentiment?.confidence!=="unavailable") sentimentData=intelligence.sentiment;
