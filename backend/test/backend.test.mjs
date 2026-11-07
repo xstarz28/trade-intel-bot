@@ -252,7 +252,7 @@ describe("self-hosted backend", () => {
       const rows = database.raw
         .prepare("SELECT version, checksum FROM schema_migrations ORDER BY version")
         .all();
-      assert.equal(rows.length, 4);
+      assert.equal(rows.length, 5);
       assert.equal(database.raw.prepare("PRAGMA journal_mode").get().journal_mode, "wal");
       assert.equal(database.raw.prepare("PRAGMA synchronous").get().synchronous, 2);
       assert.deepEqual(rows.map((row) => row.version), [
@@ -260,6 +260,7 @@ describe("self-hosted backend", () => {
         "0002_trade_intel_domain.sql",
         "0003_market_radar.sql",
         "0004_market_radar_ranking.sql",
+        "0005_market_radar_lease_owner.sql",
       ]);
       for (const row of rows) assert.match(row.checksum, /^[a-f0-9]{64}$/);
       assert.equal(
