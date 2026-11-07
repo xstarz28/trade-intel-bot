@@ -184,6 +184,11 @@ describe("SQLite restore utility", () => {
     ).run("orphan-preference", "missing-user", Date.now());
     invalidDatabase.close();
     assert.throws(
+      () => createDatabaseBackup(invalidRelations, join(directory, "invalid-relations-backup.sqlite")),
+      /foreign_key_check/,
+      "backup must reject a snapshot containing broken foreign-key relationships",
+    );
+    assert.throws(
       () => restoreDatabase(invalidRelations, join(directory, "invalid-relations-target.sqlite")),
       /foreign_key_check/,
     );
