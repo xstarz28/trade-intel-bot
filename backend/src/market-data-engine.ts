@@ -201,7 +201,7 @@ function normalizeProviderPercent(value: number | undefined): number | undefined
 
 /** True only for instruments explicitly registered on the Indonesian exchange. */
 export function isIdxListedEquity(tickerInput: string): boolean {
-  const ticker = tickerInput.trim().toUpperCase().replace(/\\.JK$/, "");
+  const ticker = tickerInput.trim().toUpperCase().replace(/\.JK$/, "");
   const canonical = resolveInstrument(ticker);
   return Boolean(canonical && canonical.assetClass === "equity" && canonical.primaryExchange === "IDX");
 }
@@ -212,7 +212,7 @@ export async function fetchTwelveDataIdxFundamentals(
   apiKeyInput: string | undefined,
   fetchImpl: typeof fetch = fetch,
 ): Promise<FundamentalData | null> {
-  const ticker = tickerInput.trim().toUpperCase().replace(/\\.JK$/, "");
+  const ticker = tickerInput.trim().toUpperCase().replace(/\.JK$/, "");
   const canonical = resolveInstrument(ticker);
   if (!canonical || !isIdxListedEquity(ticker)) return null;
   if (!apiKeyInput?.trim()) return null;
