@@ -239,7 +239,7 @@ export async function fetchTwelveDataIdxFundamentals(
   const returnedSymbol = typeof meta.symbol === "string" ? meta.symbol.toUpperCase() : "";
   const returnedMic = typeof meta.mic_code === "string" ? meta.mic_code.toUpperCase() : "";
   const returnedExchange = typeof meta.exchange === "string" ? meta.exchange.toUpperCase() : "";
-  if (returnedSymbol !== providerSymbol.toUpperCase()) throw new Error("Twelve Data did not verify the requested equity symbol");
+  if (returnedSymbol !== providerSymbol.toUpperCase()) throw new Error("Twelve Data did not verify the requested equity symbol (different equity symbol or missing identity)");
   if (returnedMic !== "XIDX") throw new Error("Twelve Data did not verify the IDX exchange MIC");
   if (returnedExchange && returnedExchange !== "IDX") throw new Error("Twelve Data returned a different exchange");
 
