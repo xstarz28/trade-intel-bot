@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, it } from "node:test";
 import { createAppServer } from "../src/app.mjs";
-import { upsertGoogleUser, verifyGoogleIdToken } from "../src/auth.mjs";
+import { createRateLimiter, upsertGoogleUser, verifyGoogleIdToken } from "../src/auth.mjs";
 import { openDatabase } from "../src/database.mjs";
 import { createDatabaseBackup } from "../backup.mjs";
 import { restoreDatabase } from "../restore.mjs";
@@ -73,6 +73,37 @@ afterEach(() => {
 
 
 
+});
+
+describe("authentication rate limiter", () => {
+  it("bounds client buckets without evicting active clients and reclaims expired buckets", () => {
+    let now = 1_000;
+    const limit = createRateLimiter(2, 100, 2, () => now);
+    const request = (address) => ({
+      headers: { "x-forwarded-for": address },
+      socket: { remoteAddress: "127.0.0.1" },
+    });
+
+    assert.equal(limit(request("198.51.100.1")), true);
+    assert.equal(limit(request("198.51.100.1")), true);
+    assert.equal(limit(request("198.51.100.1")), false);
+    assert.equal(limit(request("198.51.100.2")), true);
+
+    // A third unique client cannot grow memory or evict the first client's
+    // active bucket, so the first client's limit cannot be bypassed.
+    assert.equal(limit(request("198.51.100.3")), false);
+    assert.equal(limit(request("198.51.100.1")), false);
+
+    now += 101;
+    assert.equal(limit(request("198.51.100.3")), true);
+    assert.equal(limit(request("198.51.100.1")), true);
+  });
+
+  it("rejects invalid limiter configuration", () => {
+    assert.throws(() => createRateLimiter(0, 100), /Invalid rate limiter configuration/);
+    assert.throws(() => createRateLimiter(1, 0), /Invalid rate limiter configuration/);
+    assert.throws(() => createRateLimiter(1, 100, 0), /Invalid rate limiter configuration/);
+  });
 });
 
 describe("SQLite backup utility", () => {
