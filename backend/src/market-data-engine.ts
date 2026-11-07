@@ -1145,16 +1145,19 @@ async function fetchForexFactoryWeeklyCalendar(fetchImpl: typeof fetch): Promise
       });
       if (!response.ok) throw new Error("Forex Factory public calendar HTTP " + response.status);
       const payload = await response.json();
-      if (!Array.isArray(payload) || payload.some((item) =>
-        !item || typeof item !== "object" ||
-        typeof item.title !== "string" ||
-        typeof item.country !== "string" ||
-        typeof item.date !== "string" ||
-        !Number.isFinite(Date.parse(item.date)),
-      )) {
+      if (!Array.isArray(payload)) {
         throw new Error("Forex Factory public calendar returned an invalid event payload");
       }
-      forexFactoryCalendarCache.events = payload;
+      const validEvents = payload.filter((item) =>
+        item && typeof item === "object" &&
+        typeof item.title === "string" && item.title.trim() &&
+        typeof item.country === "string" && item.country.trim() &&
+        typeof item.date === "string" && Number.isFinite(Date.parse(item.date)),
+      );
+      if (validEvents.length === 0) {
+        throw new Error("Forex Factory public calendar contained no valid dated events");
+      }
+      forexFactoryCalendarCache.events = validEvents;
       forexFactoryCalendarCache.expiresAt = Date.now() + 60 * 60 * 1000;
       forexFactoryCalendarCache.retryAfter = 0;
       return payload as unknown[];
@@ -1280,7 +1283,7 @@ export async function fetchEconomicCalendar(
         actual: row.actual,
         forecast: row.forecast,
         previous: row.previous,
-        category: "Economic indicator",
+        category: typeof row.category === "string" ? row.category : "Economic calendar",
         source: "forex-factory-public",
         url: "https://www.forexfactory.com/calendar",
       };
