@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchTwelveDataIdxFundamentals, isIdxListedEquity, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchTwelveDataIdxFundamentals, fetchYahooIdxFundamentals, isIdxListedEquity, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -210,6 +210,73 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.dividendYield, 0.021);
     assert.equal(result.available, true);
     assert.equal(JSON.stringify(result).includes(apiKey), false);
+  });
+
+
+  it("loads IDX fundamentals from the free Yahoo public session and verifies the exact .JK symbol", async () => {
+    const calls = [];
+    const modules = {
+      price: { symbol: "BBCA.JK", longName: "Bank Central Asia Tbk", marketCap: { raw: 1_200_000_000_000 } },
+      summaryDetail: {
+        trailingPE: { raw: 18.2 }, forwardPE: { raw: 16.4 },
+        fiftyDayAverage: { raw: 9_500 }, twoHundredDayAverage: { raw: 9_100 },
+        fiftyTwoWeekHigh: { raw: 10_500 }, fiftyTwoWeekLow: { raw: 7_800 },
+        dividendRate: { raw: 250 }, dividendYield: { raw: 0.021 },
+      },
+      defaultKeyStatistics: {
+        pegRatio: { raw: 1.2 }, priceToBook: { raw: 4.1 }, trailingEps: { raw: 520 },
+        beta: { raw: 0.8 }, sharesOutstanding: { raw: 100_000_000 },
+      },
+      financialData: {
+        totalRevenue: { raw: 80_000_000_000 }, revenueGrowth: { raw: 0.12 },
+        earningsGrowth: { raw: 0.08 }, returnOnAssets: { raw: 0.025 },
+        returnOnEquity: { raw: 0.19 }, profitMargins: { raw: 0.31 },
+        operatingMargins: { raw: 0.42 }, grossProfits: { raw: 50_000_000_000 },
+        revenuePerShare: { raw: 800 },
+      },
+    };
+    const fetchImpl = async (input, init = {}) => {
+      const url = String(input);
+      calls.push({ url, headers: init.headers ?? {} });
+      if (url === "https://fc.yahoo.com/") {
+        return new Response("", { status: 404, headers: { "set-cookie": "A1=free-session; Path=/; Secure; HttpOnly" } });
+      }
+      if (url.includes("/v1/test/getcrumb")) {
+        assert.match(init.headers.cookie, /A1=free-session/);
+        return new Response("free-crumb", { status: 200 });
+      }
+      if (url.includes("/v10/finance/quoteSummary/BBCA.JK")) {
+        assert.match(init.headers.cookie, /A1=free-session/);
+        assert.equal(new URL(url).searchParams.get("crumb"), "free-crumb");
+        return new Response(JSON.stringify({ quoteSummary: { result: [modules] } }), {
+          status: 200, headers: { "content-type": "application/json" },
+        });
+      }
+      return new Response("unexpected URL", { status: 404 });
+    };
+    const result = await fetchYahooIdxFundamentals("BBCA", fetchImpl);
+    assert.equal(result.symbol, "BBCA");
+    assert.equal(result.provider, "yahoo-finance-public");
+    assert.equal(result.marketCap, 1_200_000_000_000);
+    assert.equal(result.peRatio, 18.2);
+    assert.equal(result.returnOnEquity, 0.19);
+    assert.equal(result.revenueGrowth, 0.12);
+    assert.equal(result.available, true);
+    assert.equal(calls.length, 3);
+    assert.ok(!JSON.stringify(result).includes("free-crumb"));
+  });
+
+  it("rejects Yahoo IDX fundamentals when the returned symbol is not the requested listing", async () => {
+    const fetchImpl = async (input) => {
+      const url = String(input);
+      if (url === "https://fc.yahoo.com/") return new Response("", { status: 404, headers: { "set-cookie": "A1=session; Path=/" } });
+      if (url.includes("/v1/test/getcrumb")) return new Response("crumb", { status: 200 });
+      if (url.includes("/v10/finance/quoteSummary/")) return new Response(JSON.stringify({
+        quoteSummary: { result: [{ price: { symbol: "BBRI.JK" }, summaryDetail: { trailingPE: { raw: 10 } } }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+      return new Response("unexpected", { status: 404 });
+    };
+    await assert.rejects(fetchYahooIdxFundamentals("BBCA", fetchImpl), /symbol identity mismatch/);
   });
 
   it("classifies IDX listings strictly and never queries Twelve Data for US stocks or without credentials", async () => {
