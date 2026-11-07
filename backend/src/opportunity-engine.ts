@@ -10,6 +10,7 @@ import {
   fetchTreasuryYields,
 } from "./market-data-engine";
 import { DEFAULT_UNIVERSE } from "../../src/lib/market-radar/universe";
+import { classifyMarketDataFreshness } from "../../src/lib/data/market-freshness";
 import { selectPriorityScanBatch } from "../../src/lib/market-radar/background-schedule";
 import { scanRadar, type RadarState } from "../../src/lib/market-radar/radar";
 import { toRadarCandidateSource } from "../../src/lib/market-radar/candidate-builder";
@@ -42,12 +43,7 @@ function instrumentType(assetClass: string): MarketData["instrumentType"] {
   return "indices";
 }
 function freshness(timestamp: number, now: number, timeframe: string): MarketData["dataFreshness"] {
-  const age = now - timestamp;
-  if (!Number.isFinite(age) || age < 0) return "unavailable";
-  if (age < 5 * 60_000) return "realtime";
-  if (age < 60 * 60_000) return "delayed";
-  const limit = timeframe === "W1" ? 14 : timeframe === "D1" || timeframe === "H4" ? 4 : 2;
-  return age < limit * 86_400_000 ? "stale" : "unavailable";
+  return classifyMarketDataFreshness(timestamp, now, timeframe);
 }
 function key(source: LiveCandidateSource): string {
   return source.instrument.toUpperCase() + "|" + (source.marketData?.timeframe ?? "UNKNOWN").toUpperCase();
