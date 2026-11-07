@@ -240,7 +240,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
         json(response,result.success?200:503,result);
         return true;
       }
-      const {analyzeMarket,fetchAlphaVantageIntelligence,fetchTwelveDataIdxFundamentals}=await import("../dist/market-data-engine.mjs");
+      const {analyzeMarket,fetchAlphaVantageIntelligence,fetchTwelveDataIdxFundamentals,isIdxListedEquity}=await import("../dist/market-data-engine.mjs");
       const instrument=typeof input.instrument==="string"?input.instrument.trim().toUpperCase():"";
       const instrumentType=input.instrumentType;
       let fundamentalData;
@@ -253,7 +253,7 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
         } catch(error) {
           console.warn("[market-data] Twelve Data IDX fundamentals unavailable:",error instanceof Error?error.message:"unknown error");
         }
-        if(!fundamentalData) {
+        if(!isIdxListedEquity(instrument)) {
           try { await refreshSecObservationsIfStale(database,instrument,env.SEC_USER_AGENT,fetchImpl); }
           catch(error) { console.warn("[market-data] SEC refresh unavailable; using persisted observations:",error instanceof Error?error.message:"unknown error"); }
           const observations=database.raw.prepare(
