@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getAuthenticatedUser, isAllowedOrigin } from "./auth.mjs";
+import { createUserRateLimiter } from "./market-data.mjs";
 
 function json(response,status,value) {
   const body=JSON.stringify(value);
@@ -27,16 +28,7 @@ function view(row) {
 }
 
 export function createFundamentalsHandler({database,env=process.env}) {
-  const buckets=new Map();
-  const allowRefresh=(userId)=>{
-    const now=Date.now();
-    let b=buckets.get(userId);
-    if(!b||now-b.startedAt>=60_000){b={startedAt:now,count:0};buckets.set(userId,b);}
-    if(b.count>=6)return false;
-    b.count++;
-    if(buckets.size>5000)for(const [key,value] of buckets)if(now-value.startedAt>=60_000)buckets.delete(key);
-    return true;
-  };
+  const allowRefresh=createUserRateLimiter(6,60_000,5_000);
   return async(request,response,url)=>{
     const match=url.pathname.match(/^\/api\/v1\/fundamentals\/sec(?:\/([A-Za-z0-9.-]{1,15}))?$/);
     if(!match)return false;
