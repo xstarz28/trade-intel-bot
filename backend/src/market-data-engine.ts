@@ -194,9 +194,10 @@ function readProviderNumber(source: unknown, aliases: string[]): number | undefi
   return undefined;
 }
 
-function normalizeProviderPercent(value: number | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  return Math.abs(value) > 1 ? value / 100 : value;
+function normalizeProviderRatio(value: number | undefined): number | undefined {
+  // Twelve Data statistics ratios are already decimal fractions. Do not divide
+  // values above 1: ROE can legitimately exceed 100% (e.g. 1.27 = 127%).
+  return value;
 }
 
 /** True only for instruments explicitly registered on the Indonesian exchange. */
@@ -254,8 +255,8 @@ export async function fetchTwelveDataIdxFundamentals(
     evToEbitda: readProviderNumber(market, ["enterprise_to_ebitda", "ev_to_ebitda"]),
     revenueTTM: readProviderNumber(market, ["revenue_ttm", "revenueTTM"]),
     revenuePerShare: readProviderNumber(market, ["revenue_per_share_ttm", "revenue_per_share"]),
-    revenueGrowth: normalizeProviderPercent(readProviderNumber(market, ["quarterly_revenue_growth", "revenue_growth_yoy"])),
-    earningsGrowth: normalizeProviderPercent(readProviderNumber(market, ["quarterly_earnings_growth_yoy", "earnings_growth_yoy"])),
+    revenueGrowth: normalizeProviderRatio(readProviderNumber(market, ["quarterly_revenue_growth", "revenue_growth_yoy"])),
+    earningsGrowth: normalizeProviderRatio(readProviderNumber(market, ["quarterly_earnings_growth_yoy", "earnings_growth_yoy"])),
     grossProfitTTM: readProviderNumber(market, ["gross_profit_ttm", "grossProfitTTM"]),
     dilutedEPS: readProviderNumber(market, ["diluted_eps_ttm", "dilutedEPS"]),
     earningsPerShare: readProviderNumber(market, ["diluted_eps_ttm", "earnings_per_share", "eps"]),
@@ -263,11 +264,11 @@ export async function fetchTwelveDataIdxFundamentals(
     sharesOutstanding: readProviderNumber(market, ["shares_outstanding", "sharesOutstanding"]),
     bookValue: readProviderNumber(market, ["book_value_per_share", "book_value"]),
     dividendPerShare: readProviderNumber(market, ["trailing_annual_dividend_rate", "forward_annual_dividend_rate", "dividend_per_share", "dividendPerShare"]),
-    dividendYield: normalizeProviderPercent(readProviderNumber(market, ["trailing_annual_dividend_yield", "forward_annual_dividend_yield", "dividend_yield", "dividendYield"])),
-    profitMargin: normalizeProviderPercent(readProviderNumber(market, ["profit_margin", "profitMargin"])),
-    operatingMargin: normalizeProviderPercent(readProviderNumber(market, ["operating_margin", "operatingMargin"])),
-    returnOnAssets: normalizeProviderPercent(readProviderNumber(market, ["return_on_assets", "return_on_assets_ttm", "returnOnAssets"])),
-    returnOnEquity: normalizeProviderPercent(readProviderNumber(market, ["return_on_equity_ttm", "return_on_equity", "returnOnEquity"])),
+    dividendYield: normalizeProviderRatio(readProviderNumber(market, ["trailing_annual_dividend_yield", "forward_annual_dividend_yield", "dividend_yield", "dividendYield"])),
+    profitMargin: normalizeProviderRatio(readProviderNumber(market, ["profit_margin", "profitMargin"])),
+    operatingMargin: normalizeProviderRatio(readProviderNumber(market, ["operating_margin", "operatingMargin"])),
+    returnOnAssets: normalizeProviderRatio(readProviderNumber(market, ["return_on_assets", "return_on_assets_ttm", "returnOnAssets"])),
+    returnOnEquity: normalizeProviderRatio(readProviderNumber(market, ["return_on_equity_ttm", "return_on_equity", "returnOnEquity"])),
     priceToBook: readProviderNumber(market, ["price_to_book_mrq", "price_to_book", "priceToBook"]),
     fiftyDayMovingAverage: readProviderNumber(market, ["day_50_ma", "fifty_day_moving_average"]),
     twoHundredDayMovingAverage: readProviderNumber(market, ["day_200_ma", "two_hundred_day_moving_average"]),
