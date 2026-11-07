@@ -175,7 +175,7 @@ describe("self-hosted market analysis engine", () => {
     const result = await fetchTwelveDataIdxFundamentals("BBCA", apiKey, async (input) => {
       requested = new URL(String(input));
       return new Response(JSON.stringify({
-        meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
+        meta: { symbol: "BBCA", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
         statistics: {
           valuations_metrics: { market_capitalization: "1000000000000", trailing_pe: "18.2", price_to_book_mrq: "4.1" },
           financials: { profit_margin: "0.225", return_on_equity_ttm: "1.27125", income_statement: { revenue_ttm: "90000000000", revenue_per_share_ttm: "320", diluted_eps_ttm: "500", quarterly_revenue_growth: "0.125", quarterly_earnings_growth_yoy: "0.084" } },
@@ -185,7 +185,7 @@ describe("self-hosted market analysis engine", () => {
       }), { status: 200, headers: { "content-type": "application/json" } });
     });
     assert.equal(requested.pathname, "/statistics");
-    assert.equal(requested.searchParams.get("symbol"), "BBCA.JK");
+    assert.equal(requested.searchParams.get("symbol"), "BBCA");
     assert.equal(requested.searchParams.get("mic_code"), "XIDX");
     assert.equal(requested.searchParams.get("apikey"), apiKey);
     assert.equal(result.provider, "twelve-data-statistics");
@@ -226,13 +226,13 @@ describe("self-hosted market analysis engine", () => {
         const url = new URL(String(input));
         idxRequests.push(url);
         return new Response(JSON.stringify({
-          meta: { symbol: ticker + ".JK", exchange: "IDX", mic_code: "XIDX" },
+          meta: { symbol: ticker, exchange: "IDX", mic_code: "XIDX" },
           statistics: { valuations_metrics: { trailing_pe: "12" } },
         }), { status: 200, headers: { "content-type": "application/json" } });
       });
       assert.equal(result.symbol, ticker);
     }
-    assert.deepEqual(idxRequests.map((url) => url.searchParams.get("symbol")), ["ASII.JK", "UNVR.JK"]);
+    assert.deepEqual(idxRequests.map((url) => url.searchParams.get("symbol")), ["ASII", "UNVR"]);
     assert.equal(await fetchTwelveDataIdxFundamentals("AAPL", "secret", async () => {
       called = true; throw new Error("US issuer must not be queried via IDX");
     }), null);
@@ -245,7 +245,7 @@ describe("self-hosted market analysis engine", () => {
   it("rejects a Twelve Data response that identifies a different IDX security", async () => {
     await assert.rejects(
       fetchTwelveDataIdxFundamentals("BBRI", "secret", async () => new Response(JSON.stringify({
-        meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX" },
+        meta: { symbol: "BBCA", exchange: "IDX", mic_code: "XIDX" },
         statistics: { valuations_metrics: { trailing_pe: "10" } },
       }), { status: 200, headers: { "content-type": "application/json" } })),
       /different equity symbol/,
