@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchTwelveDataIdxFundamentals, fetchYahooIdxFundamentals, isIdxListedEquity, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchTwelveDataIdxFundamentals, fetchYahooIdxFundamentals, fetchEconomicCalendar, isIdxListedEquity, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -277,6 +277,35 @@ describe("self-hosted market analysis engine", () => {
       return new Response("unexpected", { status: 404 });
     };
     await assert.rejects(fetchYahooIdxFundamentals("BBNI", fetchImpl), /symbol identity mismatch/);
+  });
+
+
+  it("uses the free Forex Factory public calendar without a provider key and caches the weekly feed", async () => {
+    const now = Date.now();
+    let calls = 0;
+    const feed = [
+      { title: "US CPI m/m", country: "USD", date: new Date(now + 3_600_000).toISOString(), impact: "High", forecast: "0.3%", previous: "0.2%" },
+      { title: "ECB President Speaks", country: "EUR", date: new Date(now + 7_200_000).toISOString(), impact: "Medium", forecast: "", previous: "" },
+      { title: "BOJ Outlook", country: "JPY", date: new Date(now + 10_800_000).toISOString(), impact: "High", forecast: "", previous: "" },
+    ];
+    const fetchImpl = async (input) => {
+      calls += 1;
+      assert.equal(String(input), "https://nfs.faireconomy.media/ff_calendar_thisweek.json");
+      return new Response(JSON.stringify(feed), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const first = await fetchEconomicCalendar("EUR/USD", "forex", undefined, fetchImpl);
+    assert.equal(first.success, true);
+    assert.equal(first.data.provider, "forex-factory-public");
+    assert.deepEqual(first.data.events.map((event) => event.currency), ["USD", "EUR"]);
+    assert.equal(first.data.events[0].importance, 3);
+    assert.equal(first.data.events[0].forecast, "0.3%");
+    assert.equal(first.data.events[0].source, "forex-factory-public");
+    const second = await fetchEconomicCalendar("GBP/USD", "forex", undefined, async () => {
+      throw new Error("The global weekly feed must be shared across instruments");
+    });
+    assert.equal(second.success, true);
+    assert.equal(second.data.provider, "forex-factory-public");
+    assert.equal(calls, 1);
   });
 
   it("classifies IDX listings strictly and never queries Twelve Data for US stocks or without credentials", async () => {
