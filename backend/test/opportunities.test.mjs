@@ -71,6 +71,40 @@ describe("self-hosted opportunity scanner persistence", () => {
     }
   });
 
+  it("recovers the scanner after a transient durable-lease acquisition failure", async () => {
+    const { database } = fixture();
+    const originalPrepare = database.raw.prepare.bind(database.raw);
+    let failFirstClaim = true;
+    const raw = new Proxy(database.raw, {
+      get(target, property) {
+        if (property === "prepare") {
+          return (sql) => {
+            if (failFirstClaim && sql.includes("UPDATE market_radar_state SET lease_until=")) {
+              failFirstClaim = false;
+              throw new Error("temporary sqlite busy");
+            }
+            return originalPrepare(sql);
+          };
+        }
+        const value = Reflect.get(target, property, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+    const service = createOpportunityService({
+      database: { raw },
+      env: {},
+      fetchImpl: async () => new Response("{}", { status: 503 }),
+    });
+    try {
+      await assert.rejects(service.runOneBatch(), /temporary sqlite busy/);
+      const recovered = await service.runOneBatch();
+      assert.equal(recovered.skipped, false);
+      assert.equal(recovered.savedSources, 0);
+    } finally {
+      database.close();
+    }
+  });
+
   it("builds a persisted multi-horizon candidate from exact provider candles", async () => {
     const { database } = fixture();
     const { runOpportunityBatch } = await import("../dist/opportunity-engine.mjs");
