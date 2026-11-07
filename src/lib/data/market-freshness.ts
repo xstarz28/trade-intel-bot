@@ -61,9 +61,17 @@ export function classifyMarketDataFreshness(
     return ageMs < 24 * 60 * 60_000 ? "stale" : "unavailable";
   }
 
-  // The candle timestamp is its OPEN time. An observation within the current
-  // bar remains current; one missed bar is delayed; older data is stale.
-  if (ageMs < intervalMs) return "realtime";
-  if (ageMs < intervalMs * 2) return "delayed";
+  // Preserve the established short-timeframe clock: M1/M5/M15/H1 are
+  // actionable only with genuinely recent observations. Higher timeframes
+  // need candle-aware windows because their OHLCV timestamps mark bar OPEN.
+  if (canonical === "M1" || canonical === "M5" || canonical === "M15" || canonical === "H1") {
+    if (ageMs < 5 * 60_000) return "realtime";
+    if (ageMs < 60 * 60_000) return "delayed";
+  } else {
+    if (ageMs < intervalMs) return "realtime";
+    // W1 closes on a much slower cadence; once the last weekly bar is over a
+    // week old, classify it stale rather than extending "delayed" for 14 days.
+    if (canonical !== "W1" && ageMs < intervalMs * 2) return "delayed";
+  }
   return ageMs < STALE_LIMIT_MS[canonical]! ? "stale" : "unavailable";
 }
