@@ -154,6 +154,11 @@ describe("SQLite restore utility", () => {
     assert.ok(restored.bytes > 0);
     assert.equal(statSync(target).mode & 0o777, 0o600);
 
+    const nestedTarget = join(directory, "recovered", "nested", "live.sqlite");
+    const nestedRestore = restoreDatabase(source, nestedTarget);
+    assert.equal(nestedRestore.target, nestedTarget);
+    assert.ok(statSync(nestedTarget).size > 0, "restore creates missing parent directories");
+
     const restoredDatabase = openDatabase(target, migrations);
     assert.equal(
       restoredDatabase.raw.prepare("SELECT name FROM users WHERE id = ?").get("restore-user").name,
