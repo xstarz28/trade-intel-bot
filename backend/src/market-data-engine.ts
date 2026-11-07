@@ -220,8 +220,9 @@ export async function fetchTwelveDataIdxFundamentals(
   const canonical = resolveInstrument(ticker);
   if (!canonical || !isIdxListedEquity(ticker)) return null;
   if (!apiKeyInput?.trim()) return null;
-  const providerSymbol = getProviderSymbol(canonical.canonical, "twelve-data");
-  if (!providerSymbol?.toUpperCase().endsWith(".JK")) return null;
+  // Twelve Data identifies IDX securities by their bare exchange ticker
+  // plus MIC XIDX (for example BBCA + XIDX), not Yahoo's .JK suffix.
+  const providerSymbol = canonical.canonical;
   const cached = twelveDataIdxFundamentalsCache.get(ticker);
   if (cached && cached.expiresAt > Date.now()) return cached.value;
 
