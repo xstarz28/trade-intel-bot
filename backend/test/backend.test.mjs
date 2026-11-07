@@ -173,7 +173,7 @@ describe("SQLite restore utility", () => {
     // A source database with a WAL sidecar is not a standalone snapshot.
     // Copying only its main file could silently omit committed WAL pages.
     writeFileSync(source + "-wal", "uncheckpointed source WAL");
-    assert.throws(() => restoreDatabase(source, join(directory, "wal-source-target.sqlite")), /source SQLite sidecar files exist/);
+    assert.throws(() => restoreDatabase(source, join(directory, "wal-source-target.sqlite")), /uncheckpointed SQLite WAL/);
     rmSync(source + "-wal");
 
     const invalidRelations = join(directory, "foreign-key-invalid.sqlite");
