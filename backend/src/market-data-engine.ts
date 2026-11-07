@@ -1121,6 +1121,54 @@ export async function fetchOkxFuturesOpenInterest(
 
 const TICKATLAS_CALENDAR_CACHE_TTL_MS = 20 * 60 * 1000;
 const tickAtlasCalendarCache = new Map<string, { data: EconomicCalendarData; expiresAt: number }>();
+const forexFactoryCalendarCache: { events: unknown[]; expiresAt: number; retryAfter: number } = {
+  events: [], expiresAt: 0, retryAfter: 0,
+};
+let forexFactoryCalendarInflight: Promise<unknown[] | null> | null = null;
+
+async function fetchForexFactoryWeeklyCalendar(fetchImpl: typeof fetch): Promise<unknown[] | null> {
+  const now = Date.now();
+  if (forexFactoryCalendarCache.expiresAt > now) return forexFactoryCalendarCache.events;
+  if (now < forexFactoryCalendarCache.retryAfter) return null;
+  if (forexFactoryCalendarInflight) return forexFactoryCalendarInflight;
+
+  forexFactoryCalendarInflight = (async () => {
+    try {
+      // The public export updates hourly. One process-wide cache prevents each
+      // instrument or user from downloading the same feed and hitting its IP limit.
+      const response = await fetchImpl("https://nfs.faireconomy.media/ff_calendar_thisweek.json", {
+        headers: {
+          accept: "application/json",
+          "user-agent": "TradeIntelBot/1.0 (public economic calendar cache)",
+        },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!response.ok) throw new Error("Forex Factory public calendar HTTP " + response.status);
+      const payload = await response.json();
+      if (!Array.isArray(payload) || payload.some((item) =>
+        !item || typeof item !== "object" ||
+        typeof item.title !== "string" ||
+        typeof item.country !== "string" ||
+        typeof item.date !== "string" ||
+        !Number.isFinite(Date.parse(item.date)),
+      )) {
+        throw new Error("Forex Factory public calendar returned an invalid event payload");
+      }
+      forexFactoryCalendarCache.events = payload;
+      forexFactoryCalendarCache.expiresAt = Date.now() + 60 * 60 * 1000;
+      forexFactoryCalendarCache.retryAfter = 0;
+      return payload as unknown[];
+    } catch {
+      // The publisher limits export requests per IP. Back off rather than retrying
+      // on every instrument scan; a configured secondary source may still be used.
+      forexFactoryCalendarCache.retryAfter = Date.now() + 5 * 60 * 1000;
+      return null;
+    }
+  })().finally(() => {
+    forexFactoryCalendarInflight = null;
+  });
+  return forexFactoryCalendarInflight;
+}
 
 function parseCalendarValue(value: unknown): number | string | undefined {
   if (value === null || value === undefined || value === "" || value === "‑" || value === "—" || value === "-") {
@@ -1177,7 +1225,7 @@ function normalizeTickAtlasEvent(
     ...(previous !== undefined ? { previous } : {}),
     ...(revised !== undefined ? { revised } : {}),
     importance,
-    source: "tickatlas",
+    source: typeof row.source === "string" ? row.source : "tickatlas",
     ...(typeof row.url === "string" ? { sourceUrl: row.url } :
       typeof row.Source_url === "string" ? { sourceUrl: row.Source_url } : {}),
     ...(typeof row.period === "string" ? { referencePeriod: row.period } :
@@ -1204,9 +1252,6 @@ export async function fetchEconomicCalendar(
   apiKey: string | undefined,
   fetchImpl: typeof fetch = fetch,
 ): Promise<CalendarResult> {
-  if (!apiKey?.trim()) {
-    return { success: false, error: "TickAtlas calendar is not configured: TICKATLAS_API_KEY is missing.", errorCode: "AUTH_ERROR" };
-  }
   const relevantCurrencies = getRelevantCurrencies(instrument, instrumentType);
   if (relevantCurrencies.length === 0) {
     return { success: false, error: "No relevant currencies determined for this instrument.", errorCode: "NO_DATA" };
@@ -1216,6 +1261,62 @@ export async function fetchEconomicCalendar(
   const cached = tickAtlasCalendarCache.get(cacheKey);
   if (cached && now < cached.expiresAt) return { success: true, data: cached.data };
   if (cached) tickAtlasCalendarCache.delete(cacheKey);
+
+  // Free public weekly calendar is the default source; TickAtlas remains only
+  // an optional secondary source if the public feed is unavailable.
+  const relevantCountries = new Map(relevantCurrencies.map((item) => [item.currency, item.country]));
+  const publicEvents = await fetchForexFactoryWeeklyCalendar(fetchImpl);
+  if (publicEvents) {
+    const mapped = publicEvents.map((raw) => {
+      const row = raw as Record<string, unknown>;
+      const currency = typeof row.country === "string" ? row.country.toUpperCase() : "";
+      const impact = typeof row.impact === "string" ? row.impact.toLowerCase() : "low";
+      return {
+        id: `ff-${currency}-${String(row.date)}-${String(row.title)}`,
+        event: row.title,
+        currency,
+        datetime: row.date,
+        impact,
+        actual: row.actual,
+        forecast: row.forecast,
+        previous: row.previous,
+        category: "Economic indicator",
+        source: "forex-factory-public",
+        url: "https://www.forexfactory.com/calendar",
+      };
+    });
+    const events = mapped
+      .map((event) => normalizeTickAtlasEvent(event, relevantCountries, now))
+      .filter((event): event is EconomicEvent => event !== null)
+      .sort((a, b) => a.datetime - b.datetime);
+    const nowMs = Date.now();
+    const upcoming = events.filter((event) => event.status === "upcoming" && event.datetime > nowMs);
+    const recentlyReleased = events.filter((event) =>
+      (event.status === "released" || event.status === "revised") &&
+      event.datetime > nowMs - 7 * 86400000,
+    );
+    const hasHighImpact = events.some((event) => event.importance === 3);
+    const confidence: EconomicCalendarData["confidence"] = events.length === 0 ? "unavailable" :
+      hasHighImpact && events.length >= 5 ? "high" : events.length >= 3 ? "medium" : "low";
+    const data: EconomicCalendarData = {
+      provider: "forex-factory-public",
+      events,
+      macroRisk: calculateMacroRisk(events),
+      timestamp: nowMs,
+      freshness: events.length > 0 ? "recent" : "unavailable",
+      confidence,
+      availability: {
+        upcoming24h: upcoming.some((event) => event.datetime <= nowMs + 86400000),
+        upcoming72h: upcoming.some((event) => event.datetime <= nowMs + 3 * 86400000),
+        recentReleased: recentlyReleased.length > 0,
+      },
+    };
+    tickAtlasCalendarCache.set(cacheKey, { data, expiresAt: nowMs + 60 * 60 * 1000 });
+    return { success: true, data };
+  }
+  if (!apiKey?.trim()) {
+    return { success: false, error: "Public economic calendar feed unavailable and no secondary provider is configured.", errorCode: "API_UNAVAILABLE" };
+  }
 
   const countryParam = relevantCurrencies.map((item) => encodeURIComponent(item.country)).join(",");
   const relevantCountries = new Map(relevantCurrencies.map((item) => [item.currency, item.country]));
