@@ -301,6 +301,130 @@ export async function fetchTwelveDataIdxFundamentals(
   return result;
 }
 
+
+const yahooIdxFundamentalsCache = new Map<string, { value: FundamentalData; expiresAt: number }>();
+const yahooIdxFundamentalsInflight = new Map<string, Promise<FundamentalData | null>>();
+
+function yahooRawNumber(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = (value as { raw?: unknown }).raw;
+  return typeof raw === "number" && Number.isFinite(raw) ? raw : undefined;
+}
+
+/**
+ * Free IDX fundamentals via Yahoo Finance's public web session.
+ * Yahoo's quoteSummary endpoint is undocumented and may change; failures are
+ * isolated so price/technical analysis remains available without fabricated ratios.
+ */
+export async function fetchYahooIdxFundamentals(
+  tickerInput: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<FundamentalData | null> {
+  const ticker = tickerInput.trim().toUpperCase().replace(/\\.JK$/, "");
+  if (!ticker || !isIdxListedEquity(ticker)) return null;
+  const canonical = resolveInstrument(ticker);
+  if (!canonical || canonical.primaryExchange !== "IDX") return null;
+  const cached = yahooIdxFundamentalsCache.get(ticker);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+  const pending = yahooIdxFundamentalsInflight.get(ticker);
+  if (pending) return pending;
+
+  const task = (async (): Promise<FundamentalData | null> => {
+    const headers = {
+      accept: "application/json, text/plain, */*",
+      "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+    };
+    const bootstrap = await fetchImpl("https://fc.yahoo.com/", {
+      headers, redirect: "follow", signal: AbortSignal.timeout(8_000),
+    });
+    const cookieHeaders = typeof bootstrap.headers.getSetCookie === "function"
+      ? bootstrap.headers.getSetCookie()
+      : [bootstrap.headers.get("set-cookie") ?? ""];
+    const cookie = cookieHeaders.map(value => value.split(";")[0]).filter(Boolean).join("; ");
+    if (!cookie) throw new Error("Yahoo Finance session cookie unavailable");
+
+    const crumbResponse = await fetchImpl("https://query1.finance.yahoo.com/v1/test/getcrumb", {
+      headers: { ...headers, cookie }, signal: AbortSignal.timeout(8_000),
+    });
+    if (!crumbResponse.ok) throw new Error("Yahoo Finance crumb HTTP " + crumbResponse.status);
+    const crumb = (await crumbResponse.text()).trim();
+    if (!crumb || crumb.length > 256 || /unauthorized|invalid/i.test(crumb)) {
+      throw new Error("Yahoo Finance returned an invalid session crumb");
+    }
+
+    const symbol = ticker + ".JK";
+    const url = new URL("https://query1.finance.yahoo.com/v10/finance/quoteSummary/" + encodeURIComponent(symbol));
+    url.search = new URLSearchParams({
+      modules: "price,summaryDetail,defaultKeyStatistics,financialData",
+      crumb,
+    }).toString();
+    const response = await fetchImpl(url, {
+      headers: { ...headers, cookie }, signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) throw new Error("Yahoo Finance IDX fundamentals HTTP " + response.status);
+    const payload = await response.json() as {
+      quoteSummary?: { result?: Array<Record<string, unknown>>; error?: { description?: string } | null };
+    };
+    const modules = payload.quoteSummary?.result?.[0];
+    if (!modules) throw new Error(payload.quoteSummary?.error?.description || "Yahoo Finance returned no fundamentals");
+    const price = (modules.price && typeof modules.price === "object" ? modules.price : {}) as Record<string, unknown>;
+    const summary = (modules.summaryDetail && typeof modules.summaryDetail === "object" ? modules.summaryDetail : {}) as Record<string, unknown>;
+    const stats = (modules.defaultKeyStatistics && typeof modules.defaultKeyStatistics === "object" ? modules.defaultKeyStatistics : {}) as Record<string, unknown>;
+    const financial = (modules.financialData && typeof modules.financialData === "object" ? modules.financialData : {}) as Record<string, unknown>;
+    const returnedSymbol = String(price.symbol ?? "").toUpperCase();
+    if (returnedSymbol !== symbol) throw new Error("Yahoo Finance IDX fundamentals symbol identity mismatch");
+    const fields: Record<string, number | undefined> = {
+      marketCap: yahooRawNumber(price.marketCap) ?? yahooRawNumber(summary.marketCap),
+      peRatio: yahooRawNumber(summary.trailingPE) ?? yahooRawNumber(stats.trailingPE),
+      forwardPeRatio: yahooRawNumber(summary.forwardPE) ?? yahooRawNumber(stats.forwardPE),
+      pegRatio: yahooRawNumber(stats.pegRatio),
+      priceToSalesRatio: yahooRawNumber(stats.priceToSalesTrailing12Months),
+      evToRevenue: yahooRawNumber(stats.enterpriseToRevenue),
+      evToEbitda: yahooRawNumber(stats.enterpriseToEbitda),
+      revenueGrowth: yahooRawNumber(financial.revenueGrowth),
+      earningsGrowth: yahooRawNumber(financial.earningsGrowth),
+      returnOnAssets: yahooRawNumber(financial.returnOnAssets),
+      revenueTTM: yahooRawNumber(financial.totalRevenue),
+      grossProfitTTM: yahooRawNumber(financial.grossProfits),
+      dilutedEPS: yahooRawNumber(stats.trailingEps),
+      earningsPerShare: yahooRawNumber(stats.trailingEps),
+      beta: yahooRawNumber(stats.beta),
+      sharesOutstanding: yahooRawNumber(stats.sharesOutstanding),
+      fiftyDayMovingAverage: yahooRawNumber(summary.fiftyDayAverage),
+      twoHundredDayMovingAverage: yahooRawNumber(summary.twoHundredDayAverage),
+      bookValue: yahooRawNumber(stats.bookValue),
+      dividendPerShare: yahooRawNumber(summary.dividendRate),
+      dividendYield: yahooRawNumber(summary.dividendYield),
+      revenuePerShare: yahooRawNumber(financial.revenuePerShare),
+      profitMargin: yahooRawNumber(financial.profitMargins),
+      operatingMargin: yahooRawNumber(financial.operatingMargins),
+      returnOnEquity: yahooRawNumber(financial.returnOnEquity),
+      priceToBook: yahooRawNumber(stats.priceToBook),
+      fiftyTwoWeekHigh: yahooRawNumber(summary.fiftyTwoWeekHigh),
+      fiftyTwoWeekLow: yahooRawNumber(summary.fiftyTwoWeekLow),
+    };
+    const availableFields = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+    if (!Object.keys(availableFields).length) return null;
+    const result: FundamentalData = {
+      provider: "yahoo-finance-public",
+      timestamp: Date.now(),
+      instrumentType: "stock",
+      symbol: ticker,
+      ...(typeof price.longName === "string" ? { name: price.longName } : typeof price.shortName === "string" ? { name: price.shortName } : {}),
+      ...availableFields,
+      available: true,
+    };
+    yahooIdxFundamentalsCache.set(ticker, { value: result, expiresAt: Date.now() + 6 * 60 * 60 * 1000 });
+    if (yahooIdxFundamentalsCache.size > 500) {
+      for (const [key, value] of yahooIdxFundamentalsCache) if (value.expiresAt <= Date.now()) yahooIdxFundamentalsCache.delete(key);
+    }
+    return result;
+  })().finally(() => yahooIdxFundamentalsInflight.delete(ticker));
+  yahooIdxFundamentalsInflight.set(ticker, task);
+  return task;
+}
+
 /** Fetch news/sentiment for every supported asset class; stock fundamentals remain equity-only. */
 export async function fetchAlphaVantageIntelligence(
   symbolInput:string,
