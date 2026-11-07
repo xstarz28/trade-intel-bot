@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { getAuthenticatedUser, isAllowedOrigin } from "./auth.mjs";
+import { createUserRateLimiter } from "./market-data.mjs";
 
 const SCAN_LEASE_DURATION_MS = 120_000;
 const SCAN_LEASE_HEARTBEAT_MS = 30_000;
@@ -169,6 +170,7 @@ export function createOpportunityService({ database, intervalMs = 60_000, fetchI
 }
 
 export function createOpportunityHandler({ database, env = process.env, service }) {
+  const allowManualScan = createUserRateLimiter(1, 30_000, 5_000);
   return async (request, response, url) => {
     if (url.pathname !== "/api/v1/opportunities") return false;
     if (request.method !== "GET" && request.method !== "POST") {
@@ -185,6 +187,11 @@ export function createOpportunityHandler({ database, env = process.env, service 
       return true;
     }
     if (request.method === "POST") {
+      if (!allowManualScan(user.id)) {
+        response.setHeader("retry-after", "30");
+        json(response, 429, { error: "manual_opportunity_scan_rate_limited", retryAfterSeconds: 30 });
+        return true;
+      }
       if (!service) {
         json(response, 503, { error: "opportunity_scanner_unavailable" });
         return true;
