@@ -26,6 +26,8 @@ export function restoreDatabase(sourcePath, targetPath) {
   try {
     const result = validation.prepare("PRAGMA quick_check").get();
     if (result?.quick_check !== "ok") throw new Error("Restore source failed SQLite quick_check.");
+    const foreignKeyViolation = validation.prepare("PRAGMA foreign_key_check").get();
+    if (foreignKeyViolation) throw new Error("Restore source failed SQLite foreign_key_check.");
   } finally {
     validation.close();
   }
