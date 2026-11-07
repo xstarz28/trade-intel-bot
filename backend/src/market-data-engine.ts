@@ -175,6 +175,114 @@ function resolveAlphaVantageNewsQuery(
   return { params: { topics: topic }, relatedSymbol: "" };
 }
 
+
+const twelveDataIdxFundamentalsCache = new Map<string, { value: FundamentalData; expiresAt: number }>();
+
+function readProviderNumber(source: unknown, aliases: string[]): number | undefined {
+  if (!source || typeof source !== "object" || Array.isArray(source)) return undefined;
+  const object = source as Record<string, unknown>;
+  for (const alias of aliases) {
+    const raw = object[alias];
+    if (raw === null || raw === undefined || raw === "") continue;
+    const value = typeof raw === "number" ? raw : Number(String(raw).replace(/,/g, ""));
+    if (Number.isFinite(value)) return value;
+  }
+  for (const value of Object.values(object)) {
+    const nested = readProviderNumber(value, aliases);
+    if (nested !== undefined) return nested;
+  }
+  return undefined;
+}
+
+function normalizeProviderPercent(value: number | undefined): number | undefined {
+  if (value === undefined) return undefined;
+  return Math.abs(value) > 1 ? value / 100 : value;
+}
+
+/** IDX statistics are separate from SEC EDGAR, which covers US registrants. */
+export async function fetchTwelveDataIdxFundamentals(
+  tickerInput: string,
+  apiKeyInput: string | undefined,
+  fetchImpl: typeof fetch = fetch,
+): Promise<FundamentalData | null> {
+  const ticker = tickerInput.trim().toUpperCase().replace(/\\.JK$/, "");
+  const canonical = resolveInstrument(ticker);
+  if (!canonical || canonical.assetClass !== "equity" || canonical.primaryExchange !== "IDX") return null;
+  if (!apiKeyInput?.trim()) return null;
+  const providerSymbol = getProviderSymbol(canonical.canonical, "twelve-data");
+  if (!providerSymbol?.toUpperCase().endsWith(".JK")) return null;
+  const cached = twelveDataIdxFundamentalsCache.get(ticker);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const url = new URL("https://api.twelvedata.com/statistics");
+  url.search = new URLSearchParams({ symbol: providerSymbol, mic_code: "XIDX", apikey: apiKeyInput.trim() }).toString();
+  const response = await fetchImpl(url, {
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error("Twelve Data IDX statistics HTTP " + response.status);
+  const payload = await response.json() as Record<string, unknown>;
+  if (typeof payload.code === "number" || (typeof payload.status === "string" && payload.status.toLowerCase() === "error")) {
+    throw new Error("Twelve Data IDX statistics provider rejected the request");
+  }
+  const meta = payload.meta && typeof payload.meta === "object" ? payload.meta as Record<string, unknown> : {};
+  const returnedSymbol = typeof meta.symbol === "string" ? meta.symbol.toUpperCase() : "";
+  const returnedMic = typeof meta.mic_code === "string" ? meta.mic_code.toUpperCase() : "";
+  const returnedExchange = typeof meta.exchange === "string" ? meta.exchange.toUpperCase() : "";
+  if (returnedSymbol && returnedSymbol !== providerSymbol.toUpperCase()) throw new Error("Twelve Data returned a different equity symbol");
+  if (returnedMic && returnedMic !== "XIDX") throw new Error("Twelve Data returned a different exchange MIC");
+  if (!returnedMic && returnedExchange && returnedExchange !== "IDX") throw new Error("Twelve Data returned a different exchange");
+
+  const market = payload.statistics && typeof payload.statistics === "object" ? payload.statistics : payload;
+  const fields: Record<string, number | undefined> = {
+    marketCap: readProviderNumber(market, ["market_capitalization", "market_cap", "marketCapitalization"]),
+    peRatio: readProviderNumber(market, ["pe_ratio", "trailing_pe", "trailingPE"]),
+    forwardPeRatio: readProviderNumber(market, ["forward_pe", "forwardPE"]),
+    pegRatio: readProviderNumber(market, ["peg_ratio", "pegRatio"]),
+    priceToSalesRatio: readProviderNumber(market, ["price_to_sales_ttm", "price_to_sales_ratio"]),
+    evToRevenue: readProviderNumber(market, ["enterprise_to_revenue", "ev_to_revenue"]),
+    evToEbitda: readProviderNumber(market, ["enterprise_to_ebitda", "ev_to_ebitda"]),
+    revenueTTM: readProviderNumber(market, ["revenue_ttm", "revenueTTM"]),
+    grossProfitTTM: readProviderNumber(market, ["gross_profit_ttm", "grossProfitTTM"]),
+    dilutedEPS: readProviderNumber(market, ["diluted_eps_ttm", "dilutedEPS"]),
+    beta: readProviderNumber(market, ["beta"]),
+    sharesOutstanding: readProviderNumber(market, ["shares_outstanding", "sharesOutstanding"]),
+    bookValue: readProviderNumber(market, ["book_value_per_share", "book_value"]),
+    dividendPerShare: readProviderNumber(market, ["dividend_per_share", "dividendPerShare"]),
+    dividendYield: normalizeProviderPercent(readProviderNumber(market, ["dividend_yield", "dividendYield"])),
+    profitMargin: normalizeProviderPercent(readProviderNumber(market, ["profit_margin", "profitMargin"])),
+    operatingMargin: normalizeProviderPercent(readProviderNumber(market, ["operating_margin", "operatingMargin"])),
+    returnOnAssets: normalizeProviderPercent(readProviderNumber(market, ["return_on_assets", "return_on_assets_ttm", "returnOnAssets"])),
+    returnOnEquity: normalizeProviderPercent(readProviderNumber(market, ["return_on_equity", "returnOnEquity"])),
+    priceToBook: readProviderNumber(market, ["price_to_book", "priceToBook"]),
+    fiftyTwoWeekHigh: readProviderNumber(market, ["52_week_high", "fifty_two_week_high"]),
+    fiftyTwoWeekLow: readProviderNumber(market, ["52_week_low", "fifty_two_week_low"]),
+  };
+  const availableFields = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+  if (Object.keys(availableFields).length === 0) return null;
+  const result: FundamentalData = {
+    provider: "twelve-data-statistics",
+    timestamp: Date.now(),
+    instrumentType: "stock",
+    symbol: ticker,
+    ...(typeof meta.name === "string" ? { name: meta.name } : {}),
+    ...availableFields,
+    available: true,
+  };
+  twelveDataIdxFundamentalsCache.set(ticker, { value: result, expiresAt: Date.now() + 6 * 60 * 60 * 1000 });
+  if (twelveDataIdxFundamentalsCache.size > 500) {
+    for (const [key, value] of twelveDataIdxFundamentalsCache) {
+      if (value.expiresAt <= Date.now()) twelveDataIdxFundamentalsCache.delete(key);
+    }
+    while (twelveDataIdxFundamentalsCache.size > 500) {
+      const oldest = twelveDataIdxFundamentalsCache.keys().next().value;
+      if (oldest === undefined) break;
+      twelveDataIdxFundamentalsCache.delete(oldest);
+    }
+  }
+  return result;
+}
+
 /** Fetch news/sentiment for every supported asset class; stock fundamentals remain equity-only. */
 export async function fetchAlphaVantageIntelligence(
   symbolInput:string,
