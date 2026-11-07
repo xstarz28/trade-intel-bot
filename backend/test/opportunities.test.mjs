@@ -17,7 +17,8 @@ function fixture() {
 function responseCapture() {
   return {
     status: 0, headers: {}, body: "",
-    writeHead(status, headers = {}) { this.status = status; this.headers = headers; },
+    setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
+    writeHead(status, headers = {}) { this.status = status; this.headers = { ...this.headers, ...headers }; },
     end(body = "") { this.body = body; },
   };
 }
