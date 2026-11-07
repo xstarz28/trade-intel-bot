@@ -176,6 +176,18 @@ describe("SQLite restore utility", () => {
     assert.throws(() => restoreDatabase(source, join(directory, "wal-source-target.sqlite")), /source SQLite sidecar files exist/);
     rmSync(source + "-wal");
 
+    const invalidRelations = join(directory, "foreign-key-invalid.sqlite");
+    const invalidDatabase = openDatabase(invalidRelations, migrations);
+    invalidDatabase.raw.exec("PRAGMA foreign_keys = OFF");
+    invalidDatabase.raw.prepare(
+      "INSERT INTO notification_preferences (id,user_id,updated_at) VALUES (?,?,?)",
+    ).run("orphan-preference", "missing-user", Date.now());
+    invalidDatabase.close();
+    assert.throws(
+      () => restoreDatabase(invalidRelations, join(directory, "invalid-relations-target.sqlite")),
+      /foreign_key_check/,
+    );
+
     const corrupt = join(directory, "corrupt.sqlite");
     writeFileSync(corrupt, "not a SQLite database");
     const before = readFileSync(target);
