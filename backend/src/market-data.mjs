@@ -240,18 +240,18 @@ export function createMarketDataHandler({database,env=process.env,fetchImpl=fetc
         json(response,result.success?200:503,result);
         return true;
       }
-      const {analyzeMarket,fetchAlphaVantageIntelligence,fetchTwelveDataIdxFundamentals,isIdxListedEquity}=await import("../dist/market-data-engine.mjs");
+      const {analyzeMarket,fetchAlphaVantageIntelligence,fetchYahooIdxFundamentals,isIdxListedEquity}=await import("../dist/market-data-engine.mjs");
       const instrument=typeof input.instrument==="string"?input.instrument.trim().toUpperCase():"";
       const instrumentType=input.instrumentType;
       let fundamentalData;
       if(instrumentType==="stock"&&/^[A-Z0-9.-]{1,15}$/.test(instrument)) {
-        // IDX issuers are not SEC registrants: request their exact XIDX listing
-        // from Twelve Data when configured. Never pass an IDX ticker to SEC.
+        // IDX issuers are not SEC registrants. Use the free Yahoo Finance
+        // public-session endpoint and verify the exact .JK security identity.
         try {
-          const idxFundamentals=await fetchTwelveDataIdxFundamentals(instrument,env.TWELVE_DATA_API_KEY,fetchImpl);
+          const idxFundamentals=await fetchYahooIdxFundamentals(instrument,fetchImpl);
           if(idxFundamentals) fundamentalData=idxFundamentals;
         } catch(error) {
-          console.warn("[market-data] Twelve Data IDX fundamentals unavailable:",error instanceof Error?error.message:"unknown error");
+          console.warn("[market-data] Yahoo Finance IDX fundamentals unavailable:",error instanceof Error?error.message:"unknown error");
         }
         if(!isIdxListedEquity(instrument)) {
           try { await refreshSecObservationsIfStale(database,instrument,env.SEC_USER_AGENT,fetchImpl); }
