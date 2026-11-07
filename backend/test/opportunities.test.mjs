@@ -174,6 +174,70 @@ describe("self-hosted opportunity scanner persistence", () => {
   });
 
 
+
+  it("uses XIDX fundamentals for Indonesian radar equities and never calls US stock enrichment", async () => {
+    const { runOpportunityBatch } = await import("../dist/opportunity-engine.mjs");
+    const now = Date.now();
+    const scanAttempts = Object.fromEntries(
+      ["BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD", "XRP/USD", "ADA/USD", "AVAX/USD", "LINK/USD",
+        "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "USD/CHF", "NZD/USD", "USD/IDR",
+        "USD/SGD", "USD/MXN", "EUR/GBP", "EUR/JPY", "GBP/JPY", "AAPL", "MSFT", "NVDA", "TSLA",
+        "AMZN", "GOOGL", "META", "BBRI", "TLKM", "BMRI", "BBNI", "GOTO", "ASII", "UNVR",
+        "XAU/USD", "XAG/USD", "WTI", "BRENT", "NGAS", "COPPER", "PLAT", "PALL", "SPX", "NDX",
+        "DJI", "RUT", "VIX", "IHSG", "NIFTY50", "NIKKEI", "DAX", "FTSE"].map((symbol) => [symbol, now]),
+    );
+    const requested = [];
+    const env = {
+      ALPHA_VANTAGE_API_KEY: "must-not-be-used-for-idx",
+      TWELVE_DATA_API_KEY: "test-idx-radar-key",
+    };
+    const fetchImpl = async (input) => {
+      const url = new URL(String(input));
+      requested.push(url);
+      if (url.hostname === "api.twelvedata.com" && url.pathname === "/statistics") {
+        return new Response(JSON.stringify({
+          meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
+          statistics: { valuations_metrics: { trailing_pe: "18.2" }, financials: { profit_margin: "0.22", return_on_equity_ttm: "0.19" } },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.hostname === "www.alphavantage.co" || url.hostname === "www.sec.gov" || url.hostname === "data.sec.gov") {
+        throw new Error("IDX radar must not request US-only issuer data");
+      }
+      if (url.hostname === "query1.finance.yahoo.com") {
+        const interval = url.searchParams.get("interval") === "5m" ? 300_000 : 3_600_000;
+        const timestamps = Array.from({ length: 220 }, (_, index) => Math.floor((now - (220-index) * interval) / 1000));
+        const opens = timestamps.map((_, index) => 7000 + index * 2);
+        return new Response(JSON.stringify({
+          chart: { result: [{
+            timestamp: timestamps,
+            indicators: { quote: [{
+              open: opens,
+              high: opens.map((value) => value + 10),
+              low: opens.map((value) => value - 10),
+              close: opens.map((value) => value + 3),
+              volume: opens.map(() => 1_000_000),
+            }] },
+          }] },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("unexpected provider", { status: 404 });
+    };
+    const result = await runOpportunityBatch({
+      cursor: 0,
+      sources: [],
+      previousResults: [],
+      scanAttempts,
+      now,
+      fetchImpl,
+      env,
+    });
+    assert.equal(result.instrument, "BBCA");
+    assert.ok(requested.some((url) => url.pathname === "/statistics" &&
+      url.searchParams.get("symbol") === "BBCA.JK" && url.searchParams.get("mic_code") === "XIDX"));
+    assert.ok(requested.every((url) => !["www.alphavantage.co", "www.sec.gov", "data.sec.gov"].includes(url.hostname)));
+    assert.ok(result.updates.every((source) => source.analysisResult?.fundamentalData?.provider === "twelve-data-statistics"));
+  });
+
   it("rate-limits manual radar scans per authenticated user without blocking other users", async () => {
     const { database } = fixture();
     const now = Date.now();
