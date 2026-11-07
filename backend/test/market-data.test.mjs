@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { analyzeMarket, fetchAlphaVantageIntelligence, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
+import { analyzeMarket, fetchAlphaVantageIntelligence, fetchTwelveDataIdxFundamentals, isIdxListedEquity, fetchCotPositioning, fetchFxReference, fetchOkxInstrumentSpec, fetchOkxOrderBook, fetchOkxFuturesOpenInterest, fetchCryptoDerivatives, fetchCryptoFundamentals, fetchMarketCandlesBatch, fetchMarketQuotesBatch } from "../dist/market-data-engine.mjs";
 
 function okxCandles(now) {
   return Array.from({ length: 220 }, (_, index) => {
@@ -166,6 +166,61 @@ describe("self-hosted market analysis engine", () => {
     assert.equal(result.analysis.fundamentalData.provider, "sec-edgar");
     assert.equal(result.analysis.fundamentalData.earningsPerShare, 6.4);
     assert.equal(result.analysis.fundamentalData.pointInTimeHistory.status, "PERSISTED");
+  });
+
+
+  it("loads exact IDX-listed fundamentals from Twelve Data XIDX without substituting US SEC filings", async () => {
+    const apiKey = "test-twelve-data-fundamentals-secret";
+    let requested;
+    const result = await fetchTwelveDataIdxFundamentals("BBCA", apiKey, async (input) => {
+      requested = new URL(String(input));
+      return new Response(JSON.stringify({
+        meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
+        statistics: {
+          valuations_metrics: { market_capitalization: "1000000000000", trailing_pe: "18.2", price_to_book: "4.1" },
+          financials: { revenue_ttm: "90000000000", profit_margin: "22.5", return_on_equity: "19.2", dividend_yield: "2.1" },
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    assert.equal(requested.pathname, "/statistics");
+    assert.equal(requested.searchParams.get("symbol"), "BBCA.JK");
+    assert.equal(requested.searchParams.get("mic_code"), "XIDX");
+    assert.equal(requested.searchParams.get("apikey"), apiKey);
+    assert.equal(result.provider, "twelve-data-statistics");
+    assert.equal(result.symbol, "BBCA");
+    assert.equal(result.name, "Bank Central Asia");
+    assert.equal(result.marketCap, 1_000_000_000_000);
+    assert.equal(result.peRatio, 18.2);
+    assert.equal(result.revenueTTM, 90_000_000_000);
+    assert.equal(result.profitMargin, 0.225);
+    assert.equal(result.returnOnEquity, 0.192);
+    assert.equal(result.dividendYield, 0.021);
+    assert.equal(result.available, true);
+    assert.equal(JSON.stringify(result).includes(apiKey), false);
+  });
+
+  it("classifies IDX listings strictly and never queries Twelve Data for US stocks or without credentials", async () => {
+    let called = false;
+    assert.equal(isIdxListedEquity("BBCA"), true);
+    assert.equal(isIdxListedEquity("BBCA.JK"), true);
+    assert.equal(isIdxListedEquity("AAPL"), false);
+    assert.equal(await fetchTwelveDataIdxFundamentals("AAPL", "secret", async () => {
+      called = true; throw new Error("US issuer must not be queried via IDX");
+    }), null);
+    assert.equal(await fetchTwelveDataIdxFundamentals("BBCA", undefined, async () => {
+      called = true; throw new Error("Missing credentials must fail closed");
+    }), null);
+    assert.equal(called, false);
+  });
+
+  it("rejects a Twelve Data response that identifies a different IDX security", async () => {
+    await assert.rejects(
+      fetchTwelveDataIdxFundamentals("BBRI", "secret", async () => new Response(JSON.stringify({
+        meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX" },
+        statistics: { valuations_metrics: { trailing_pe: "10" } },
+      }), { status: 200, headers: { "content-type": "application/json" } })),
+      /different equity symbol/,
+    );
   });
 
   it("normalizes Alpha Vantage stock news, sentiment, macro and fundamentals without exposing the API key", async () => {
