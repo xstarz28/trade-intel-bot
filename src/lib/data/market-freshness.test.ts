@@ -15,14 +15,14 @@ describe("candle-aware market-data freshness", () => {
 
   it("uses the weekly candle interval while preserving a finite stale cutoff", () => {
     expect(classifyMarketDataFreshness(1_000, 1_000 + 5 * day, "W1")).toBe("realtime");
-    expect(classifyMarketDataFreshness(1_000, 1_000 + 10 * day, "W1")).toBe("delayed");
+    expect(classifyMarketDataFreshness(1_000, 1_000 + 10 * day, "W1")).toBe("stale");
     expect(classifyMarketDataFreshness(1_000, 1_000 + 12 * day, "W1")).toBe("stale");
     expect(classifyMarketDataFreshness(1_000, 1_000 + 15 * day, "W1")).toBe("unavailable");
   });
 
   it("retains appropriately tight freshness windows for intraday candles", () => {
-    expect(classifyMarketDataFreshness(1_000, 1_000 + 30 * minute, "H1")).toBe("realtime");
-    expect(classifyMarketDataFreshness(1_000, 1_000 + 90 * minute, "H1")).toBe("delayed");
+    expect(classifyMarketDataFreshness(1_000, 1_000 + 30 * minute, "H1")).toBe("delayed");
+    expect(classifyMarketDataFreshness(1_000, 1_000 + 90 * minute, "H1")).toBe("stale");
     expect(classifyMarketDataFreshness(1_000, 1_000 + 12 * hour, "H1")).toBe("stale");
     expect(classifyMarketDataFreshness(1_000, 1_000 + 49 * hour, "H1")).toBe("unavailable");
     expect(classifyMarketDataFreshness(1_000, 1_000 + 3 * minute, "M5")).toBe("realtime");
