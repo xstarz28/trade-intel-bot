@@ -2,9 +2,9 @@
  * Phase 93 — Custom Alert Rules Panel
  *
  * Trader-facing UI for managing custom intelligence alert rules.
- * CRUD via Convex mutations. No auto-execution. INFORMATIONAL_ONLY.
+ * CRUD through the authenticated self-hosted backend API. No auto-execution. INFORMATIONAL_ONLY.
  */
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapPriority, mapScope } from "@/lib/i18n/enum-mapping";
 import { toast } from "sonner";
@@ -19,8 +19,18 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { useBackendSession } from "@/hooks/use-backend-session";
+import {
+  BackendApiError,
+  getBackendGoogleSignInUrl,
+  listBackendAlertRules,
+  createBackendAlertRule,
+  updateBackendAlertRule,
+  deleteBackendAlertRule,
+  listBackendRuleAlertHistory,
+  type BackendAlertRule,
+  type BackendRuleAlertHistory,
+} from "@/lib/backend-api";
 import {
   CONDITION_LABELS,
   SEVERITY_COLORS,
@@ -278,8 +288,8 @@ function RuleRow({
     name: string;
     enabled: boolean;
     scope: string;
-    instrument?: string;
-    positionId?: string;
+    instrument?: string | null;
+    positionId?: string | null;
     condition: string;
     severity: string;
     cooldownMs: number;
@@ -381,18 +391,43 @@ export function CustomAlertRulesPanel() {
   const [showForm, setShowForm] = useState(false);
   const [showAlerts, setShowAlerts] = useState(false);
 
-  // Convex reactive queries
-  const rules = useQuery(api.alertRules.listRules);
-  const recentAlerts = useQuery(
-    api.alertRules.getRecentAlerts,
-    showAlerts ? { limit: 20 } : "skip",
-  );
+  const { state: backendState } = useBackendSession();
+  const backendUserId = backendState.status === "authenticated" ? backendState.user.id : null;
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  const [backendRules, setBackendRules] = useState<BackendAlertRule[]>([]);
+  const [backendAlerts, setBackendAlerts] = useState<BackendRuleAlertHistory[]>([]);
+  const [backendError, setBackendError] = useState<string | null>(null);
 
-  // Convex mutations
-  const createRule = useMutation(api.alertRules.createRule);
-  const updateRule = useMutation(api.alertRules.updateRule);
-  const deleteRule = useMutation(api.alertRules.deleteRule);
+  useEffect(() => {
+    if (!backendUserId) return;
+    let active = true;
+    const historyRequest = showAlerts
+      ? listBackendRuleAlertHistory(20)
+      : Promise.resolve({ items: [] as BackendRuleAlertHistory[] });
+    Promise.all([listBackendAlertRules(), historyRequest])
+      .then(([ruleResult, alertResult]) => {
+        if (!active) return;
+        setBackendRules(ruleResult.items);
+        setBackendAlerts(alertResult.items);
+        setBackendError(null);
+        setLoadedUserId(backendUserId);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setBackendRules([]);
+        setBackendAlerts([]);
+        setBackendError(cause instanceof BackendApiError
+          ? "Backend alert rules error: " + cause.code
+          : "Tidak dapat memuat aturan alert dari backend.");
+        setLoadedUserId(backendUserId);
+      });
+    return () => { active = false; };
+  }, [backendUserId, showAlerts]);
 
+  const rules = loadedUserId === backendUserId && backendUserId ? backendRules : undefined;
+  const recentAlerts = loadedUserId === backendUserId && backendUserId && showAlerts
+    ? backendAlerts
+    : undefined;
   const ruleCount = rules?.length ?? 0;
   const atLimit = ruleCount >= MAX_RULES_PER_USER;
 
@@ -408,50 +443,65 @@ export function CustomAlertRulesPanel() {
     }) => {
       try {
         const ruleId = `rule-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-        await createRule({
+        const { item } = await createBackendAlertRule({
           ruleId,
           name: opts.name,
           enabled: true,
           scope: opts.scope,
-          instrument: opts.instrument,
-          positionId: opts.positionId,
+          instrument: opts.instrument ?? null,
+          positionId: opts.positionId ?? null,
           condition: opts.condition,
           severity: opts.severity,
           cooldownMs: opts.cooldownMs,
         });
+        setBackendRules((current) => [item, ...current.filter((rule) => rule.ruleId !== item.ruleId)]);
         toast.success(`Rule "${opts.name}" created`);
       } catch (err: any) {
         toast.error(err?.message ?? "Failed to create rule");
       }
     },
-    [createRule],
+    [],
   );
 
   const handleToggle = useCallback(
     async (ruleId: string, enabled: boolean) => {
       try {
-        await updateRule({ ruleId, enabled });
+        const { item } = await updateBackendAlertRule(ruleId, { enabled });
+        setBackendRules((current) => current.map((rule) => rule.ruleId === ruleId ? item : rule));
       } catch (err: any) {
         toast.error(err?.message ?? "Failed to update rule");
       }
     },
-    [updateRule],
+    [],
   );
 
   const handleDelete = useCallback(
     async (ruleId: string) => {
       try {
-        await deleteRule({ ruleId });
+        await deleteBackendAlertRule(ruleId);
+        setBackendRules((current) => current.filter((rule) => rule.ruleId !== ruleId));
         toast.success("Rule deleted");
       } catch (err: any) {
         toast.error(err?.message ?? "Failed to delete rule");
       }
     },
-    [deleteRule],
+    [],
   );
+
+  if (backendState.status !== "authenticated") {
+    return (
+      <div className="space-y-2 rounded-lg border border-border/40 p-3">
+        <span className="text-[10px] font-mono font-semibold">Alert Rules</span>
+        <p className="text-xs text-muted-foreground">Aturan alert dikelola oleh backend mandiri. Hubungkan akun backend untuk melanjutkan.</p>
+        {backendState.status === "error" && <p role="alert" className="text-xs text-destructive">Sesi backend tidak dapat diperiksa.</p>}
+        {backendState.status === "anonymous" && <Button size="sm" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>Hubungkan akun backend</Button>}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
+      {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

@@ -4,11 +4,11 @@
  * Professional trading/investment journal interface.
  * Pure presentation — zero decision logic.
  *
- * Reads journal state through Convex queries/mutations.
+ * Reads and persists journal state through the authenticated self-hosted API.
  * Never calculates bias, conviction, gates, or scenarios.
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -18,19 +18,23 @@ import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import type { AnalysisResult } from "@/types/analysis";
 import {
-  createAnalysisSnapshot,
   journalFromAnalysis,
   createObservationEntry,
-  transitionEntry,
-  updateReview,
-  updateTradeInfo,
   isValidTransition,
-  isTerminal,
   getValidTransitions,
-  computePnl,
-  classifyOutcome,
 } from "@/lib/journal";
 import type { JournalEntry, TradeStatus } from "@/types/journal";
+import { useBackendSession } from "@/hooks/use-backend-session";
+import {
+  BackendApiError,
+  createBackendJournalEntry,
+  getBackendGoogleSignInUrl,
+  listBackendJournal,
+  transitionBackendJournalEntry,
+  updateBackendJournalEntry,
+} from "@/lib/backend-api";
+import { backendJournalToEntry } from "@/lib/backend-journal-adapter";
+import { journalEntryToBackendCreate } from "@/lib/backend-journal-payload";
 
 // ── Status Colors ────────────────────────────────────────────────
 
@@ -69,43 +73,88 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   const [view, setView] = useState<"list" | "detail" | "create">("list");
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
+  const { state: backendState } = useBackendSession();
+  const backendUserId = backendState.status === "authenticated" ? backendState.user.id : null;
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [backendError, setBackendError] = useState<string | null>(null);
+  const loading = Boolean(backendUserId && loadedUserId !== backendUserId);
+  const journalEntries = loadedUserId === backendUserId ? entries : [];
+
+  useEffect(() => {
+    if (!backendUserId) return;
+    let active = true;
+    listBackendJournal()
+      .then(({ items }) => {
+        if (!active) return;
+        const mapped = items.map(backendJournalToEntry);
+        setEntries(mapped);
+        setSelectedEntry((current) =>
+          current ? mapped.find((entry) => entry.id === current.id) ?? null : null,
+        );
+        setBackendError(null);
+        setLoadedUserId(backendUserId);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setEntries([]);
+        setSelectedEntry(null);
+        setBackendError(cause instanceof BackendApiError
+          ? "Backend journal error: " + cause.code
+          : "Tidak dapat memuat jurnal dari backend.");
+        setLoadedUserId(backendUserId);
+      });
+    return () => { active = false; };
+  }, [backendUserId]);
   const [filterInstrument, setFilterInstrument] = useState("");
   const [filterStatus, setFilterStatus] = useState("");
   const [editMode, setEditMode] = useState(false);
 
   // ── Create from analysis ──
-  const handleCreateFromAnalysis = (result: AnalysisResult) => {
-    const entry = journalFromAnalysis(result);
-    setEntries((prev) => [entry, ...prev]);
-    setSelectedEntry(entry);
-    setView("detail");
-    onJournalCreated?.(entry);
-  };
-
-  const handleCreateObservation = (result: AnalysisResult) => {
-    const entry = createObservationEntry(result, "Observation — no trade taken");
-    setEntries((prev) => [entry, ...prev]);
-    setSelectedEntry(entry);
-    setView("detail");
-    onJournalCreated?.(entry);
-  };
-
-  // ── Lifecycle ──
-  const handleTransition = (entry: JournalEntry, newStatus: TradeStatus) => {
+  const persistNewEntry = async (entry: JournalEntry) => {
+    setSaving(true);
+    setBackendError(null);
     try {
-      const updated = transitionEntry(entry, newStatus);
-      updateEntryInList(updated);
-      setSelectedEntry(updated);
-    } catch (e) {
-      console.error("Invalid transition:", e);
+      const { item } = await createBackendJournalEntry(journalEntryToBackendCreate(entry));
+      const persisted = backendJournalToEntry(item);
+      setEntries((prev) => [persisted, ...prev.filter((existing) => existing.id !== persisted.id)]);
+      setSelectedEntry(persisted);
+      setView("detail");
+      onJournalCreated?.(persisted);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menyimpan jurnal: " + cause.code
+        : "Gagal menyimpan jurnal ke backend.");
+    } finally {
+      setSaving(false);
     }
   };
 
-  const handleClose = (entry: JournalEntry, exitPrice?: number, pnl?: number) => {
-    const outcome = classifyOutcome(pnl);
-    const updated = transitionEntry(entry, "CLOSED", { exitPrice, pnl, outcome });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
+  const handleCreateFromAnalysis = (result: AnalysisResult) => {
+    void persistNewEntry(journalFromAnalysis(result));
+  };
+
+  const handleCreateObservation = (result: AnalysisResult) => {
+    void persistNewEntry(createObservationEntry(result, "Observation — no trade taken"));
+  };
+
+  // ── Lifecycle ──
+  const handleTransition = async (entry: JournalEntry, newStatus: TradeStatus) => {
+    if (!isValidTransition(entry.status, newStatus)) return;
+    setSaving(true);
+    setBackendError(null);
+    try {
+      const { item } = await transitionBackendJournalEntry(entry.id, { newStatus });
+      const updated = backendJournalToEntry(item);
+      updateEntryInList(updated);
+      setSelectedEntry(updated);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal mengubah status: " + cause.code
+        : "Gagal mengubah status jurnal.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Updates ──
@@ -113,30 +162,75 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
     setEntries((prev) => prev.map((e) => (e.id === updated.id ? updated : e)));
   };
 
-  const handleUpdateNotes = (entry: JournalEntry, notes: string) => {
-    const updated = updateReview(entry, { notes });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
+  const handleUpdateReview = async (entry: JournalEntry, field: string, value: string) => {
+    const allowed = new Set([
+      "entryReason", "thesisAtEntry", "confirmationObserved", "invalidationObserved",
+      "whatWentRight", "whatWentWrong", "lessons", "notes",
+    ]);
+    if (!allowed.has(field)) return;
+    setSaving(true);
+    setBackendError(null);
+    try {
+      const { item } = await updateBackendJournalEntry(entry.id, { [field]: value });
+      const persisted = backendJournalToEntry(item);
+      updateEntryInList(persisted);
+      setSelectedEntry(persisted);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menyimpan review: " + cause.code
+        : "Gagal menyimpan review jurnal.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleUpdateReview = (entry: JournalEntry, field: string, value: string) => {
-    const updated = updateReview(entry, { [field]: value });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
-  };
-
-  const handleUpdateTrade = (entry: JournalEntry, field: string, value: number | undefined) => {
-    const updated = updateTradeInfo(entry, { [field]: value });
-    updateEntryInList(updated);
-    setSelectedEntry(updated);
+  const handleUpdateTrade = async (entry: JournalEntry, field: string, value: number | undefined) => {
+    const allowed = new Set(["entry", "stopLoss", "takeProfit", "riskReward", "positionSize", "notionalValue"]);
+    if (!allowed.has(field)) return;
+    setSaving(true);
+    setBackendError(null);
+    try {
+      const { item } = await updateBackendJournalEntry(entry.id, { [field]: value });
+      const persisted = backendJournalToEntry(item);
+      updateEntryInList(persisted);
+      setSelectedEntry(persisted);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menyimpan trade: " + cause.code
+        : "Gagal menyimpan detail trade.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   // ── Filtered entries ──
-  const filteredEntries = entries.filter((e) => {
+  const filteredEntries = journalEntries.filter((e) => {
     if (filterInstrument && !e.instrument.toLowerCase().includes(filterInstrument.toLowerCase())) return false;
     if (filterStatus && e.status !== filterStatus) return false;
     return true;
   });
+
+  if (backendState.status !== "authenticated") {
+    return (
+      <Card className="border border-border/50">
+        <CardHeader className="pb-2">
+          <h3 className="text-sm font-mono font-semibold">Trade Journal</h3>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Jurnal tersimpan di backend mandiri. Hubungkan akun backend sebelum membuat atau membaca catatan.
+          </p>
+          {backendState.status === "loading" && <p className="text-xs text-muted-foreground">Memeriksa sesi backend...</p>}
+          {backendState.status === "error" && <p role="alert" className="text-xs text-destructive">Sesi backend tidak dapat diperiksa.</p>}
+          {backendState.status === "anonymous" && (
+            <Button size="sm" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>
+              Hubungkan akun backend
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
 
   // ════════════════════════════════════════════════════════════════
   // CREATE VIEW
@@ -154,6 +248,8 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
+          {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
+          {saving && <p className="text-[10px] text-muted-foreground">Menyimpan jurnal...</p>}
           <p className="text-xs text-muted-foreground">
             Snapshot the current analysis. This captures the engine output at this moment.
           </p>
@@ -191,7 +287,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
   // DETAIL VIEW
   // ════════════════════════════════════════════════════════════════
 
-  if (view === "detail" && selectedEntry) {
+  if (view === "detail" && selectedEntry && journalEntries.some((entry) => entry.id === selectedEntry.id)) {
     const entry = selectedEntry;
     const snap = entry.analysisSnapshot;
     const validNext = getValidTransitions(entry);
@@ -217,6 +313,8 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
           </div>
         </CardHeader>
         <CardContent className="space-y-4 text-xs font-mono">
+          {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
+          {saving && <p className="text-[10px] text-muted-foreground">Menyimpan perubahan...</p>}
 
           {/* ── ENGINE SNAPSHOT (read-only) ── */}
           <div>
@@ -300,7 +398,8 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
                     size="sm"
                     variant={status === "OPEN" ? "default" : "outline"}
                     className="text-[10px] font-mono"
-                    onClick={() => handleTransition(entry, status)}
+                    disabled={saving}
+                    onClick={() => void handleTransition(entry, status)}
                   >
                     → {status}
                   </Button>
@@ -370,12 +469,20 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
+        {(loading || saving) && <p className="text-[10px] text-muted-foreground">{loading ? "Memuat jurnal..." : "Menyimpan perubahan..."}</p>}
+        {backendState.user.isAnonymous && (
+          <div className="flex items-center justify-between gap-2 rounded border border-amber-500/20 p-2">
+            <span className="text-[10px] text-muted-foreground">Jurnal berada di sesi tamu backend.</span>
+            <Button size="sm" variant="outline" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>Hubungkan Google</Button>
+          </div>
+        )}
         {/* Quick Stats */}
         <div className="flex flex-wrap gap-2 text-[10px] font-mono">
-          <Badge variant="outline" className="border-border/50">total: {entries.length}</Badge>
-          <Badge variant="outline" className="border-border/50">open: {entries.filter((e) => e.status === "OPEN").length}</Badge>
-          <Badge variant="outline" className="border-border/50">closed: {entries.filter((e) => e.status === "CLOSED").length}</Badge>
-          <Badge variant="outline" className="border-border/50">planned: {entries.filter((e) => e.status === "PLANNED").length}</Badge>
+          <Badge variant="outline" className="border-border/50">total: {journalEntries.length}</Badge>
+          <Badge variant="outline" className="border-border/50">open: {journalEntries.filter((e) => e.status === "OPEN").length}</Badge>
+          <Badge variant="outline" className="border-border/50">closed: {journalEntries.filter((e) => e.status === "CLOSED").length}</Badge>
+          <Badge variant="outline" className="border-border/50">planned: {journalEntries.filter((e) => e.status === "PLANNED").length}</Badge>
         </div>
 
         {/* Filters */}
@@ -403,7 +510,7 @@ export function Journal({ currentResult, onJournalCreated, onBack }: JournalProp
         {/* Entry List */}
         {filteredEntries.length === 0 ? (
           <p className="text-xs text-muted-foreground text-center py-4">
-            {entries.length === 0 ? "No journal entries yet." : "No entries match filters."}
+            {journalEntries.length === 0 ? "No journal entries yet." : "No entries match filters."}
           </p>
         ) : (
           <div className="space-y-1">

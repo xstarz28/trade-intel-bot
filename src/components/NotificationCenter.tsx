@@ -5,11 +5,22 @@
  * filtering, and severity display. Informational only — no execution buttons.
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapPriority, mapSide } from "@/lib/i18n/enum-mapping";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { useBackendSession } from "@/hooks/use-backend-session";
+import {
+  BackendApiError,
+  getBackendGoogleSignInUrl,
+  listBackendNotifications,
+  getBackendNotificationPreferences,
+  markBackendNotificationRead,
+  markAllBackendNotificationsRead,
+  saveBackendNotificationPreferences,
+  resetBackendNotificationPreferences,
+  type BackendNotification,
+  type BackendNotificationPreferences,
+} from "@/lib/backend-api";
 import type { NotificationFilter } from "../lib/position-protection/notification-engine";
 import {
   filterNotifications,
@@ -58,18 +69,107 @@ export function NotificationCenter() {
   const { t } = useI18n();
   const [filter, setFilter] = useState<NotificationFilter>("ALL");
   const [showPrefs, setShowPrefs] = useState(false);
-  const notifications = useQuery(api.notifications.getNotifications, { limit: 100 });
-  const unreadCount = useQuery(api.notifications.getUnreadCount);
-  const markRead = useMutation(api.notifications.markNotificationRead);
-  const markAllRead = useMutation(api.notifications.markAllNotificationsRead);
+  const { state: backendState } = useBackendSession();
+  const backendUserId = backendState.status === "authenticated" ? backendState.user.id : null;
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  const [backendItems, setBackendItems] = useState<BackendNotification[]>([]);
+  const [rawPrefs, setRawPrefs] = useState<BackendNotificationPreferences | undefined>();
+  const [backendError, setBackendError] = useState<string | null>(null);
 
-  // Phase 98: Notification preferences
-  const rawPrefs = useQuery(api.notificationPreferences.getPreferences);
-  const savePrefsMut = useMutation(api.notificationPreferences.savePreferences);
-  const resetPrefsMut = useMutation(api.notificationPreferences.resetPreferences);
+  useEffect(() => {
+    if (!backendUserId) return;
+    let active = true;
+    Promise.all([listBackendNotifications(100), getBackendNotificationPreferences()])
+      .then(([notificationResult, preferenceResult]) => {
+        if (!active) return;
+        setBackendItems(notificationResult.items);
+        setRawPrefs(preferenceResult.preferences);
+        setBackendError(null);
+        setLoadedUserId(backendUserId);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setBackendItems([]);
+        setRawPrefs(undefined);
+        setBackendError(cause instanceof BackendApiError
+          ? "Backend notification error: " + cause.code
+          : "Tidak dapat memuat notifikasi dari backend.");
+        setLoadedUserId(backendUserId);
+      });
+    return () => { active = false; };
+  }, [backendUserId]);
+
+  const notifications = useMemo(() => {
+    if (!backendUserId || loadedUserId !== backendUserId) return undefined;
+    return backendItems.map((item) => ({
+      ...item,
+      userId: backendUserId,
+      createdAt: item.timestamp,
+      instrument: item.instrument ?? undefined,
+      positionId: item.positionId ?? undefined,
+      side: item.side ?? undefined,
+      severity: item.severity as NotificationSeverity,
+      category: item.category as NotificationCategory,
+      impact: item.impact as Notification["impact"],
+      source: "CUSTOM_RULE" as const,
+      condition: item.condition as Notification["condition"],
+    })) as Notification[];
+  }, [backendItems, backendUserId, loadedUserId]);
+
+  const unreadCount = notifications?.filter((item) => !item.read).length;
+  const isLoading = backendState.status === "loading" ||
+    (backendUserId !== null && loadedUserId !== backendUserId);
+
+  const persistPreferences = async (updated: NotificationPreferences) => {
+    try {
+      const result = await saveBackendNotificationPreferences(updated);
+      setRawPrefs(result.preferences);
+      setBackendError(null);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menyimpan preferensi: " + cause.code
+        : "Gagal menyimpan preferensi notifikasi.");
+    }
+  };
+
+  const handleMarkRead = async (notificationId: string) => {
+    try {
+      await markBackendNotificationRead(notificationId);
+      setBackendItems((items) => items.map((item) =>
+        item.notificationId === notificationId ? { ...item, read: true } : item,
+      ));
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menandai notifikasi: " + cause.code
+        : "Gagal memperbarui notifikasi.");
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    try {
+      await markAllBackendNotificationsRead();
+      setBackendItems((items) => items.map((item) => ({ ...item, read: true })));
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal menandai semua notifikasi: " + cause.code
+        : "Gagal memperbarui notifikasi.");
+    }
+  };
+
+  const handleResetPreferences = async () => {
+    try {
+      const result = await resetBackendNotificationPreferences();
+      setRawPrefs(result.preferences);
+      setBackendError(null);
+    } catch (cause) {
+      setBackendError(cause instanceof BackendApiError
+        ? "Gagal reset preferensi: " + cause.code
+        : "Gagal reset preferensi notifikasi.");
+    }
+  };
 
   const prefs: NotificationPreferences = useMemo(() => {
-    if (!rawPrefs) return DEFAULT_PREFERENCES;
+    if (!rawPrefs || loadedUserId !== backendUserId) return DEFAULT_PREFERENCES;
     return {
       minimumSeverity: (rawPrefs as any).minimumSeverity ?? DEFAULT_PREFERENCES.minimumSeverity,
       enabledCategories: (rawPrefs as any).enabledCategories ?? DEFAULT_PREFERENCES.enabledCategories,
@@ -80,7 +180,7 @@ export function NotificationCenter() {
       showReadNotifications: (rawPrefs as any).showReadNotifications ?? DEFAULT_PREFERENCES.showReadNotifications,
       showDismissedNotifications: (rawPrefs as any).showDismissedNotifications ?? DEFAULT_PREFERENCES.showDismissedNotifications,
     };
-  }, [rawPrefs]);
+  }, [rawPrefs, loadedUserId, backendUserId]);
 
   const filtered = useMemo(() => {
     if (!notifications) return [];
@@ -100,10 +200,22 @@ export function NotificationCenter() {
     ).length;
   }, [notifications, prefs]);
 
-  const isLoading = notifications === undefined;
+
+
+  if (backendState.status !== "authenticated") {
+    return (
+      <div className="space-y-2 rounded-lg border border-border/40 p-3">
+        <h3 className="text-sm font-mono font-semibold">{t.notifications.title}</h3>
+        <p className="text-xs text-muted-foreground">Notifikasi tersimpan di backend mandiri. Hubungkan akun backend untuk melihat dan mengelolanya.</p>
+        {backendState.status === "error" && <p role="alert" className="text-xs text-destructive">Sesi backend tidak dapat diperiksa.</p>}
+        {backendState.status === "anonymous" && <button className="text-xs underline" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>Hubungkan akun backend</button>}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
+      {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -125,7 +237,7 @@ export function NotificationCenter() {
           </button>
           {unreadCount !== undefined && unreadCount > 0 && (
             <button
-              onClick={() => markAllRead()}
+              onClick={() => handleMarkAllRead()}
               className="text-[10px] font-mono text-muted-foreground hover:text-foreground transition-colors"
             >
               {t.notifications.markAllRead}
@@ -171,7 +283,7 @@ export function NotificationCenter() {
                   key={sev}
                   onClick={() => {
                     const updated = { ...prefs, minimumSeverity: sev as NotificationSeverity };
-                    savePrefsMut({
+                    void persistPreferences({
                       minimumSeverity: updated.minimumSeverity,
                       enabledCategories: updated.enabledCategories,
                       enabledScopes: updated.enabledScopes,
@@ -204,7 +316,7 @@ export function NotificationCenter() {
                     ...prefs,
                     enabledCategories: prefs.enabledCategories.length === ALL_CATEGORIES.length ? [] : [...ALL_CATEGORIES],
                   };
-                  savePrefsMut({
+                  void persistPreferences({
                     minimumSeverity: updated.minimumSeverity,
                     enabledCategories: updated.enabledCategories,
                     enabledScopes: updated.enabledScopes,
@@ -237,7 +349,7 @@ export function NotificationCenter() {
                         newCats = [...prefs.enabledCategories, cat];
                       }
                       const updated = { ...prefs, enabledCategories: newCats };
-                      savePrefsMut({
+                      void persistPreferences({
                         minimumSeverity: updated.minimumSeverity,
                         enabledCategories: updated.enabledCategories,
                         enabledScopes: updated.enabledScopes,
@@ -271,7 +383,7 @@ export function NotificationCenter() {
                   checked={prefs.showReadNotifications}
                   onChange={(e) => {
                     const updated = { ...prefs, showReadNotifications: e.target.checked };
-                    savePrefsMut({
+                    void persistPreferences({
                       minimumSeverity: updated.minimumSeverity,
                       enabledCategories: updated.enabledCategories,
                       enabledScopes: updated.enabledScopes,
@@ -292,7 +404,7 @@ export function NotificationCenter() {
                   checked={prefs.showDismissedNotifications}
                   onChange={(e) => {
                     const updated = { ...prefs, showDismissedNotifications: e.target.checked };
-                    savePrefsMut({
+                    void persistPreferences({
                       minimumSeverity: updated.minimumSeverity,
                       enabledCategories: updated.enabledCategories,
                       enabledScopes: updated.enabledScopes,
@@ -312,7 +424,7 @@ export function NotificationCenter() {
 
           {/* Reset */}
           <button
-            onClick={() => resetPrefsMut()}
+            onClick={() => handleResetPreferences()}
             className="text-[9px] font-mono text-muted-foreground/50 hover:text-muted-foreground transition-colors"
           >
             Reset to defaults
@@ -348,7 +460,7 @@ export function NotificationCenter() {
             key={notif.notificationId}
             onClick={() => {
               if (!notif.read) {
-                markRead({ notificationId: notif.notificationId });
+                void handleMarkRead(notif.notificationId);
               }
             }}
             className={`flex items-start gap-2 p-2 rounded-lg border cursor-pointer transition-colors ${

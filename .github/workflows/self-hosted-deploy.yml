@@ -1,0 +1,290 @@
+name: Self-hosted production deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Exact branch, tag or commit to deploy"
+        required: true
+        default: "architecture/self-hosted-backend-foundation"
+        type: string
+      confirm:
+        description: "Type DEPLOY_SELF_HOSTED to confirm the production deployment"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: self-hosted-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Backup, deploy and verify the self-hosted stack
+    runs-on: ubuntu-24.04
+    environment: production
+    timeout-minutes: 45
+    env:
+      SSH_HOST: ${{ secrets.SELF_HOSTED_SSH_HOST }}
+      SSH_USER: ${{ secrets.SELF_HOSTED_SSH_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SELF_HOSTED_SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SELF_HOSTED_SSH_KNOWN_HOSTS }}
+      CONFIRM_DEPLOY: ${{ inputs.confirm }}
+      GH_TOKEN: ${{ github.token }}
+      SSH_PORT: ${{ vars.SELF_HOSTED_SSH_PORT || '22' }}
+      APP_DIR: ${{ vars.SELF_HOSTED_APP_DIR || '/opt/trade-intel' }}
+    steps:
+      - name: Require explicit production confirmation and host credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$CONFIRM_DEPLOY" = "DEPLOY_SELF_HOSTED" || { echo "::error::Type DEPLOY_SELF_HOSTED to confirm."; exit 1; }
+          for name in SSH_HOST SSH_USER SSH_PRIVATE_KEY SSH_KNOWN_HOSTS; do
+            test -n "${!name:-}" || { echo "::error::Missing production secret: SELF_HOSTED_SSH_${name#SSH_}."; exit 1; }
+          done
+          [[ "$APP_DIR" =~ ^/[A-Za-z0-9._/-]+$ ]] || { echo "::error::SELF_HOSTED_APP_DIR must be an absolute path with no shell metacharacters."; exit 1; }
+          [[ "$SSH_PORT" =~ ^[0-9]{1,5}$ ]] || { echo "::error::SELF_HOSTED_SSH_PORT must be numeric."; exit 1; }
+          test "$SSH_PORT" -ge 1 && test "$SSH_PORT" -le 65535
+
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+
+      - name: Resolve exact checked-out deployment commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain)" || { echo "::error::Refusing to deploy a dirty source checkout."; exit 1; }
+          echo "DEPLOY_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+          echo "DEPLOY_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
+      - name: Require successful CI for the exact deployment commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          runs="$(curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$DEPLOY_SHA&per_page=100")"
+          for required in "CI" "Backend Foundation CI"; do
+            latest="$(printf '%s' "$runs" | jq -c --arg name "$required" '[.workflow_runs[] | select(.name == $name)] | sort_by(.created_at) | last // empty')"
+            if [ -z "$latest" ]; then
+              echo "::error::No '$required' workflow run exists for $DEPLOY_SHA."
+              exit 1
+            fi
+            status="$(printf '%s' "$latest" | jq -r '.status')"
+            conclusion="$(printf '%s' "$latest" | jq -r '.conclusion // empty')"
+            if [ "$status" != "completed" ] || [ "$conclusion" != "success" ]; then
+              echo "::error::'$required' is not green for $DEPLOY_SHA (status=$status, conclusion=${conclusion:-pending})."
+              exit 1
+            fi
+            echo "'$required' passed for $DEPLOY_SHA."
+          done
+
+      - name: Package exact source revision without secrets or local build artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/deploy-meta"
+          printf '%s\n' "$DEPLOY_SHA" > "$RUNNER_TEMP/deploy-meta/.deploy-commit"
+          printf '%s\n' "$DEPLOY_EPOCH" > "$RUNNER_TEMP/deploy-meta/.deploy-epoch"
+          tar -czf "$RUNNER_TEMP/trade-intel-release.tar.gz" \
+            --exclude=.git --exclude=node_modules --exclude=dist \
+            --exclude=backend/.env --exclude=.env --exclude='*.sqlite' . \
+            -C "$RUNNER_TEMP/deploy-meta" .deploy-commit .deploy-epoch
+          sha256sum "$RUNNER_TEMP/trade-intel-release.tar.gz"
+
+      - name: Configure pinned SSH transport
+        id: configure_ssh
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+          ssh-keygen -y -f "$HOME/.ssh/id_ed25519" >/dev/null
+
+      - name: Upload release archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -P "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$RUNNER_TEMP/trade-intel-release.tar.gz" \
+            "$SSH_USER@$SSH_HOST:/tmp/trade-intel-${DEPLOY_SHA}.tar.gz"
+
+      - name: Backup database, deploy exact revision and rollback on failed health check
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' EPOCH='$DEPLOY_EPOCH' bash -s" <<'REMOTE'
+          set -euo pipefail
+          RELEASE_DIR="$APP_DIR/releases/$SHA"
+          ARCHIVE="/tmp/trade-intel-$SHA.tar.gz"
+          PREVIOUS="$(readlink -f "$APP_DIR/current" 2>/dev/null || true)"
+          ROLLBACK_FILE="$APP_DIR/shared/rollback-$SHA"
+          mkdir -p "$RELEASE_DIR" "$APP_DIR/shared"
+          test -f "$APP_DIR/shared/backend.env" || {
+            echo "Missing $APP_DIR/shared/backend.env; configure the production environment file once on the host."
+            exit 1
+          }
+          chmod 600 "$APP_DIR/shared/backend.env"
+          tar -xzf "$ARCHIVE" -C "$RELEASE_DIR"
+          test "$(cat "$RELEASE_DIR/.deploy-commit")" = "$SHA"
+          test "$(cat "$RELEASE_DIR/.deploy-epoch")" = "$EPOCH"
+          [[ "$EPOCH" =~ ^[0-9]+$ ]]
+          export XSTARZ_BUILD_COMMIT="$SHA"
+          export XSTARZ_BUILD_REF="$SHA"
+          export XSTARZ_BUILD_WORKTREE_CLEAN=true
+          export SOURCE_DATE_EPOCH="$EPOCH"
+          ln -sfn "$APP_DIR/shared/backend.env" "$RELEASE_DIR/backend/.env"
+
+          # Build and validate the exact release before switching the live symlink.
+          # This keeps the previous release serving traffic if OAuth or compose config is invalid.
+          cd "$RELEASE_DIR/backend"
+          docker compose -p trade-intel config --quiet
+          XSTARZ_BUILD_COMMIT="$SHA" XSTARZ_BUILD_REF="$SHA" \
+            XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$EPOCH" \
+            docker compose -p trade-intel build api
+          docker compose -p trade-intel run --rm --no-deps api node scripts/verify-google-auth-config.mjs
+
+          # Snapshot the persistent data volume before every cutover, including
+          # the first self-hosted release when no previous release symlink exists.
+          # The new image contains the current backup verifier and shares the same
+          # named SQLite volume as the live API service.
+          docker compose -p trade-intel -f "$RELEASE_DIR/backend/compose.yaml" \
+            run --rm --no-deps api \
+            node backend/backup.mjs "/data/backups/predeploy-$SHA.sqlite" --if-exists
+          printf '%s\n' "$PREVIOUS" > "$ROLLBACK_FILE"
+          chmod 600 "$ROLLBACK_FILE"
+
+          ln -sfn "$RELEASE_DIR" "$APP_DIR/current.next"
+          mv -Tf "$APP_DIR/current.next" "$APP_DIR/current"
+          cd "$APP_DIR/current/backend"
+          if ! docker compose -p trade-intel up -d --remove-orphans; then
+            if [ -n "$PREVIOUS" ]; then
+              PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
+              PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
+              export XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA"
+              export XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH"
+              ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
+              mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
+              cd "$APP_DIR/current/backend"
+              XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA" \
+                XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH" \
+                docker compose -p trade-intel up --build -d --remove-orphans || true
+            fi
+            exit 1
+          fi
+
+          healthy=false
+          for attempt in $(seq 1 30); do
+            if docker compose -p trade-intel exec -T api node -e \
+              "fetch('http://127.0.0.1:8787/health/ready').then(async r=>{const body=await r.json();process.exit(r.ok && body.release?.commit===process.env.XSTARZ_BUILD_COMMIT ? 0 : 1)}).catch(()=>process.exit(1))"; then
+              healthy=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$healthy" != true ]; then
+            echo "Self-hosted API did not become ready; rolling back."
+            if [ -n "$PREVIOUS" ]; then
+              ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
+              mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
+              PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
+              PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
+              cd "$APP_DIR/current/backend"
+              XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA" \
+                XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH" \
+                docker compose -p trade-intel up --build -d --remove-orphans || true
+            fi
+            exit 1
+          fi
+          rm -f "$ARCHIVE"
+          echo "Self-hosted API is healthy on revision $SHA."
+          REMOTE
+
+      - name: Verify canonical public HTTPS endpoint
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            response="$(curl --fail --silent --show-error --max-time 10 https://xstarzganalys.com/health/ready || true)"
+            if [ -n "$response" ] && [ "$(printf '%s' "$response" | jq -r '.release.commit // empty')" = "$DEPLOY_SHA" ]; then
+              echo "Canonical HTTPS endpoint is healthy on the exact deployed commit $DEPLOY_SHA."
+              exit 0
+            fi
+            echo "Waiting for canonical hostname/TLS: attempt $attempt/12"
+            sleep 5
+          done
+          echo "::error::Host deployment completed, but xstarzganalys.com is not publicly healthy. Check DNS, firewall ports 80/443 and Caddy logs."
+          exit 1
+
+      - name: Clear successful deployment rollback marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' rm -f '$APP_DIR/shared/rollback-$DEPLOY_SHA'"
+
+      - name: Roll back release if public HTTPS verification fails
+        if: failure() && steps.configure_ssh.outcome == 'success' && env.CONFIRM_DEPLOY == 'DEPLOY_SELF_HOSTED'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -p "$SSH_PORT" -i "$HOME/.ssh/id_ed25519" \
+            -o StrictHostKeyChecking=yes -o BatchMode=yes \
+            "$SSH_USER@$SSH_HOST" "APP_DIR='$APP_DIR' SHA='$DEPLOY_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          ROLLBACK_FILE="$APP_DIR/shared/rollback-$SHA"
+          if [ ! -f "$ROLLBACK_FILE" ]; then
+            echo "No pending release rollback marker; no production symlink was switched."
+            exit 0
+          fi
+          PREVIOUS="$(cat "$ROLLBACK_FILE")"
+          CURRENT="$(readlink -f "$APP_DIR/current" 2>/dev/null || true)"
+          RELEASE="$APP_DIR/releases/$SHA"
+          if [ "$CURRENT" != "$RELEASE" ]; then
+            rm -f "$ROLLBACK_FILE"
+            echo "The failed deployment already rolled back or never switched the live release."
+            exit 0
+          fi
+          if [ -z "$PREVIOUS" ] || [ ! -d "$PREVIOUS" ]; then
+            echo "::warning::No previous self-hosted release exists; automatic rollback is unavailable for this first cutover."
+            rm -f "$ROLLBACK_FILE"
+            exit 0
+          fi
+          PREVIOUS_SHA="$(cat "$PREVIOUS/.deploy-commit")"
+          PREVIOUS_EPOCH="$(cat "$PREVIOUS/.deploy-epoch")"
+          export XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA"
+          export XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH"
+          ln -sfn "$PREVIOUS" "$APP_DIR/current.rollback"
+          mv -Tf "$APP_DIR/current.rollback" "$APP_DIR/current"
+          cd "$APP_DIR/current/backend"
+          XSTARZ_BUILD_COMMIT="$PREVIOUS_SHA" XSTARZ_BUILD_REF="$PREVIOUS_SHA" \
+            XSTARZ_BUILD_WORKTREE_CLEAN=true SOURCE_DATE_EPOCH="$PREVIOUS_EPOCH" \
+            docker compose -p trade-intel up --build -d --remove-orphans
+          healthy=false
+          for attempt in $(seq 1 30); do
+            if docker compose -p trade-intel exec -T api node -e \
+              "fetch('http://127.0.0.1:8787/health/ready').then(async r=>{const body=await r.json();process.exit(r.ok && body.release?.commit===process.env.XSTARZ_BUILD_COMMIT ? 0 : 1)}).catch(()=>process.exit(1))"; then
+              healthy=true
+              break
+            fi
+            sleep 5
+          done
+          if [ "$healthy" != true ]; then
+            echo "::error::Previous release was restored but failed its readiness check."
+            exit 1
+          fi
+          rm -f "$ROLLBACK_FILE"
+          echo "Previous self-hosted release $PREVIOUS_SHA restored and healthy."
+          REMOTE

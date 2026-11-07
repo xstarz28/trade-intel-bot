@@ -569,6 +569,47 @@ const INSTRUMENTS: Record<string, CanonicalInstrument> = {
     tags: ["idx", "banking", "large_cap"],
   },
 
+  ASII: {
+    canonical: "ASII",
+    displaySymbol: "ASII",
+    name: "Astra International",
+    assetClass: "equity",
+    subType: "equity_common",
+    baseAsset: "ASII",
+    quoteAsset: "IDR",
+    region: "Indonesia",
+    primaryExchange: "IDX",
+    exchanges: ["IDX"],
+    sector: "Industrials",
+    industry: "Diversified Industrials",
+    countryCode: "ID",
+    providerMappings: [
+      { provider: "twelve-data", symbol: "ASII.JK", available: true },
+    ],
+    isActive: true,
+    tags: ["idx", "industrial", "automotive"],
+  },
+  UNVR: {
+    canonical: "UNVR",
+    displaySymbol: "UNVR",
+    name: "Unilever Indonesia",
+    assetClass: "equity",
+    subType: "equity_common",
+    baseAsset: "UNVR",
+    quoteAsset: "IDR",
+    region: "Indonesia",
+    primaryExchange: "IDX",
+    exchanges: ["IDX"],
+    sector: "Consumer Staples",
+    industry: "Household and Personal Products",
+    countryCode: "ID",
+    providerMappings: [
+      { provider: "twelve-data", symbol: "UNVR.JK", available: true },
+    ],
+    isActive: true,
+    tags: ["idx", "consumer-staples"],
+  },
+
   // ── Indices ──────────────────────────────────────────────
   "SPX": {
     canonical: "SPX",

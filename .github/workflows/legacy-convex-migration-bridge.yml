@@ -1,0 +1,59 @@
+name: One-time legacy Convex account migration bridge
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type ENABLE-ONE-TIME-LEGACY-EXPORT to deploy the migration-only auth redirect and account export query
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-legacy-export:
+    if: ${{ inputs.confirmation == 'ENABLE-ONE-TIME-LEGACY-EXPORT' }}
+    name: Deploy additive legacy account export bridge
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Verify this is the reviewed migration branch
+        run: |
+          case "$GITHUB_REF_NAME" in
+            architecture/self-hosted-backend-foundation|main) ;;
+            *)
+              echo "::error::Run this workflow only from the reviewed migration branch or main after merge."
+              exit 1
+              ;;
+          esac
+          test -f src/convex/accountMigration.ts
+          grep -q "async redirect" src/convex/auth.ts
+      - name: Verify one-time deployment credential
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: |
+          if [ -z "$CONVEX_DEPLOY_KEY" ]; then
+            echo "::error::CONVEX_DEPLOY_KEY is missing. Add the legacy production deployment key only for this one-time export bridge."
+            exit 1
+          fi
+          case "$CONVEX_DEPLOY_KEY" in
+            prod:*) ;;
+            *)
+              echo "::error::The legacy export bridge requires a production Convex deployment key; refusing to deploy to a development deployment."
+              exit 1
+              ;;
+          esac
+      - name: Deploy the migration-only auth redirect and user-scoped export query
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+        run: npx convex deploy

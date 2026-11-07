@@ -1,0 +1,69 @@
+import { constants, closeSync, copyFileSync, existsSync, chmodSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { randomUUID } from "node:crypto";
+import { pathToFileURL } from "node:url";
+import { DatabaseSync } from "node:sqlite";
+
+/**
+ * Atomically restores a previously created SQLite snapshot.
+ * The application must be stopped before this function is called.
+ */
+export function restoreDatabase(sourcePath, targetPath) {
+  const source = resolve(sourcePath);
+  const target = resolve(targetPath);
+  if (source === target) throw new Error("Restore source and target must differ.");
+  if (!existsSync(source) || !statSync(source).isFile() || statSync(source).size === 0) {
+    throw new Error("Restore source is missing or empty: " + source);
+  }
+  if (existsSync(source + "-wal") && statSync(source + "-wal").size > 0) {
+    throw new Error("Restore source contains an uncheckpointed SQLite WAL; create a standalone backup before restore.");
+  }
+  if (existsSync(target + "-wal") || existsSync(target + "-shm")) {
+    throw new Error("Target SQLite sidecar files exist; stop the backend before restore.");
+  }
+
+  const validation = new DatabaseSync(source, { readOnly: true });
+  try {
+    const result = validation.prepare("PRAGMA quick_check").get();
+    if (result?.quick_check !== "ok") throw new Error("Restore source failed SQLite quick_check.");
+    const foreignKeyViolation = validation.prepare("PRAGMA foreign_key_check").get();
+    if (foreignKeyViolation) throw new Error("Restore source failed SQLite foreign_key_check.");
+  } finally {
+    validation.close();
+  }
+
+  mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+
+  const temporary = target + ".restore-" + process.pid + "-" + randomUUID();
+  try {
+    copyFileSync(source, temporary, constants.COPYFILE_EXCL);
+    chmodSync(temporary, 0o600);
+    const descriptor = openSync(temporary, "r+");
+    try {
+      fsyncSync(descriptor);
+    } finally {
+      closeSync(descriptor);
+    }
+    renameSync(temporary, target);
+    const directoryDescriptor = openSync(dirname(target), "r");
+    try {
+      fsyncSync(directoryDescriptor);
+    } finally {
+      closeSync(directoryDescriptor);
+    }
+    return { source, target, bytes: statSync(target).size };
+  } catch (error) {
+    if (existsSync(temporary)) rmSync(temporary);
+    throw error;
+  }
+}
+
+function main() {
+  const source = process.argv[2];
+  const target = resolve(process.env.DB_PATH ?? "backend/data/trade-intel.sqlite");
+  if (!source) throw new Error("Usage: node backend/restore.mjs /data/backups/backup.sqlite");
+  const result = restoreDatabase(source, target);
+  console.info("SQLite database restored:", result.target, "(" + result.bytes + " bytes)");
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) main();

@@ -1,54 +1,17 @@
-name: Set free XSTARZG public hostname
+name: Retired - Vercel branded domain configuration
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
-  configure-free-hostname:
+  retired:
+    name: Vercel domain configuration is retired
     runs-on: ubuntu-latest
-    environment: development
     steps:
-      - name: Rename project
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+      - name: Refuse legacy domain changes
         run: |
-          set -euo pipefail
-          code="$(curl -sS -o /tmp/rename.json -w "%{http_code}" -X PATCH "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}"             -H "Authorization: Bearer ${VERCEL_TOKEN}"             -H "Content-Type: application/json"             -d '{"name":"xstarzanalysis"}')"
-          cat /tmp/rename.json
-          test "${code}" = "200" || test "${code}" = "409"
-
-      - name: Attach free branded hostname
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-          code="$(curl -sS -o /tmp/domain.json -w "%{http_code}" -X POST "https://api.vercel.com/v10/projects/${VERCEL_PROJECT_ID}/domains"             -H "Authorization: Bearer ${VERCEL_TOKEN}"             -H "Content-Type: application/json"             -d '{"name":"xstarzanalysis.vercel.app"}')"
-          cat /tmp/domain.json
-          test "${code}" = "200" || test "${code}" = "201" || test "${code}" = "409"
-
-      - name: Verify hostname is attached
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-        run: |
-          set -euo pipefail
-          curl -fsS "https://api.vercel.com/v9/projects/${VERCEL_PROJECT_ID}/domains"             -H "Authorization: Bearer ${VERCEL_TOKEN}" |
-            python -c "import json,sys; d=json.load(sys.stdin); names=[x.get('name') for x in d.get('domains',[])]; print(names); assert 'xstarzanalysis.vercel.app' in names"
-      - name: Verify public HTTP endpoint
-        run: |
-          set -euo pipefail
-          for attempt in 1 2 3 4 5; do
-            code="$(curl -sS -o /tmp/xstarz-home.html -w "%{http_code}" --max-time 20 https://xstarzanalysis.vercel.app/ || true)"
-            echo "attempt=${attempt} http=${code}"
-            if [ "${code}" = "200" ]; then
-              echo "XSTARZG public hostname is serving the application."
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::error::xstarzanalysis.vercel.app is not serving the XSTARZG application"
+          echo "::error::Vercel domain configuration is retired. The canonical hostname is xstarzganalys.com and is managed through DNS plus the self-hosted Caddy endpoint."
           exit 1

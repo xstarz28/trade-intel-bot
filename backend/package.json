@@ -1,0 +1,11 @@
+{
+  "name": "@xstarz/trade-intel-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check server.mjs && node --check src/app.mjs && node --check src/auth.mjs && node --check src/database.mjs && node --check src/opportunities.mjs && node --check test/backend.test.mjs && node --check test/opportunities.test.mjs"
+  }
+}

@@ -1,0 +1,61 @@
+name: Backend Foundation CI
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "src/lib/data/**"
+      - "src/lib/market-context.ts"
+      - "scripts/build-backend.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/backend-foundation.yml"
+  push:
+    branches:
+      - "architecture/**"
+    paths:
+      - "backend/**"
+      - "src/lib/data/**"
+      - "src/lib/market-context.ts"
+      - "scripts/build-backend.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/backend-foundation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install project build dependencies
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Build frontend for the self-hosted image
+        run: npm run build
+
+      - name: Type-check shared market analysis engine
+        run: npx tsc -p backend/tsconfig.market.json --noEmit
+
+      - name: Bundle shared market analysis engine
+        run: npm run backend:build
+
+      - name: Run backend tests
+        working-directory: backend
+        run: npm test
+
+      - name: Check backend JavaScript syntax
+        working-directory: backend
+        run: npm run check
+
+      - name: Build production self-hosted container
+        run: docker build --file backend/Dockerfile --tag trade-intel-self-hosted:test .

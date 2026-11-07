@@ -7,16 +7,29 @@ import { useAuth } from "@/hooks/use-auth";
 import { resolveAuthRedirect } from "@/lib/auth-redirect";
 
 export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectAfterAuth?: string }) {
-  const { isLoading: authLoading, isAuthenticated, signIn } = useAuth();
+  const { isLoading: authLoading, isAuthenticated, signIn, error: sessionError } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const redirect = resolveAuthRedirect(params.get("returnTo"), redirectAfterAuth);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(() => {
+    switch (params.get("error")) {
+      case "account_link_conflict":
+        return "Google account ini sudah terhubung ke akun Trade Intel lain. Akun tamu dan datanya tetap aman; masuklah dengan akun Google yang sebelumnya digunakan.";
+      case "google_state_invalid":
+        return "Sesi keamanan Google sudah kedaluwarsa atau tidak valid. Silakan mulai login kembali.";
+      case "google_auth_not_configured":
+        return "Login Google belum dikonfigurasi pada server. Gunakan akses tamu sementara.";
+      case "google_auth_failed":
+        return "Login Google gagal diverifikasi. Silakan coba kembali.";
+      default:
+        return null;
+    }
+  });
 
   useEffect(() => {
-    if (!authLoading && isAuthenticated) navigate(redirect, { replace: true });
-  }, [authLoading, isAuthenticated, navigate, redirect]);
+    if (!authLoading && isAuthenticated && !error) navigate(redirect, { replace: true });
+  }, [authLoading, isAuthenticated, navigate, redirect, error]);
 
   const run = async (provider: string) => {
     setLoading(true); setError(null);
@@ -47,7 +60,7 @@ export default function AuthPage({ redirectAfterAuth="/dashboard" }: { redirectA
         <Button variant="outline" className="w-full" disabled={loading} onClick={() => run("anonymous")}>
           <UserRound className="mr-2 size-4"/> Continue without an account
         </Button>
-        {error && <p className="text-sm text-destructive">{error}</p>}
+        {(error || sessionError) && <p className="text-sm text-destructive">{error || sessionError?.message || "Backend authentication is unavailable. Please retry."}</p>}
       </CardContent>
     </Card>
   </div>;

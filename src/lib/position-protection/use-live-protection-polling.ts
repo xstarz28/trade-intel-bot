@@ -1,8 +1,8 @@
 /**
  * Phase 75 — Live Protection Polling Hook
  *
- * Polls the Convex liveProtection.fetchLiveProtectionQuote action at a
- * configurable interval and feeds real market data into the existing
+ * Polls the authenticated self-hosted live-quote API at a configurable
+ * interval and feeds real market data into the existing
  * protection pipeline (bridgeQuoteToEvents → RealTimeEvent → ProtectionEngine).
  *
  * This is the REAL production activation — actual HTTP data, actual polling,
@@ -12,9 +12,10 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAction } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import type { LiveQuoteResult } from "../../convex/liveProtection";
+import {
+  fetchBackendLiveProtectionQuotes,
+  type BackendLiveQuoteResult,
+} from "@/lib/backend-api";
 import type { RealTimeEvent } from "./realtime-types";
 import type { ProviderQuoteData } from "../market-stream/live-market-bridge";
 import { bridgeQuoteToEvents, type LiveMarketBridgeState, createBridgeState } from "../market-stream/live-market-bridge";
@@ -68,7 +69,7 @@ export interface UseLiveProtectionPollingResult {
 // HOOK
 // ═══════════════════════════════════════════════════════════════
 
-const DEFAULT_POLL_INTERVAL_MS = 30_000; // 30 seconds for crypto (CoinGecko rate limit ~30/min)
+const DEFAULT_POLL_INTERVAL_MS = 30_000; // Backend cache and provider budgets bound quote polling.
 
 export function useLiveProtectionPolling(
   instruments: string[],
@@ -80,7 +81,6 @@ export function useLiveProtectionPolling(
     onEvent?: (events: RealTimeEvent[]) => void;
   },
 ): UseLiveProtectionPollingResult {
-  const fetchLiveQuotes = useAction(api.liveProtection.fetchLiveProtectionQuote);
   const pollIntervalMs = options?.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
   const enabled = options?.enabled !== false;
 
@@ -122,10 +122,8 @@ export function useLiveProtectionPolling(
 
     pollInFlightRef.current = true;
     try {
-      // Call the REAL Convex action that makes REAL HTTP requests
-      const results: LiveQuoteResult[] = await fetchLiveQuotes({
-        instruments: currentInstruments,
-      });
+      // The backend owns provider routing, validation, freshness, and fallback policy.
+      const results: BackendLiveQuoteResult[] = await fetchBackendLiveProtectionQuotes(currentInstruments);
 
       const now = Date.now();
       let anySuccess = false;
@@ -196,25 +194,18 @@ export function useLiveProtectionPolling(
             Number.isFinite(result.price) &&
             result.price > 0 &&
             (!quoteIsFresh || result.sourceMode === "STALE");
-          const simulatedQuote = result.sourceMode === "SIMULATED";
           const liveState: LiveInstrumentState = {
             instrument: result.instrument,
             price: 0,
             provider: result.provider,
-            sourceMode: staleSuccessfulQuote
-              ? "STALE"
-              : simulatedQuote
-                ? "SIMULATED"
-                : "UNAVAILABLE",
+            sourceMode: staleSuccessfulQuote ? "STALE" : "UNAVAILABLE",
             lastUpdateAt: now,
             success: false,
             error: invalidSuccessfulPrice
               ? "Provider returned an invalid or non-finite price"
               : staleSuccessfulQuote
                 ? "Quote rejected because its timestamp is stale or invalid"
-                : simulatedQuote
-                  ? "Simulated quotes are not accepted by live position protection"
-                  : result.error,
+                : result.error,
           };
           next.set(result.instrument, liveState);
           quoteResultCallbacksRef.current?.(liveState);
@@ -247,7 +238,7 @@ export function useLiveProtectionPolling(
     } finally {
       pollInFlightRef.current = false;
     }
-  }, [fetchLiveQuotes, pollIntervalMs]);
+  }, [pollIntervalMs]);
 
   // ─── Start/Stop ────────────────────────────────────────
   const startPolling = useCallback(() => {

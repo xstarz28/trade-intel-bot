@@ -84,8 +84,6 @@ import type { StreamEvent } from "../market-stream/types";
 // IMPORTS — Phase 60/61
 // ═══════════════════════════════════════════════════════════════
 import { InMemoryRepository } from "../position-protection/persistence";
-import { ConvexPersistenceAdapter } from "../position-protection/convex-persistence";
-import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
 import type { PersistedPositionState, PersistedAlert, EventCursor } from "../position-protection/persistence";
 import {
   createPriceEvent,
@@ -232,8 +230,6 @@ describe("PART A — Code Audit: Module existence", () => {
 
   it("all Phase 60/61 modules exist", () => {
     expect(typeof InMemoryRepository).toBe("function");
-    expect(typeof ConvexPersistenceAdapter).toBe("function");
-    expect(typeof ConvexPersistenceBridge).toBe("function");
     expect(typeof createPriceEvent).toBe("function");
     expect(typeof createCandleEvent).toBe("function");
     expect(typeof createStructureChangeEvent).toBe("function");
@@ -969,24 +965,6 @@ describe("PART N — Convex Persistence Validation", () => {
     expect(await repo.getPositionState("pos-1")).toBeNull();
   });
 
-  it("Convex adapter degrades gracefully with failing client", async () => {
-    const failing = {
-      mutation: async () => { throw new Error("fail"); },
-      query: async () => { throw new Error("fail"); },
-    };
-    const adapter = new ConvexPersistenceAdapter(failing);
-    await adapter.savePositionState(makeState());
-    expect(adapter.isDegraded).toBe(true);
-    const loaded = await adapter.getPositionState("pos-1");
-    expect(loaded).not.toBeNull(); // local fallback works
-  });
-
-  it("Convex bridge falls back to local", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.savePositionState(makeState());
-    const loaded = await bridge.getPositionState("pos-1");
-    expect(loaded).not.toBeNull();
-  });
 });
 
 // ═══════════════════════════════════════════════════════════════

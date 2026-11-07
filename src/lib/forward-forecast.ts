@@ -131,10 +131,25 @@ function validLevel(value: unknown, spot: number, relation: "above" | "below"): 
   return parsed;
 }
 
-function dataStatus(result: AnalysisResult): ForecastStatus | undefined {
+function dataStatus(
+  result: AnalysisResult,
+  snapshot: { price: number; timestamp: number } | undefined,
+): ForecastStatus | undefined {
   const status = result.dataQualityContext?.primaryData.status;
   if (status && status !== "GOOD") return "BLOCKED_DATA_QUALITY";
   if (result.dataCompleteness === "limited") return "BLOCKED_DATA_QUALITY";
+
+  // Provider quality metadata is not guaranteed to be present on every
+  // supported instrument. Independently fail closed when the actual price
+  // snapshot is more than three selected-timeframe bars behind the analysis
+  // clock; this prevents old prices from generating apparently actionable
+  // forward levels. Replay remains deterministic because result.timestamp is
+  // the replay clock during historical evaluation.
+  if (snapshot) {
+    const barMs = BAR_MS[result.timeframe] ?? BAR_MS.H1;
+    const ageMs = result.timestamp - snapshot.timestamp;
+    if (ageMs > barMs * 3) return "BLOCKED_DATA_QUALITY";
+  }
   return undefined;
 }
 
@@ -378,7 +393,7 @@ function alternateScenarios(
 
 function traderForecast(result: AnalysisResult, snapshot: { price: number; timestamp: number } | undefined): TraderForwardForecast {
   const horizon = traderHorizon(result, snapshot?.timestamp ?? result.timestamp);
-  const blocked = dataStatus(result);
+  const blocked = dataStatus(result, snapshot);
   const plan = result.tradePlan ?? result.projectedTradePlan;
   const direction: ForecastDirection = plan
     ? plan.direction === "long" ? "bullish" : "bearish"
@@ -389,7 +404,7 @@ function traderForecast(result: AnalysisResult, snapshot: { price: number; times
     "A conditional or projected setup is not an order. Re-run all execution, freshness, and risk gates before any trade.",
   ];
 
-  if (blocked) return { status: blocked, direction, horizon, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary data quality is not GOOD; numeric forecast levels are suppressed."] };
+  if (blocked) return { status: blocked, direction, horizon, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary market data is stale or does not meet quality requirements; numeric forecast levels are suppressed."] };
   if (!snapshot) return { status: "UNAVAILABLE", direction: "neutral", horizon, calibration: "UNVALIDATED", evidence, limitations: [...limitations, "A valid spot price and source timestamp are required."] };
 
   const traderUp = snapshot ? validLevel(result.keyLevels?.resistance, snapshot.price, "above") : undefined;
@@ -463,7 +478,7 @@ function investorForecast(
   requestedHorizon: InvestorForecastHorizon = "1-3_YEARS",
 ): InvestorForwardForecast {
   const horizon = investorHorizon(snapshot?.timestamp ?? result.timestamp, requestedHorizon);
-  const blocked = dataStatus(result);
+  const blocked = dataStatus(result, snapshot);
   const fundamentalOutlook = buildInvestorFundamentalOutlook(result, blocked ? undefined : snapshot?.price);
   const structure = investorStructureContext(result, requestedHorizon);
   const direction: ForecastDirection = structure?.structure === "HH/HL"
@@ -476,7 +491,7 @@ function investorForecast(
     "This is a higher-timeframe structural thesis, not a calibrated long-term price prediction.",
     "Spot structural levels do not model leverage, funding, borrow, liquidation, dividends, or corporate actions.",
   ];
-  if (blocked) return { status: blocked, direction, horizon, valuationStatus: fundamentalOutlook.valuationStatus, fundamentalOutlook, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary data quality is not GOOD; numeric forecast levels are suppressed."] };
+  if (blocked) return { status: blocked, direction, horizon, valuationStatus: fundamentalOutlook.valuationStatus, fundamentalOutlook, calibration: "UNVALIDATED", dataAsOf: snapshot?.timestamp, evidence, limitations: [...limitations, "Primary market data is stale or does not meet quality requirements; numeric forecast levels are suppressed."] };
   if (!snapshot) return { status: "UNAVAILABLE", direction: "neutral", horizon, valuationStatus: fundamentalOutlook.valuationStatus, fundamentalOutlook, calibration: "UNVALIDATED", evidence, limitations: [...limitations, "A valid spot price and source timestamp are required."] };
 
   const htfUp = validLevel(structure?.lastSwingHigh, snapshot.price, "above");

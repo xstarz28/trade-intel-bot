@@ -116,7 +116,6 @@ import type {
   PersistedAlert,
   EventCursor,
 } from "../position-protection/persistence";
-import { ConvexPersistenceBridge } from "../position-protection/convex-bridge";
 
 // Dispatch
 import {
@@ -834,99 +833,6 @@ describe("E. Convex Persistence Recovery", () => {
     expect(history.length).toBeLessThanOrEqual(1000);
   });
 
-  it("ConvexPersistenceBridge: works without Convex client (fallback)", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    expect(bridge.isDegraded()).toBe(false);
-
-    await bridge.savePositionState({
-      positionId: "p1", instrument: "BTC/USDT", side: "LONG",
-      entryPrice: 100_000, horizon: "SWING", openedAt: NOW,
-      currentSeverity: "NONE", lifecycleState: "MONITORING",
-      lastUpdateAt: NOW, lastAlertAt: 0, consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
-
-    const pos = await bridge.getPositionState("p1");
-    expect(pos).not.toBeNull();
-    expect(pos!.instrument).toBe("BTC/USDT");
-  });
-
-  it("ConvexPersistenceBridge: save and retrieve alert", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.saveAlert({
-      alertId: "a1", positionId: "p1", instrument: "BTC/USDT",
-      severity: "WATCH", notificationPriority: "INFO", reason: "Test",
-      action: "Monitor", timestamp: NOW, acknowledged: false,
-    });
-    const history = await bridge.listAlertHistory("p1");
-    expect(history.length).toBe(1);
-  });
-
-  it("ConvexPersistenceBridge: save and retrieve event cursor", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.saveEventCursor({
-      provider: "OKX", instrument: "BTC/USDT",
-      lastEventId: "ev1", lastTimestamp: NOW,
-    });
-    const cursor = await bridge.getEventCursor("OKX", "BTC/USDT");
-    expect(cursor).not.toBeNull();
-    expect(cursor!.lastEventId).toBe("ev1");
-  });
-
-  it("ConvexPersistenceBridge: delete position works", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-    await bridge.savePositionState({
-      positionId: "p1", instrument: "BTC/USDT", side: "LONG",
-      entryPrice: 100_000, horizon: "SWING", openedAt: NOW,
-      currentSeverity: "NONE", lifecycleState: "MONITORING",
-      lastUpdateAt: NOW, lastAlertAt: 0, consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
-    await bridge.deletePositionState("p1");
-    const pos = await bridge.getPositionState("p1");
-    expect(pos).toBeNull();
-  });
-
-  it("ConvexPersistenceBridge: degraded flag works with failing client", async () => {
-    const failingClient = {
-      mutation: () => { throw new Error("Convex unavailable"); },
-      query: () => { throw new Error("Convex unavailable"); },
-    };
-    const bridge = new ConvexPersistenceBridge(failingClient as any);
-
-    // Save works locally even when Convex fails
-    const saved = await bridge.savePositionState({
-      positionId: "p1", instrument: "BTC/USDT", side: "LONG",
-      entryPrice: 100_000, horizon: "SWING", openedAt: NOW,
-      currentSeverity: "NONE", lifecycleState: "MONITORING",
-      lastUpdateAt: NOW, lastAlertAt: 0, consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
-    expect(saved).toBe(true);
-
-    // Local read still works
-    const pos = await bridge.getPositionState("p1");
-    expect(pos).not.toBeNull();
-  });
-
-  it("Recovery: resume persistence after Convex recovers", async () => {
-    const bridge = new ConvexPersistenceBridge(null);
-
-    // Save in fallback mode
-    await bridge.savePositionState({
-      positionId: "p1", instrument: "BTC/USDT", side: "LONG",
-      entryPrice: 100_000, horizon: "SWING", openedAt: NOW,
-      currentSeverity: "NONE", lifecycleState: "MONITORING",
-      lastUpdateAt: NOW, lastAlertAt: 0, consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
-
-    // Verify local state is intact
-    const pos = await bridge.getPositionState("p1");
-    expect(pos).not.toBeNull();
-    expect(bridge.isDegraded()).toBe(false);
-  });
-
   it("No duplicate records after recovery", async () => {
     const repo = new InMemoryRepository();
     await repo.savePositionState({
@@ -1505,7 +1411,7 @@ describe("I. Security Audit", () => {
     }
   });
 
-  it("Alert serializes cleanly for Convex persistence", () => {
+  it("Alert serializes cleanly for backend persistence", () => {
     const alert = evaluate(btcLong(), deterioratingEvidence(90_000));
     const json = JSON.stringify(alert);
     const parsed = JSON.parse(json);
@@ -1866,7 +1772,7 @@ describe("M. Final Acceptance Gates", () => {
     expect(action).not.toContain("execute");
   });
 
-  it("GATE: Convex persistence shape compatibility", () => {
+  it("GATE: backend persistence shape compatibility", () => {
     const alert = evaluate(btcLong(), deterioratingEvidence(90_000));
     const json = JSON.stringify(alert);
     const parsed = JSON.parse(json);
