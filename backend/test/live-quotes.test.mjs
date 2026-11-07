@@ -137,7 +137,7 @@ describe("authenticated self-hosted live quote API", () => {
       requested.push(url);
       if (url.hostname === "api.twelvedata.com" && url.pathname === "/statistics") {
         return new Response(JSON.stringify({
-          meta: { symbol: "BBCA.JK", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
+          meta: { symbol: "BBCA", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
           statistics: { valuations_metrics: { trailing_pe: "18.2" }, financials: { return_on_equity: "19.2" } },
         }), { status: 200, headers: { "content-type": "application/json" } });
       }
@@ -180,7 +180,7 @@ describe("authenticated self-hosted live quote API", () => {
         assert.equal(payload.analysis.fundamentalData.symbol, "BBCA");
         assert.equal(payload.analysis.fundamentalData.peRatio, 18.2);
         assert.ok(requested.some((url) => url.pathname === "/statistics" &&
-          url.searchParams.get("symbol") === "BBCA.JK" && url.searchParams.get("mic_code") === "XIDX"));
+          url.searchParams.get("symbol") === "BBCA" && url.searchParams.get("mic_code") === "XIDX"));
         assert.ok(requested.every((url) => !["www.sec.gov", "data.sec.gov", "www.alphavantage.co"].includes(url.hostname)));
       }, { env, fetchImpl });
     } finally {
