@@ -236,9 +236,9 @@ export async function fetchTwelveDataIdxFundamentals(
   const returnedSymbol = typeof meta.symbol === "string" ? meta.symbol.toUpperCase() : "";
   const returnedMic = typeof meta.mic_code === "string" ? meta.mic_code.toUpperCase() : "";
   const returnedExchange = typeof meta.exchange === "string" ? meta.exchange.toUpperCase() : "";
-  if (returnedSymbol && returnedSymbol !== providerSymbol.toUpperCase()) throw new Error("Twelve Data returned a different equity symbol");
-  if (returnedMic && returnedMic !== "XIDX") throw new Error("Twelve Data returned a different exchange MIC");
-  if (!returnedMic && returnedExchange && returnedExchange !== "IDX") throw new Error("Twelve Data returned a different exchange");
+  if (returnedSymbol !== providerSymbol.toUpperCase()) throw new Error("Twelve Data did not verify the requested equity symbol");
+  if (returnedMic !== "XIDX") throw new Error("Twelve Data did not verify the IDX exchange MIC");
+  if (returnedExchange && returnedExchange !== "IDX") throw new Error("Twelve Data returned a different exchange");
 
   const market = payload.statistics && typeof payload.statistics === "object" ? payload.statistics : payload;
   const fields: Record<string, number | undefined> = {
@@ -250,19 +250,24 @@ export async function fetchTwelveDataIdxFundamentals(
     evToRevenue: readProviderNumber(market, ["enterprise_to_revenue", "ev_to_revenue"]),
     evToEbitda: readProviderNumber(market, ["enterprise_to_ebitda", "ev_to_ebitda"]),
     revenueTTM: readProviderNumber(market, ["revenue_ttm", "revenueTTM"]),
+    revenuePerShare: readProviderNumber(market, ["revenue_per_share_ttm", "revenue_per_share"]),
+    revenueGrowth: normalizeProviderPercent(readProviderNumber(market, ["quarterly_revenue_growth", "revenue_growth_yoy"])),
+    earningsGrowth: normalizeProviderPercent(readProviderNumber(market, ["quarterly_earnings_growth_yoy", "earnings_growth_yoy"])),
     grossProfitTTM: readProviderNumber(market, ["gross_profit_ttm", "grossProfitTTM"]),
     dilutedEPS: readProviderNumber(market, ["diluted_eps_ttm", "dilutedEPS"]),
     beta: readProviderNumber(market, ["beta"]),
     sharesOutstanding: readProviderNumber(market, ["shares_outstanding", "sharesOutstanding"]),
     bookValue: readProviderNumber(market, ["book_value_per_share", "book_value"]),
-    dividendPerShare: readProviderNumber(market, ["dividend_per_share", "dividendPerShare"]),
-    dividendYield: normalizeProviderPercent(readProviderNumber(market, ["dividend_yield", "dividendYield"])),
+    dividendPerShare: readProviderNumber(market, ["trailing_annual_dividend_rate", "forward_annual_dividend_rate", "dividend_per_share", "dividendPerShare"]),
+    dividendYield: normalizeProviderPercent(readProviderNumber(market, ["trailing_annual_dividend_yield", "forward_annual_dividend_yield", "dividend_yield", "dividendYield"])),
     profitMargin: normalizeProviderPercent(readProviderNumber(market, ["profit_margin", "profitMargin"])),
     operatingMargin: normalizeProviderPercent(readProviderNumber(market, ["operating_margin", "operatingMargin"])),
     returnOnAssets: normalizeProviderPercent(readProviderNumber(market, ["return_on_assets", "return_on_assets_ttm", "returnOnAssets"])),
-    returnOnEquity: normalizeProviderPercent(readProviderNumber(market, ["return_on_equity", "returnOnEquity"])),
-    priceToBook: readProviderNumber(market, ["price_to_book", "priceToBook"]),
-    fiftyTwoWeekHigh: readProviderNumber(market, ["52_week_high", "fifty_two_week_high"]),
+    returnOnEquity: normalizeProviderPercent(readProviderNumber(market, ["return_on_equity_ttm", "return_on_equity", "returnOnEquity"])),
+    priceToBook: readProviderNumber(market, ["price_to_book_mrq", "price_to_book", "priceToBook"]),
+    fiftyDayMovingAverage: readProviderNumber(market, ["day_50_ma", "fifty_day_moving_average"]),
+    twoHundredDayMovingAverage: readProviderNumber(market, ["day_200_ma", "two_hundred_day_moving_average"]),
+    fiftyTwoWeekHigh: readProviderNumber(market, ["fifty_two_week_high", "52_week_high"]),
     fiftyTwoWeekLow: readProviderNumber(market, ["52_week_low", "fifty_two_week_low"]),
   };
   const availableFields = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
