@@ -33,7 +33,7 @@ All provider credentials are optional unless a feature specifically requires the
 - `ALPHA_VANTAGE_API_KEY`: stock overview/earnings/fundamentals and premium News & Sentiment for stocks, crypto, forex, plus topic-filtered commodity/macro news;
 - `COINGLASS_API_KEY`: paid aggregated crypto derivatives; public exchange adapters are the fallback;
 - `TOKENOMIST_API_KEY`: verified token unlock calendar; PatternPlus/CoinGecko fallbacks remain available;
-- `TICKATLAS_API_KEY`: economic calendar;
+- `TICKATLAS_API_KEY`: optional secondary economic-calendar source; the free public Forex Factory weekly feed is the default and is cached once per hour across all instruments;
 - `EIA_API_KEY`: EIA inventory data; public FRED series are used when absent;
 - `SEC_USER_AGENT`: identifying SEC EDGAR application name and monitored contact email;
 - `VITE_LEGACY_CONVEX_URL`: optional allow-listed old deployment URL used only for one-time account export; leave blank for fully Convex-independent builds.
