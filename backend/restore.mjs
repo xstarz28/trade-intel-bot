@@ -15,6 +15,9 @@ export function restoreDatabase(sourcePath, targetPath) {
   if (!existsSync(source) || !statSync(source).isFile() || statSync(source).size === 0) {
     throw new Error("Restore source is missing or empty: " + source);
   }
+  if (existsSync(source + "-wal") || existsSync(source + "-shm")) {
+    throw new Error("Restore source SQLite sidecar files exist; create a standalone backup before restore.");
+  }
   if (existsSync(target + "-wal") || existsSync(target + "-shm")) {
     throw new Error("Target SQLite sidecar files exist; stop the backend before restore.");
   }
