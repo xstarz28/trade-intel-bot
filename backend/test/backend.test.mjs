@@ -170,6 +170,12 @@ describe("SQLite restore utility", () => {
     assert.throws(() => restoreDatabase(source, target), /sidecar files exist/);
     rmSync(target + "-wal");
 
+    // A source database with a WAL sidecar is not a standalone snapshot.
+    // Copying only its main file could silently omit committed WAL pages.
+    writeFileSync(source + "-wal", "uncheckpointed source WAL");
+    assert.throws(() => restoreDatabase(source, join(directory, "wal-source-target.sqlite")), /source SQLite sidecar files exist/);
+    rmSync(source + "-wal");
+
     const corrupt = join(directory, "corrupt.sqlite");
     writeFileSync(corrupt, "not a SQLite database");
     const before = readFileSync(target);
