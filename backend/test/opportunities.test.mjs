@@ -1,4 +1,5 @@
 import { afterEach, describe, it } from "node:test";
+import { createHash, randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -166,6 +167,53 @@ describe("self-hosted opportunity scanner persistence", () => {
       assert.ok(result.updates.every(source => source.technicalData));
       assert.equal(result.results.length, 9);
       assert.ok(result.metrics.totalScanned >= 1);
+    } finally {
+      database.close();
+    }
+  });
+
+
+  it("rate-limits manual radar scans per authenticated user without blocking other users", async () => {
+    const { database } = fixture();
+    const now = Date.now();
+    const createSession = (userId, token) => {
+      database.raw.prepare(
+        "INSERT INTO users (id, name, is_anonymous, role, created_at, updated_at) VALUES (?, ?, 1, 'user', ?, ?)",
+      ).run(userId, userId, now, now);
+      database.raw.prepare(
+        "INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)",
+      ).run(randomUUID(), userId, createHash("sha256").update(token).digest("hex"), now + 60_000, now, now);
+    };
+    createSession("radar-user-a", "a".repeat(48));
+    createSession("radar-user-b", "b".repeat(48));
+    let scans = 0;
+    const handler = createOpportunityHandler({
+      database,
+      env: { NODE_ENV: "development" },
+      service: { async runOneBatch() { scans += 1; return { skipped: false }; } },
+    });
+    const invoke = async (token) => {
+      const response = responseCapture();
+      await handler(
+        { method: "POST", headers: { cookie: `xstarz_session=${token}` } },
+        response,
+        new URL("http://localhost/api/v1/opportunities"),
+      );
+      return response;
+    };
+    try {
+      const first = await invoke("a".repeat(48));
+      assert.equal(first.status, 200);
+      const second = await invoke("a".repeat(48));
+      assert.equal(second.status, 429);
+      assert.equal(second.headers["retry-after"], "30");
+      assert.deepEqual(JSON.parse(second.body), {
+        error: "manual_opportunity_scan_rate_limited",
+        retryAfterSeconds: 30,
+      });
+      const otherUser = await invoke("b".repeat(48));
+      assert.equal(otherUser.status, 200);
+      assert.equal(scans, 2);
     } finally {
       database.close();
     }
