@@ -43,10 +43,17 @@ function snakeCase(value) {
   return value.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 }
 
-function mapRow(table, row) {
+function mapRow(table, row, sourceAccountId) {
   if (!row || typeof row !== "object" || Array.isArray(row) ||
       typeof row._id !== "string" || !row._id) {
     throw Object.assign(new Error(`Invalid Convex export row in ${table}`), { status: 400 });
+  }
+
+  if (row.userId !== sourceAccountId) {
+    throw Object.assign(new Error(`Convex export row in ${table} does not belong to its declared source account`), {
+      status: 409,
+      code: "convex_export_row_owner_mismatch",
+    });
   }
 
   const mapped = { id: row._id };
@@ -141,7 +148,7 @@ export function normalizeConvexAccountExport(input, targetUser) {
     if (totalRows > 10_000) {
       throw Object.assign(new Error("Convex account export row limit exceeded"), { status: 413 });
     }
-    data[snakeCase(table)] = rows.map((row) => mapRow(table, row));
+    data[snakeCase(table)] = rows.map((row) => mapRow(table, row, input.account.id));
     counts[snakeCase(table)] = rows.length;
     if (input.counts !== undefined &&
         (!input.counts || typeof input.counts !== "object" ||
