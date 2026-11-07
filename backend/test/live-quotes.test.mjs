@@ -126,7 +126,6 @@ describe("authenticated self-hosted live quote API", () => {
     const env = {
       NODE_ENV: "development",
       APP_ORIGIN: "http://localhost:5173",
-      TWELVE_DATA_API_KEY: "test-idx-fundamentals-key",
       SEC_USER_AGENT: "TradeIntelTest (ops@example.test)",
       ALPHA_VANTAGE_API_KEY: "test-alpha-key",
     };
@@ -135,11 +134,19 @@ describe("authenticated self-hosted live quote API", () => {
     const fetchImpl = async (input) => {
       const url = new URL(String(input));
       requested.push(url);
-      if (url.hostname === "api.twelvedata.com" && url.pathname === "/statistics") {
-        return new Response(JSON.stringify({
-          meta: { symbol: "BBCA", exchange: "IDX", mic_code: "XIDX", name: "Bank Central Asia" },
-          statistics: { valuations_metrics: { trailing_pe: "18.2" }, financials: { return_on_equity: "19.2" } },
-        }), { status: 200, headers: { "content-type": "application/json" } });
+      if (url.hostname === "fc.yahoo.com") {
+        return new Response("", { status: 404, headers: { "set-cookie": "A1=idx-test-session; Path=/; Secure" } });
+      }
+      if (url.hostname === "query1.finance.yahoo.com" && url.pathname === "/v1/test/getcrumb") {
+        return new Response("idx-test-crumb", { status: 200 });
+      }
+      if (url.hostname === "query1.finance.yahoo.com" && url.pathname.includes("/v10/finance/quoteSummary/")) {
+        return new Response(JSON.stringify({ quoteSummary: { result: [{
+          price: { symbol: "BBCA.JK", longName: "Bank Central Asia" },
+          summaryDetail: { trailingPE: { raw: 18.2 } },
+          defaultKeyStatistics: {},
+          financialData: { returnOnEquity: { raw: 0.192 } },
+        }] } }), { status: 200, headers: { "content-type": "application/json" } });
       }
       if (url.hostname === "www.sec.gov" || url.hostname === "data.sec.gov" ||
           url.hostname === "www.alphavantage.co") {
@@ -176,11 +183,10 @@ describe("authenticated self-hosted live quote API", () => {
         });
         assert.equal(response.status, 200);
         const payload = await response.json();
-        assert.equal(payload.analysis.fundamentalData.provider, "twelve-data-statistics");
+        assert.equal(payload.analysis.fundamentalData.provider, "yahoo-finance-public");
         assert.equal(payload.analysis.fundamentalData.symbol, "BBCA");
         assert.equal(payload.analysis.fundamentalData.peRatio, 18.2);
-        assert.ok(requested.some((url) => url.pathname === "/statistics" &&
-          url.searchParams.get("symbol") === "BBCA" && url.searchParams.get("mic_code") === "XIDX"));
+        assert.ok(requested.some((url) => url.pathname.includes("/v10/finance/quoteSummary/BBCA.JK")));
         assert.ok(requested.every((url) => !["www.sec.gov", "data.sec.gov", "www.alphavantage.co"].includes(url.hostname)));
       }, { env, fetchImpl });
     } finally {
