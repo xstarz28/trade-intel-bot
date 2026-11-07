@@ -34,6 +34,8 @@ function payload() {
 describe("free Yahoo Finance stock fallback", () => {
   it("resolves canonical IDX shares and provider-discovered .JK tickers to exact Yahoo tickers", () => {
     expect(resolveYahooFinanceStockSymbol("BBCA")).toBe("BBCA.JK");
+    expect(resolveYahooFinanceStockSymbol("ASII")).toBe("ASII.JK");
+    expect(resolveYahooFinanceStockSymbol("UNVR")).toBe("UNVR.JK");
     expect(resolveYahooFinanceStockSymbol("ADRO.JK")).toBe("ADRO.JK");
     expect(resolveYahooFinanceStockSymbol("AAPL")).toBe("AAPL");
     expect(resolveYahooFinanceStockSymbol("EUR/USD")).toBeNull();
