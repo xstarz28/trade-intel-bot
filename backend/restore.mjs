@@ -1,4 +1,4 @@
-import { constants, closeSync, copyFileSync, existsSync, chmodSync, fsyncSync, openSync, renameSync, rmSync, statSync } from "node:fs";
+import { constants, closeSync, copyFileSync, existsSync, chmodSync, fsyncSync, mkdirSync, openSync, renameSync, rmSync, statSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { pathToFileURL } from "node:url";
@@ -26,6 +26,8 @@ export function restoreDatabase(sourcePath, targetPath) {
   } finally {
     validation.close();
   }
+
+  mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
 
   const temporary = target + ".restore-" + process.pid + "-" + randomUUID();
   try {
