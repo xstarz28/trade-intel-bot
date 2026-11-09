@@ -39,7 +39,7 @@ function number(value, name) {
   return value;
 }
 function optionalNumber(value, name) {
-  return value === undefined ? null : number(value, name);
+  return value === undefined || value === null ? null : number(value, name);
 }
 function optionalBoolean(value, name) {
   if (value === undefined) return false;
