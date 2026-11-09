@@ -19,7 +19,7 @@ export function BackendOpportunityRadar() {
   const [horizon, setHorizon] = useState<string>("INTRADAY");
   const [items, setItems] = useState<RadarOpportunity[]>([]);
   const [lastScanAt, setLastScanAt] = useState(0);
-  const [status, setStatus] = useState<"available" | "warming_up">("warming_up");
+  const [status, setStatus] = useState<"available" | "warming_up" | "stale">("warming_up");
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -86,7 +86,7 @@ export function BackendOpportunityRadar() {
               <h3 className="text-sm font-semibold">Autonomous Opportunity Radar</h3>
               <p className="text-[11px] text-muted-foreground">Self-hosted scan · trading setups and investment horizons</p>
             </div>
-            <Badge variant="outline">{status === "available" ? "LIVE SNAPSHOTS" : "WARMING UP"}</Badge>
+            <Badge variant="outline">{status === "available" ? "LIVE SNAPSHOTS" : status === "stale" ? "STALE SNAPSHOTS" : "WARMING UP"}</Badge>
           </div>
           <Button size="sm" variant="outline" onClick={scan} disabled={scanning}>
             <RefreshCw className={`mr-2 size-3 ${scanning ? "animate-spin" : ""}`} />
@@ -107,7 +107,7 @@ export function BackendOpportunityRadar() {
         {loading && <p className="text-xs text-muted-foreground">Loading persisted opportunities…</p>}
         {!loading && !error && items.length === 0 && (
           <p className="rounded-md border border-dashed p-4 text-xs text-muted-foreground">
-            {status === "warming_up" ? "The scanner is acquiring its first market batches. Results will appear as verified snapshots accumulate." : "No candidate passed the current evidence and data-quality gates for this horizon."}
+            {status === "warming_up" ? "The scanner is acquiring its first market batches. Results will appear as verified snapshots accumulate." : status === "stale" ? "The last scanner batch is stale. Existing snapshots are shown for reference, not as current opportunities." : "No candidate passed the current evidence and data-quality gates for this horizon."}
           </p>
         )}
         {items.map((item) => {
