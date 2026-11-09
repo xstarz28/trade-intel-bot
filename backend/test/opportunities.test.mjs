@@ -244,6 +244,68 @@ describe("self-hosted opportunity scanner persistence", () => {
     assert.ok(result.updates.every((source) => source.analysisResult?.fundamentalData?.provider === "yahoo-finance-public"));
   });
 
+  it("retries Yahoo US fundamentals after an empty response instead of caching null for six hours", async () => {
+    const { runOpportunityBatch } = await import("../dist/opportunity-engine.mjs");
+    const now = Date.now();
+    const universe = [
+      "BTC/USD", "ETH/USD", "SOL/USD", "DOGE/USD", "XRP/USD", "ADA/USD", "AVAX/USD", "LINK/USD",
+      "EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "USD/CHF", "NZD/USD", "USD/IDR",
+      "USD/SGD", "USD/MXN", "EUR/GBP", "EUR/JPY", "GBP/JPY", "MSFT", "NVDA", "TSLA",
+      "AMZN", "GOOGL", "META", "BBRI", "TLKM", "BMRI", "BBNI", "GOTO", "ASII", "UNVR",
+      "XAU/USD", "XAG/USD", "WTI", "BRENT", "NGAS", "COPPER", "PLAT", "PALL", "SPX", "NDX",
+      "DJI", "RUT", "VIX", "IHSG", "NIFTY50", "NIKKEI", "DAX", "FTSE",
+    ];
+    const scanAttempts = Object.fromEntries(universe.map((symbol) => [symbol, now]));
+    let fundamentalsRequests = 0;
+    const fetchImpl = async (input) => {
+      const url = new URL(String(input));
+      if (url.hostname === "fc.yahoo.com") {
+        return new Response("", { status: 404, headers: { "set-cookie": "A1=radar-test-session; Path=/; Secure" } });
+      }
+      if (url.hostname === "query1.finance.yahoo.com" && url.pathname === "/v1/test/getcrumb") {
+        return new Response("radar-test-crumb", { status: 200 });
+      }
+      if (url.hostname === "query1.finance.yahoo.com" && url.pathname.includes("/v10/finance/quoteSummary/AAPL")) {
+        fundamentalsRequests += 1;
+        const modules = fundamentalsRequests === 1
+          ? { price: { symbol: "AAPL" }, summaryDetail: {}, defaultKeyStatistics: {}, financialData: {} }
+          : { price: { symbol: "AAPL" }, summaryDetail: { trailingPE: { raw: 25 } }, defaultKeyStatistics: {}, financialData: {} };
+        return new Response(JSON.stringify({ quoteSummary: { result: [modules] } }), {
+          status: 200, headers: { "content-type": "application/json" },
+        });
+      }
+      if (url.hostname === "query1.finance.yahoo.com" && url.pathname.includes("/v8/finance/chart/")) {
+        const interval = url.searchParams.get("interval") === "5m" ? 300_000 : 3_600_000;
+        const timestamps = Array.from({ length: 220 }, (_, index) => Math.floor((now - (220 - index) * interval) / 1000));
+        const opens = timestamps.map((_, index) => 180 + index * 0.25);
+        return new Response(JSON.stringify({
+          chart: { result: [{
+            timestamp: timestamps,
+            indicators: { quote: [{
+              open: opens,
+              high: opens.map((value) => value + 1),
+              low: opens.map((value) => value - 1),
+              close: opens.map((value) => value + 0.5),
+              volume: opens.map(() => 1_000_000),
+            }] },
+          }] },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("unexpected provider", { status: 404 });
+    };
+
+    const input = { cursor: 0, sources: [], previousResults: [], scanAttempts, now, fetchImpl, env: {} };
+    const first = await runOpportunityBatch(input);
+    assert.equal(first.instrument, "AAPL");
+    assert.equal(fundamentalsRequests, 1);
+    assert.ok(first.updates.every((source) => !source.analysisResult?.fundamentalData?.available));
+
+    const second = await runOpportunityBatch(input);
+    assert.equal(second.instrument, "AAPL");
+    assert.equal(fundamentalsRequests, 2);
+    assert.ok(second.updates.some((source) => source.analysisResult?.fundamentalData?.available));
+  });
+
   it("rate-limits manual radar scans per authenticated user without blocking other users", async () => {
     const { database } = fixture();
     const now = Date.now();
