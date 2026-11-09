@@ -1094,11 +1094,15 @@ describe("self-hosted backend", () => {
               fundamentalSummary: "No strong catalyst.", dataCompleteness: "PARTIAL",
             },
             entry: 3500, stopLoss: 3400, takeProfit: 3800, riskReward: 3,
+            positionSize: null, notionalValue: null, notes: null,
           }),
         });
         assert.equal(created.status, 201);
         const entry = (await created.json()).item;
         assert.equal(entry.status, "PLANNED");
+        assert.equal(entry.positionSize, null);
+        assert.equal(entry.notionalValue, null);
+        assert.equal(entry.notes, null);
 
         const opened = await fetch(`${baseUrl}/api/v1/journal/${entry._id}/transition`, {
           method: "PATCH",
@@ -1140,6 +1144,16 @@ describe("self-hosted backend", () => {
         );
         assert.equal((await matchingFilter.json()).items.length, 1);
 
+        const clearNullableFields = await fetch(`${baseUrl}/api/v1/journal/${entry._id}`, {
+          method: "PATCH",
+          headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
+          body: JSON.stringify({ entry: null, notes: null }),
+        });
+        assert.equal(clearNullableFields.status, 200);
+        const clearedEntry = (await clearNullableFields.json()).item;
+        assert.equal(clearedEntry.entry, null);
+        assert.equal(clearedEntry.notes, null);
+
         const otherSignIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
           method: "POST", headers: { Origin: env.APP_ORIGIN },
         });
@@ -1166,8 +1180,8 @@ describe("self-hosted backend", () => {
         const cookie = signIn.headers.get("set-cookie").split(";")[0];
         const position = {
           positionId: "position-btc-1", instrument: "BTC-USDT", side: "LONG",
-          entryPrice: 65000, stopLoss: 63000, takeProfit: 70000, leverage: 2,
-          horizon: "SWING", openedAt: Date.now(), peakPrice: 67000, peakProfit: 0.03,
+          entryPrice: 65000, stopLoss: null, takeProfit: null, leverage: null,
+          horizon: "SWING", openedAt: Date.now(), peakPrice: null, peakProfit: null,
           currentSeverity: "WATCH", lifecycleState: "WATCH",
           monitoringLifecycle: "MONITORING", lastUpdateAt: Date.now(),
           lastAlertAt: 0, consecutiveSameSeverity: 1,
@@ -1178,7 +1192,13 @@ describe("self-hosted backend", () => {
           body: JSON.stringify(position),
         });
         assert.equal(saved.status, 200);
-        assert.equal((await saved.json()).item.positionId, position.positionId);
+        const savedPosition = (await saved.json()).item;
+        assert.equal(savedPosition.positionId, position.positionId);
+        assert.equal(savedPosition.stopLoss, null);
+        assert.equal(savedPosition.takeProfit, null);
+        assert.equal(savedPosition.leverage, null);
+        assert.equal(savedPosition.peakPrice, null);
+        assert.equal(savedPosition.peakProfit, null);
 
         const active = await fetch(`${baseUrl}/api/v1/positions`, {
           headers: { Origin: env.APP_ORIGIN, Cookie: cookie },
