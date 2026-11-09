@@ -38,7 +38,7 @@ async function bodyOf(request) {
 }
 
 function str(value, name, optional = false) {
-  if (optional && value === undefined) return null;
+  if (optional && (value === undefined || value === null)) return null;
   if (typeof value !== "string" || (!optional && !value.trim())) {
     throw Object.assign(new Error(`${name} must be a string`), { status: 400 });
   }
@@ -46,7 +46,7 @@ function str(value, name, optional = false) {
 }
 
 function num(value, name, optional = false) {
-  if (optional && value === undefined) return null;
+  if (optional && (value === undefined || value === null)) return null;
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw Object.assign(new Error(`${name} must be a finite number`), { status: 400 });
   }
