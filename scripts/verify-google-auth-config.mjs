@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 import { pathToFileURL } from "node:url";
 
-const REQUIRED_NAMES = ["APP_ORIGIN", "PUBLIC_BASE_URL", "DOMAIN"];
-const OAUTH_NAMES = ["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"];
+const REQUIRED_NAMES = [
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+  "APP_ORIGIN",
+  "PUBLIC_BASE_URL",
+  "DOMAIN",
+];
 
 function httpsOrigin(value) {
   if (typeof value !== "string" || !value.trim()) return undefined;
@@ -33,16 +38,6 @@ export function classifyGoogleAuthConfig(env = process.env) {
 
   for (const name of REQUIRED_NAMES) {
     if (typeof env[name] !== "string" || env[name].trim().length === 0) missing.push(name);
-  }
-  const oauthPresent = OAUTH_NAMES.map((name) =>
-    typeof env[name] === "string" && env[name].trim().length > 0
-  );
-  const oauthConfigured = oauthPresent.every(Boolean);
-  const oauthAbsent = oauthPresent.every((present) => !present);
-  if (!oauthConfigured && !oauthAbsent) {
-    for (const [index, present] of oauthPresent.entries()) {
-      if (!present) missing.push(OAUTH_NAMES[index]);
-    }
   }
 
   const googleId = env.GOOGLE_CLIENT_ID?.trim() ?? "";
@@ -80,14 +75,8 @@ export function classifyGoogleAuthConfig(env = process.env) {
   const callbackUrl = backendOrigin
     ? new URL("/api/v1/auth/google/callback", backendOrigin).toString()
     : null;
-  const state = invalid.length > 0
-    ? "INVALID"
-    : missing.length > 0
-      ? "NOT_CONFIGURED"
-      : oauthAbsent
-        ? "ANONYMOUS_ONLY"
-        : "CONFIGURED";
-  return { state, missing, invalid, callbackUrl, googleSignInEnabled: oauthConfigured };
+  const state = invalid.length > 0 ? "INVALID" : missing.length > 0 ? "NOT_CONFIGURED" : "CONFIGURED";
+  return { state, missing, invalid, callbackUrl };
 }
 
 function main() {
@@ -95,8 +84,7 @@ function main() {
   if (process.argv.includes("--json")) {
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } else {
-    process.stdout.write(`Self-hosted authentication configuration: ${result.state}\n`);
-    process.stdout.write(`Google sign-in enabled: ${result.googleSignInEnabled ? "yes" : "no (anonymous access remains available)"}\n`);
+    process.stdout.write(`Self-hosted Google OAuth configuration: ${result.state}\n`);
     if (result.missing.length) process.stdout.write(`Missing variables: ${result.missing.join(", ")}\n`);
     if (result.invalid.length) process.stdout.write(`Invalid configuration: ${result.invalid.join("; ")}\n`);
     if (result.callbackUrl) process.stdout.write(`Expected Google callback URL: ${result.callbackUrl}\n`);
