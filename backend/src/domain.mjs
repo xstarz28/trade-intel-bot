@@ -210,11 +210,20 @@ export function createDomainHandler({ database, env = process.env }) {
       if (path === "/api/v1/journal" && method === "GET") {
         const instrument = url.searchParams.get("instrument");
         const status = url.searchParams.get("status");
-        const rows = instrument
-          ? database.raw.prepare("SELECT * FROM journal WHERE user_id = ? AND instrument = ? ORDER BY created_at DESC LIMIT 50").all(user.id,instrument)
-          : status
-            ? database.raw.prepare("SELECT * FROM journal WHERE user_id = ? AND status = ? ORDER BY created_at DESC LIMIT 50").all(user.id,status)
-            : database.raw.prepare("SELECT * FROM journal WHERE user_id = ? ORDER BY created_at DESC LIMIT 100").all(user.id);
+        const filters = ["user_id = ?"];
+        const parameters = [user.id];
+        if (instrument) {
+          filters.push("instrument = ?");
+          parameters.push(instrument);
+        }
+        if (status) {
+          filters.push("status = ?");
+          parameters.push(status);
+        }
+        const limit = instrument || status ? 50 : 100;
+        const rows = database.raw.prepare(
+          `SELECT * FROM journal WHERE ${filters.join(" AND ")} ORDER BY created_at DESC LIMIT ?`,
+        ).all(...parameters, limit);
         json(response, 200, { items: rows.map(journalView) });
         return true;
       }
