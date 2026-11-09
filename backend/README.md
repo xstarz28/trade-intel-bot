@@ -104,7 +104,7 @@ docker compose -p trade-intel up --build -d
 
 The Node service listens only inside the Docker network. Caddy obtains and renews the HTTPS certificate and forwards requests to the application. The same hostname serves both the frontend and `/api/v1/*`; no separate API subdomain or cross-origin cookie configuration is needed.
 
-Google OAuth remains disabled until `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are configured and the exact callback URL `https://xstarzganalys.com/api/v1/auth/google/callback` is registered in the Google OAuth client. Credentials must be supplied through the host's environment file, never committed to Git.
+Google OAuth is optional for the first public cutover: when both `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are blank, the app runs in anonymous-access mode and the production deploy verifier accepts it. Existing guest functionality remains available; Google sign-in is disabled until both credentials are supplied and the exact callback URL `https://xstarzganalys.com/api/v1/auth/google/callback` is registered in the Google OAuth client. A partially configured OAuth pair is rejected. Credentials must be supplied through the host's environment file, never committed to Git.
 
 ## Local development
 
