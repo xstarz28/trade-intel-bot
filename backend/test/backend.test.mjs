@@ -1267,7 +1267,7 @@ describe("self-hosted backend", () => {
           headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
           body: JSON.stringify({
             ruleId: "rule-btc-breakout", name: "BTC breakout confirmation",
-            enabled: true, scope: "INSTRUMENT", instrument: "BTC-USDT",
+            enabled: true, scope: "GLOBAL", instrument: null, positionId: null,
             condition: "BREAKOUT_CONFIRMED", severity: "HIGH", cooldownMs: 60000,
           }),
         });
@@ -1279,9 +1279,10 @@ describe("self-hosted backend", () => {
           headers: { Origin: env.APP_ORIGIN, Cookie: cookie, "Content-Type": "application/json" },
           body: JSON.stringify({
             alertId: "rule-alert-1", ruleId: "rule-btc-breakout",
-            ruleName: "BTC breakout confirmation", instrument: "BTC-USDT",
+            ruleName: "BTC breakout confirmation", instrument: null, positionId: null,
             condition: "BREAKOUT_CONFIRMED", severity: "HIGH",
-            description: "Price confirmed above the range.", timestamp: Date.now(),
+            description: "Price confirmed above the range.", previousState: null,
+            currentState: null, timestamp: Date.now(),
           }),
         });
         assert.equal(history.status, 201);
@@ -1289,7 +1290,7 @@ describe("self-hosted backend", () => {
         const notificationBody = {
           notificationId: "notification-1", alertIdentity: "rule-alert-1",
           ruleId: "rule-btc-breakout", ruleName: "BTC breakout confirmation",
-          timestamp: Date.now(), instrument: "BTC-USDT", severity: "HIGH",
+          timestamp: Date.now(), instrument: null, positionId: null, side: null, severity: "HIGH",
           title: "BTC breakout confirmed", message: "The configured breakout condition fired.",
           category: "STRUCTURE", impact: "HIGH", source: "custom-rule",
           condition: "BREAKOUT_CONFIRMED",
