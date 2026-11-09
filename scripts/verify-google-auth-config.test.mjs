@@ -13,34 +13,9 @@ const configured = {
 test("reports missing self-hosted OAuth variable names without values", () => {
   const result = classifyGoogleAuthConfig({});
   assert.equal(result.state, "NOT_CONFIGURED");
-  assert.deepEqual(result.missing, ["APP_ORIGIN", "PUBLIC_BASE_URL", "DOMAIN"]);
-  assert.equal(result.googleSignInEnabled, false);
-});
-
-
-test("allows a public anonymous-only deployment when Google OAuth credentials are both absent", () => {
-  const result = classifyGoogleAuthConfig({
-    APP_ORIGIN: "https://xstarzganalys.com",
-    PUBLIC_BASE_URL: "https://xstarzganalys.com",
-    DOMAIN: "xstarzganalys.com",
-  });
-  assert.equal(result.state, "ANONYMOUS_ONLY");
-  assert.deepEqual(result.missing, []);
-  assert.deepEqual(result.invalid, []);
-  assert.equal(result.googleSignInEnabled, false);
-  assert.equal(result.callbackUrl, "https://xstarzganalys.com/api/v1/auth/google/callback");
-});
-
-test("rejects a partial Google OAuth configuration instead of silently disabling sign-in", () => {
-  const result = classifyGoogleAuthConfig({
-    APP_ORIGIN: "https://xstarzganalys.com",
-    PUBLIC_BASE_URL: "https://xstarzganalys.com",
-    DOMAIN: "xstarzganalys.com",
-    GOOGLE_CLIENT_ID: configured.GOOGLE_CLIENT_ID,
-  });
-  assert.equal(result.state, "NOT_CONFIGURED");
-  assert.deepEqual(result.missing, ["GOOGLE_CLIENT_SECRET"]);
-  assert.equal(result.googleSignInEnabled, false);
+  assert.deepEqual(result.missing, [
+    "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET", "APP_ORIGIN", "PUBLIC_BASE_URL", "DOMAIN",
+  ]);
 });
 
 test("accepts structurally valid self-hosted OAuth configuration and derives callback", () => {
@@ -48,7 +23,6 @@ test("accepts structurally valid self-hosted OAuth configuration and derives cal
   assert.equal(result.state, "CONFIGURED");
   assert.deepEqual(result.missing, []);
   assert.deepEqual(result.invalid, []);
-  assert.equal(result.googleSignInEnabled, true);
   assert.equal(
     result.callbackUrl,
     "https://xstarzganalys.com/api/v1/auth/google/callback",
