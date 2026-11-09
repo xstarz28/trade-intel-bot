@@ -8,11 +8,17 @@
  * INFORMATIONAL ONLY — no execution, no trading signals, no probability.
  */
 
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useI18n } from "@/lib/i18n";
 import { mapIntelligenceStatus } from "@/lib/i18n/enum-mapping";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import { useBackendSession } from "@/hooks/use-backend-session";
+import {
+  BackendApiError,
+  getBackendGoogleSignInUrl,
+  getLatestBackendRuntimeHealth,
+  listBackendRuntimeHealth,
+  type BackendRuntimeHealth,
+} from "@/lib/backend-api";
 import {
   buildRuntimeHealthSnapshot,
   type RuntimeHealthInput,
@@ -70,12 +76,45 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
   const { t } = useI18n();
   const [showHistory, setShowHistory] = useState(false);
 
-  const latestHealth = useQuery(api.runtimeHealth.getLatestRuntimeHealth);
-  const healthHistory = useQuery(
-    api.runtimeHealth.getRuntimeHealthHistory,
-    showHistory ? { limit: 10 } : "skip",
-  );
-  const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
+  const { state: backendState } = useBackendSession();
+  const backendUserId = backendState.status === "authenticated" ? backendState.user.id : null;
+  const [loadedUserId, setLoadedUserId] = useState<string | null>(null);
+  const [backendLatestHealth, setBackendLatestHealth] = useState<BackendRuntimeHealth | null>(null);
+  const [backendHistory, setBackendHistory] = useState<BackendRuntimeHealth[]>([]);
+  const [backendError, setBackendError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!backendUserId) return;
+    let active = true;
+    const historyRequest = showHistory
+      ? listBackendRuntimeHealth(10)
+      : Promise.resolve({ items: [] as BackendRuntimeHealth[] });
+    Promise.all([getLatestBackendRuntimeHealth(), historyRequest])
+      .then(([latestResult, historyResult]) => {
+        if (!active) return;
+        setBackendLatestHealth(latestResult.item);
+        setBackendHistory(historyResult.items);
+        setBackendError(null);
+        setLoadedUserId(backendUserId);
+      })
+      .catch((cause: unknown) => {
+        if (!active) return;
+        setBackendLatestHealth(null);
+        setBackendHistory([]);
+        setBackendError(cause instanceof BackendApiError
+          ? "Backend runtime health error: " + cause.code
+          : "Tidak dapat memuat runtime health dari backend.");
+        setLoadedUserId(backendUserId);
+      });
+    return () => { active = false; };
+  }, [backendUserId, showHistory]);
+
+  const latestHealth = loadedUserId === backendUserId && backendUserId
+    ? backendLatestHealth
+    : undefined;
+  const healthHistory = loadedUserId === backendUserId && backendUserId && showHistory
+    ? backendHistory
+    : undefined;
 
   // Build live snapshot from input signals
   const liveSnapshot: RuntimeHealthSnapshot | null = useMemo(() => {
@@ -112,10 +151,22 @@ export function RuntimeHealthDashboard({ healthInput }: RuntimeHealthDashboardPr
     };
   }, [liveSnapshot, latestHealth]);
 
-  const isLoading = latestHealth === undefined && !healthInput;
+  const isLoading = backendState.status === "loading" || (latestHealth === undefined && !healthInput);
+
+  if (backendState.status !== "authenticated") {
+    return (
+      <div className="space-y-2 rounded-lg border border-border/40 p-3">
+        <h3 className="text-sm font-mono font-semibold">{t.system.title}</h3>
+        <p className="text-xs text-muted-foreground">Riwayat kesehatan runtime tersimpan di backend mandiri. Hubungkan akun backend untuk melihatnya.</p>
+        {backendState.status === "error" && <p role="alert" className="text-xs text-destructive">Sesi backend tidak dapat diperiksa.</p>}
+        {backendState.status === "anonymous" && <button className="text-xs underline" onClick={() => window.location.assign(getBackendGoogleSignInUrl())}>Hubungkan akun backend</button>}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
+      {backendError && <p role="alert" className="text-xs text-destructive">{backendError}</p>}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

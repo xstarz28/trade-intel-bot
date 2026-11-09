@@ -2,11 +2,12 @@ import { chromium } from "playwright";
 import { access } from "node:fs/promises";
 import { extractForecastStatus } from "./forecast-contract-validation.mjs";
 
-const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzanalysis.vercel.app";
+const url = process.env.XSTARZ_SMOKE_URL || "https://xstarzganalys.com";
 const timeout = Number(process.env.XSTARZ_SMOKE_TIMEOUT_MS || 120000);
 
-if (!/^https:\/\/xstarzanalysis\.vercel\.app\/?$/i.test(url)) {
-  throw new Error(`Refusing non-official runtime target; only https://xstarzanalysis.vercel.app is allowed: ${url}`);
+const targetUrl = new URL(url);
+if (targetUrl.origin !== "https://xstarzganalys.com" || !["", "/"].includes(targetUrl.pathname) || targetUrl.search || targetUrl.hash) {
+  throw new Error(`Refusing non-canonical runtime target; only https://xstarzganalys.com is allowed: ${url}`);
 }
 
 const browser = await chromium.launch({ headless: true });
@@ -44,12 +45,15 @@ function wirePage(targetPage) {
     if (msg.type() === "error") consoleErrors.push(msg.text());
   });
   targetPage.on("request", (req) => {
-    if (/\/api\/auth\//i.test(req.url())) {
+    if (/\/api\/v1\/auth\//i.test(req.url())) {
       authTraffic.push({ type: "request", method: req.method(), url: req.url() });
+    }
+    if (/convex\.(cloud|site)/i.test(req.url())) {
+      convexTraffic.push({ type: "request", url: req.url() });
     }
   });
   targetPage.on("response", (res) => {
-    if (/\/api\/auth\//i.test(res.url())) {
+    if (/\/api\/v1\/auth\//i.test(res.url())) {
       authTraffic.push({
         type: "response",
         status: res.status(),
@@ -604,16 +608,20 @@ try {
     throw new Error("Risk-sizing surface did not render all three user-owned account inputs after dashboard navigation.");
   }
 
-  // A guest CTA alone can pass under the local mock-auth fallback. Require
-  // observable traffic to the intended real Convex deployment before treating
-  // this production runtime as usable.
+  // The self-hosted backend must own login/session traffic. Convex is not
+  // a runtime fallback: a single legacy Convex request or socket is a failure.
   await page.waitForTimeout(1500);
-  const activeConvexHost = "hushed-seal-237";
-  const realConvexConnected =
-    convexTraffic.some((item) => item.url?.includes(activeConvexHost)) ||
-    socketTraffic.some((item) => item.url?.includes(activeConvexHost));
-  if (!realConvexConnected) {
-    throw new Error("Production dashboard did not connect to the configured Hushed Convex backend; refusing to accept a mock-auth runtime.");
+  const backendAuthObserved = authTraffic.some((item) =>
+    item.url?.includes("/api/v1/auth/session") || item.url?.includes("/api/v1/auth/anonymous")
+  );
+  const legacyConvexConnected =
+    convexTraffic.some((item) => /convex\.(cloud|site)/i.test(item.url ?? "")) ||
+    socketTraffic.some((item) => /convex\.(cloud|site)/i.test(item.url ?? ""));
+  if (!backendAuthObserved) {
+    throw new Error("Production browser did not observe self-hosted backend session/auth endpoints.");
+  }
+  if (legacyConvexConnected) {
+    throw new Error("Production application unexpectedly contacted Convex; the normal runtime must remain fully self-hosted.");
   }
 
   // Only count the storage-state run as authenticated after the dashboard and
@@ -741,9 +749,8 @@ try {
     }
     const redirectUri = new URL(redirectUriRaw);
     const validCallback =
-      redirectUri.protocol === "https:" &&
-      redirectUri.hostname === "hushed-seal-237.convex.site" &&
-      redirectUri.pathname === "/api/auth/callback/google";
+      redirectUri.origin === "https://xstarzganalys.com" &&
+      redirectUri.pathname === "/api/v1/auth/google/callback";
     evidence.googleOAuth.redirectUri = redirectUri.origin + redirectUri.pathname;
     evidence.googleOAuth.redirectUriMismatch = !validCallback;
     if (!validCallback) {

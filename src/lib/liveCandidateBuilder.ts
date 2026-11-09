@@ -25,6 +25,7 @@ import type { EiaData } from "./data/eia";
 import { calculateTechnical } from "./data/technical";
 import { buildConditionalEntryScenariosFromMarketData } from "./conditional-entry-scenarios";
 import { matchesDerivativeSymbol } from "./data/derivatives-symbol";
+import { classifyMarketDataFreshness } from "./data/market-freshness";
 
 // ═══════════════════════════════════════════════════════════════
 // LIVE CANDIDATE INPUT
@@ -83,26 +84,14 @@ function assessFreshness(
   now: number,
   timeframe?: string,
 ): "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE" {
-  if (!Number.isFinite(timestamp) || (timestamp ?? 0) <= 0) return "UNAVAILABLE";
-  const ageMs = now - timestamp!;
-  // Do not label materially future-dated provider observations as fresh.
-  if (ageMs < 0) return "UNAVAILABLE";
-  if (ageMs < 5 * 60_000) return "FRESH";         // < 5 min
-  if (ageMs < 60 * 60_000) return "DELAYED";      // < 1 hour
-
-  // Closed-market daily/weekly candles remain usable only as STALE evidence.
-  const tf = timeframe?.trim().toUpperCase().replace(/\s+/g, "");
-  const staleLimitMs = tf === "W1" || tf === "1W" || tf === "1WEEK"
-    ? 14 * 24 * 60 * 60_000
-    : tf === "D1" || tf === "1D" || tf === "1DAY" || tf === "H4" || tf === "4H" || tf === "4HR"
-      ? 4 * 24 * 60 * 60_000
-      : tf === "H1" || tf === "1H" || tf === "1HR"
-        ? 48 * 60 * 60_000
-        : 24 * 60 * 60_000;
-  if (ageMs < staleLimitMs) return "STALE";
-  return "UNAVAILABLE";
+  const freshness = classifyMarketDataFreshness(timestamp ?? Number.NaN, now, timeframe ?? "UNKNOWN");
+  switch (freshness) {
+    case "realtime": return "FRESH";
+    case "delayed": return "DELAYED";
+    case "stale": return "STALE";
+    case "unavailable": return "UNAVAILABLE";
+  }
 }
-
 type CandidateFreshness = "FRESH" | "DELAYED" | "STALE" | "UNAVAILABLE";
 
 const FRESHNESS_RANK: Record<CandidateFreshness, number> = {

@@ -78,7 +78,6 @@ import {
   type EventCursor,
 } from "./position-protection/persistence";
 
-import { ConvexPersistenceAdapter } from "./position-protection/convex-persistence";
 
 // ═══════════════════════════════════════════════════════════════
 // IMPORTS — Acceleration Monitor
@@ -604,94 +603,6 @@ describe("F. Persistence — InMemoryRepository", () => {
     const eth = await repo.getPositionState("eth-long");
     expect(btc!.instrument).toBe("BTC/USD");
     expect(eth!.instrument).toBe("ETH/USD");
-  });
-});
-
-// ═══════════════════════════════════════════════════════════════
-// G. PERSISTENCE — ConvexPersistenceAdapter
-// ═══════════════════════════════════════════════════════════════
-
-describe("G. ConvexPersistenceAdapter", () => {
-  it("G1 — falls back to InMemory when no client", async () => {
-    const adapter = new ConvexPersistenceAdapter();
-    expect(await adapter.isAvailable()).toBe(true);
-    await adapter.savePositionState({
-      positionId: "p1",
-      instrument: "BTC/USD",
-      side: "LONG",
-      entryPrice: 80000,
-      horizon: "SWING",
-      openedAt: Date.now(),
-      currentSeverity: "NONE",
-      lifecycleState: "MONITORING",
-      lastUpdateAt: Date.now(),
-      lastAlertAt: 0,
-      consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
-    const pos = await adapter.getPositionState("p1");
-    expect(pos).not.toBeNull();
-  });
-
-  it("G2 — falls back to InMemory for alerts", async () => {
-    const adapter = new ConvexPersistenceAdapter();
-    await adapter.saveAlert({
-      alertId: "a1",
-      positionId: "p1",
-      instrument: "BTC/USD",
-      severity: "WATCH",
-      notificationPriority: "INFO",
-      reason: "test",
-      action: "monitor",
-      timestamp: Date.now(),
-      acknowledged: false,
-    });
-    const alerts = await adapter.listAlertHistory("p1");
-    expect(alerts.length).toBe(1);
-  });
-
-  it("G3 — acknowledgeAlert works through fallback", async () => {
-    const adapter = new ConvexPersistenceAdapter();
-    await adapter.saveAlert({
-      alertId: "a2",
-      positionId: "p1",
-      instrument: "BTC/USD",
-      severity: "CAUTION",
-      notificationPriority: "WARNING",
-      reason: "test",
-      action: "protect",
-      timestamp: Date.now(),
-      acknowledged: false,
-    });
-    expect(await adapter.acknowledgeAlert("a2")).toBe(true);
-  });
-
-  it("G4 — event cursor through fallback", async () => {
-    const adapter = new ConvexPersistenceAdapter();
-    await adapter.saveEventCursor({ provider: "OKX", instrument: "BTC/USD", lastEventId: "e1", lastTimestamp: 1000 });
-    const cursor = await adapter.getEventCursor("OKX", "BTC/USD");
-    expect(cursor).not.toBeNull();
-    expect(cursor!.lastEventId).toBe("e1");
-  });
-
-  it("G5 — listActivePositions works through fallback", async () => {
-    const adapter = new ConvexPersistenceAdapter();
-    await adapter.savePositionState({
-      positionId: "p1",
-      instrument: "BTC/USD",
-      side: "LONG",
-      entryPrice: 80000,
-      horizon: "SWING",
-      openedAt: Date.now(),
-      currentSeverity: "NONE",
-      lifecycleState: "MONITORING",
-      lastUpdateAt: Date.now(),
-      lastAlertAt: 0,
-      consecutiveSameSeverity: 0,
-      monitoringLifecycle: "MONITORING",
-    });
-    const active = await adapter.listActivePositions();
-    expect(active.length).toBe(1);
   });
 });
 

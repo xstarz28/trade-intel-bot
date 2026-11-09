@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as accountMigration from "../accountMigration.js";
 import type * as alertRules from "../alertRules.js";
 import type * as alphaVantage from "../alphaVantage.js";
 import type * as analyses from "../analyses.js";
@@ -40,6 +41,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  accountMigration: typeof accountMigration;
   alertRules: typeof alertRules;
   alphaVantage: typeof alphaVantage;
   analyses: typeof analyses;

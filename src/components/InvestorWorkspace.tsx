@@ -776,7 +776,7 @@ function PositionThesisCard({ row }: { row: InvestorIntelRow }) {
 
 export function InvestorWorkspace() {
   const { t } = useI18n();
-  // Fetch positions from Convex (protection state)
+  // Fetch positions from authenticated self-hosted backend protection state
   const {
     positions: registeredPositions,
     ingestEvent,

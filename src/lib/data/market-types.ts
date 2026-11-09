@@ -1,5 +1,5 @@
 /**
- * Normalized market data types shared between Convex backend and frontend.
+ * Normalized market data types shared between the self-hosted backend and frontend.
  * Every provider response is mapped into these types before reaching the
  * analysis engine.
  */
@@ -252,7 +252,7 @@ export interface CrossAssetContext {
   comparatorMomentum?: "up" | "down" | "flat";
   /** Phase 7C: provenance — comparator series are ACTUAL provider prices. */
   dataKind?: "actual_price";
-  /** Provider that supplied the actual comparator series (e.g. Twelve Data). */
+  /** Exact upstream provider label that supplied the actual comparator series. */
   provider?: string;
 }
 
@@ -353,7 +353,7 @@ export interface TechnicalData {
   mtf?: MtfContext;
 }
 
-/** What the Convex action returns. */
+/** Normalized result returned by the self-hosted market-analysis API. */
 export interface MarketDataResult {
   success: boolean;
   data?: MarketData;

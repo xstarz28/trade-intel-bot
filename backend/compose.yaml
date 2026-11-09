@@ -1,0 +1,53 @@
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      args:
+        VITE_LEGACY_CONVEX_URL: ${VITE_LEGACY_CONVEX_URL:-}
+        XSTARZ_BUILD_COMMIT: ${XSTARZ_BUILD_COMMIT:-}
+        XSTARZ_BUILD_REF: ${XSTARZ_BUILD_REF:-}
+        XSTARZ_BUILD_WORKTREE_CLEAN: ${XSTARZ_BUILD_WORKTREE_CLEAN:-false}
+        SOURCE_DATE_EPOCH: ${SOURCE_DATE_EPOCH:-}
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+      DB_PATH: /data/trade-intel.sqlite
+      STATIC_DIR: /app/dist
+      NODE_ENV: ${NODE_ENV:-production}
+      APP_ORIGIN: ${APP_ORIGIN:-https://xstarzganalys.com}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://xstarzganalys.com}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      XSTARZ_BUILD_COMMIT: ${XSTARZ_BUILD_COMMIT:-unknown}
+      XSTARZ_BUILD_REF: ${XSTARZ_BUILD_REF:-unknown}
+      XSTARZ_BUILD_WORKTREE_CLEAN: ${XSTARZ_BUILD_WORKTREE_CLEAN:-false}
+    expose:
+      - "8787"
+    volumes:
+      - trade_intel_data:/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in backend/.env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  trade_intel_data:
+  caddy_data:
+  caddy_config:

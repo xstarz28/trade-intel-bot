@@ -1,126 +1,17 @@
-name: Production frontend deploy
+name: Retired - Vercel production frontend deploy
 
 on:
-  push:
-    branches: ["main"]
   workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
-  group: production-frontend
-  cancel-in-progress: false
-
 jobs:
-  publish:
-    name: Build, publish and verify XSTARZG frontend
+  retired:
+    name: Vercel production deployment is retired
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: development
-    env:
-      VITE_CONVEX_URL: https://hushed-seal-237.convex.cloud
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
-      VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
-      VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
-      VERCEL_PROJECT_NAME: ${{ vars.VERCEL_PROJECT_NAME }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.sha }}
-          fetch-depth: 1
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: Install dependencies
-        run: npm install --legacy-peer-deps --no-audit --no-fund
-
-      - name: Validate release configuration
+      - name: Refuse legacy deployment
         run: |
-          set -euo pipefail
-          test -n "${VITE_CONVEX_URL}" || { echo "::error::VITE_CONVEX_URL is missing from the production environment"; exit 1; }
-          printf '%s' "${VITE_CONVEX_URL}" | grep -Eq '^https://[a-z0-9][a-z0-9-]*\.convex\.cloud$' || { echo "::error::VITE_CONVEX_URL must be an https *.convex.cloud URL"; exit 1; }
-          test -n "${VERCEL_TOKEN}" || { echo "::error::VERCEL_TOKEN is missing from the production environment"; exit 1; }
-          test -n "${VERCEL_ORG_ID}" || { echo "::error::VERCEL_ORG_ID is missing from the production environment"; exit 1; }
-          test -n "${VERCEL_PROJECT_ID}" || { echo "::error::VERCEL_PROJECT_ID is missing from the production environment"; exit 1; }
-
-      - name: Build exact main revision
-        env:
-          XSTARZ_BUILD_COMMIT: ${{ github.sha }}
-          XSTARZ_BUILD_REF: main
-        run: npm run build
-
-      - name: Verify release artifact
-        run: npm run verify:frontend:release -- --expect-commit "${{ github.sha }}" --expect-branch main
-
-      - name: Assemble Vercel Build Output API payload
-        run: npm run frontend:prebuilt -- --dist dist --expect-commit "${{ github.sha }}" --expect-branch main
-
-      - name: Publish prebuilt artifact to Vercel production
-        id: deploy
-        run: |
-          set -euo pipefail
-          args=(--org-id "${VERCEL_ORG_ID}" --project-id "${VERCEL_PROJECT_ID}" --project-name "${VERCEL_PROJECT_NAME:-trade-intel-bot}" --target production --expect-commit "${{ github.sha }}")
-          out="${RUNNER_TEMP}/vercel-deploy.out"
-          err="${RUNNER_TEMP}/vercel-deploy.err"
-          set +e
-          npm run frontend:publish:rest -- "${args[@]}" >"${out}" 2>"${err}"
-          status=$?
-          set -e
-          cat "${out}"
-          cat "${err}" >&2
-          test "${status}" -eq 0
-          url="$(grep -oE 'https://[A-Za-z0-9.-]+' "${out}" | tail -n 1)"
-          test -n "${url}"
-          deployment_line="$(grep -oE "deployment dpl_[A-Za-z0-9]+" "${out}" | tail -n 1)"
-          deployment_id="${deployment_line#deployment }"
-          test -n "${deployment_id}"
-          echo "deployment_url=${url}" >> "${GITHUB_OUTPUT}"
-          echo "deployment_id=${deployment_id}" >> "${GITHUB_OUTPUT}"
-          echo "publication_verified=true"
-
-      - name: Promote exact deployment to production domains
-        run: |
-          set -euo pipefail
-          deployment_id="${{ steps.deploy.outputs.deployment_id }}"
-          response="${RUNNER_TEMP}/vercel-promote.json"
-          code="$(curl -sS -o "${response}" -w "%{http_code}" -X POST \
-            "https://api.vercel.com/v10/projects/${VERCEL_PROJECT_ID}/promote/${deployment_id}" \
-            -H "Authorization: Bearer ${VERCEL_TOKEN}" \
-            -H "Content-Type: application/json")"
-          cat "${response}"
-          if [ "${code}" = "200" ]; then
-            exit 0
-          fi
-          if [ "${code}" = "409" ] && grep -q '"code":"conflict"' "${response}" && grep -q "already the current production deployment" "${response}"; then
-            echo "Deployment is already the current production deployment; production domains are already pointed at this exact build."
-            exit 0
-          fi
-          echo "::error::Vercel promotion failed with HTTP ${code}"
+          echo "::error::Vercel production deployment is retired. The production target is the self-hosted Docker/Caddy stack at xstarzganalys.com."
           exit 1
-
-      - name: Verify published production host
-        run: |
-          set -euo pipefail
-          # Vercel alias propagation can lag a successful deployment promotion.
-          # Retry the exact branded host instead of failing on the first stale edge response.
-          target="https://xstarzanalysis.vercel.app"
-          verify_log="${RUNNER_TEMP}/frontend-public-verify.log"
-          for attempt in $(seq 1 24); do
-            if npm run verify:frontend:release -- --url "${target}" --expect-commit "${{ github.sha }}" --expect-branch main >"${verify_log}" 2>&1; then
-              cat "${verify_log}"
-              echo "Published production host serves the exact deployed revision."
-              exit 0
-            fi
-            echo "Waiting for exact production revision to propagate: attempt ${attempt}/24"
-            if [ "${attempt}" -lt 24 ]; then sleep 5; fi
-          done
-          cat "${verify_log}"
-          echo "::error::Published production host did not converge to the exact deployed revision within 120 seconds."
-          exit 1
-
-      - name: Report public target
-        run: |
-          echo "PUBLIC FRONTEND: https://xstarzanalysis.vercel.app"

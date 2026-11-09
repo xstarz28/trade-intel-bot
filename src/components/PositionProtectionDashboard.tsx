@@ -6,7 +6,7 @@
  * - Real-time monitoring panels per position
  * - Alert history
  * - Toast notifications on state transitions
- * - Persistence via Convex
+ * - Persistence via the self-hosted backend
  *
  * INFORMATIONAL_ONLY — never executes trades.
  */
@@ -93,8 +93,17 @@ import {
   classifyNewsFreshness,
   type NewsItem,
 } from "@/lib/position-protection/news-intelligence";
-import { useQuery, useAction, useMutation } from "convex/react";
-import { api } from "../convex/_generated/api";
+import {
+  fetchBackendAlphaVantage,
+  getBackendHistoricalTimeline,
+  saveBackendHistoricalSnapshot,
+  saveBackendHistoricalEvents,
+  deleteBackendHistoricalTimeline,
+  listBackendAlertRules,
+  saveBackendRuntimeHealth,
+  createBackendNotification,
+  type BackendAlertRule,
+} from "@/lib/backend-api";
 import {
   decidePersistence,
   snapshotToArgs,
@@ -383,11 +392,7 @@ export function PositionProtectionDashboard() {
     }
   }, [livePrices]);
 
-  // ─── Phase 90: Convex Historical Intelligence Persistence ──
-  const saveSnapshotMut = useMutation(api.historicalIntelligence.saveSnapshot);
-  const saveEventsMut = useMutation(api.historicalIntelligence.saveEvents);
-  const deleteHistoryMut = useMutation(api.historicalIntelligence.deleteHistoryForPosition);
-  const pruneHistoryMut = useMutation(api.historicalIntelligence.pruneHistory);
+  // Historical persistence is handled by the authenticated self-hosted API.
 
   // ─── Shared Macro Context Data ───────────────────────────
   // Treasury yields + economic calendar are fetched once per mounted
@@ -395,9 +400,8 @@ export function PositionProtectionDashboard() {
   // mutually exclusive tabs — no duplicate fetches can occur).
   const { treasuryData, calendarData, userPositions } = useMacroContextData(positions);
 
-  // Fetch news for each unique instrument via Convex action
+  // Fetch news/fundamental intelligence through the self-hosted backend.
   const [feedNews, setFeedNews] = useState<Map<string, NewsItem[]>>(new Map());
-  const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
 
   // Fetch news for user's instruments (rate-limit safe: one at a time)
   useEffect(() => {
@@ -411,33 +415,76 @@ export function PositionProtectionDashboard() {
         if (cancelled) break;
         try {
           const assetClass = userPositions.find(p => p.instrument === instrument)?.assetClass ?? "crypto";
-          const instrumentType = assetClass === "crypto" ? "crypto" : assetClass === "forex" ? "forex" : "stock";
-          const result = await fetchIntelligence({
-            instrument: instrument.split("/")[0],
-            instrumentType: instrumentType as any,
-          });
+          const instrumentType =
+            assetClass === "crypto" ? "crypto" :
+            assetClass === "forex" ? "forex" :
+            assetClass === "commodity" ? "commodity" :
+            assetClass === "macro" || assetClass === "indices" ? "macro" :
+            assetClass === "equity" || assetClass === "stock" ? "stock" : null;
+          if (!instrumentType) continue;
+          const result = await fetchBackendAlphaVantage(instrument, instrumentType);
           if (cancelled) break;
 
           const articles = result?.sentiment?.articles ?? [];
-          const newsItems: NewsItem[] = articles.map((art: any, i: number) => ({
-            id: `av-${instrument}-${i}`,
-            timestamp: art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
-            source: art.source || "AlphaVantage",
-            headline: art.title || "",
-            summary: art.summary || undefined,
-            url: art.url || undefined,
-            relatedInstruments: [instrument],
-            assetClass: assetClass as any,
-            category: assetClass === "crypto" ? "CRYPTO_SPECIFIC" as const : "FOREX" as const,
-            sentiment: art.sentimentLabel === "positive" ? "BULLISH" as const :
-                       art.sentimentLabel === "negative" ? "BEARISH" as const : "NEUTRAL" as const,
-            impactStrength: "MODERATE" as const,
-            freshness: classifyNewsFreshness(
-              art.publishedAt ? new Date(art.publishedAt).getTime() : Date.now(),
-              Date.now(),
-            ),
-            sourceMode: "LIVE" as const,
-          }));
+          const newsAssetClass: NewsItem["assetClass"] =
+            assetClass === "indices" ? "macro" :
+            assetClass === "crypto" || assetClass === "forex" || assetClass === "commodity" ||
+            assetClass === "macro" || assetClass === "equity"
+              ? assetClass
+              : "other";
+          const newsItems: NewsItem[] = articles.map((art, i) => {
+            const articleText = `${art.title || ""} ${art.summary || ""}`.toLowerCase();
+            const relatedTickers = art.relatedTickers ?? [];
+            const instrumentTokens = instrument.toUpperCase().split(/[/-]/).filter(Boolean);
+            const directlyRelated = relatedTickers.some((ticker) => {
+              const normalizedTicker = ticker.toUpperCase().replace(/^(CRYPTO|FOREX):/, "");
+              return instrumentTokens.some((token) =>
+                token === normalizedTicker || token === normalizedTicker.replace(/USD$/, ""),
+              );
+            });
+            const category: NewsItem["category"] =
+              newsAssetClass === "crypto" ? "CRYPTO_SPECIFIC" :
+              newsAssetClass === "forex" ? "FOREX" :
+              newsAssetClass === "commodity" ? "COMMODITY" :
+              newsAssetClass === "equity" ? "COMPANY" :
+              /inflation|cpi|ppi|pce/.test(articleText) ? "INFLATION" :
+              /employment|payroll|unemployment|jobs/.test(articleText) ? "EMPLOYMENT" :
+              /gdp|gross domestic/.test(articleText) ? "GDP" :
+              /federal reserve|central bank|interest rate|policy rate|hawkish|dovish/.test(articleText) ? "CENTRAL_BANK" :
+              /war|sanction|geopolitic/.test(articleText) ? "GEOPOLITICAL" :
+              /regulat|cftc/.test(articleText) ? "REGULATION" : "FUNDAMENTAL";
+            const publishedAt = art.publishedAt ? new Date(art.publishedAt).getTime() : 0;
+            const hasTimestamp = Number.isFinite(publishedAt) && publishedAt > 0;
+            const freshness = hasTimestamp
+              ? classifyNewsFreshness(publishedAt, Date.now())
+              : "UNAVAILABLE";
+            const sentimentLabel = (art.sentimentLabel || "").toLowerCase();
+            const sentiment: NewsItem["sentiment"] =
+              sentimentLabel === "positive" ? "BULLISH" :
+              sentimentLabel === "negative" ? "BEARISH" :
+              sentimentLabel === "neutral" ? "NEUTRAL" : "UNKNOWN";
+            const relevance = typeof art.relevanceScore === "number" && Number.isFinite(art.relevanceScore)
+              ? art.relevanceScore
+              : null;
+            const impactStrength: NewsItem["impactStrength"] = relevance === null
+              ? "UNKNOWN"
+              : relevance >= 0.75 ? "HIGH" : relevance >= 0.4 ? "MODERATE" : "LOW";
+            return {
+              id: `av-${instrument}-${i}`,
+              timestamp: hasTimestamp ? publishedAt : 0,
+              source: art.source || "AlphaVantage",
+              headline: art.title || "",
+              summary: art.summary || undefined,
+              url: art.url || undefined,
+              relatedInstruments: directlyRelated ? [instrument] : [],
+              assetClass: newsAssetClass,
+              category,
+              sentiment,
+              impactStrength,
+              freshness,
+              sourceMode: freshness === "UNAVAILABLE" ? "UNAVAILABLE" : freshness === "STALE" ? "STALE" : "LIVE",
+            };
+          });
 
           setFeedNews(prev => {
             const next = new Map(prev);
@@ -454,7 +501,7 @@ export function PositionProtectionDashboard() {
 
     fetchNews();
     return () => { cancelled = true; };
-  }, [userPositions, fetchIntelligence]);
+  }, [userPositions]);
 
   // Build the user intelligence feed
   const userFeed: FeedType | null = useMemo(() => {
@@ -500,57 +547,56 @@ export function PositionProtectionDashboard() {
     });
   }, [portfolioIntel]);
 
-  // ─── Phase 91: Reactive Convex Historical Timeline Queries ──
-  // One query per position, reactive — automatically updates when Convex data changes
+  // ─── Self-hosted historical timeline reads ──
   const positionIds = useMemo(() => positions.map(p => p.position.positionId), [positions]);
-  const convTimeline0 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 0 ? { positionId: positionIds[0] } : "skip",
-  );
-  const convTimeline1 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 1 ? { positionId: positionIds[1] } : "skip",
-  );
-  const convTimeline2 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 2 ? { positionId: positionIds[2] } : "skip",
-  );
-  const convTimeline3 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 3 ? { positionId: positionIds[3] } : "skip",
-  );
-  const convTimeline4 = useQuery(
-    api.historicalIntelligence.getHistoricalTimeline,
-    positionIds.length > 4 ? { positionId: positionIds[4] } : "skip",
-  );
-
-  // Map Convex reactive results by positionId
-  const convTimelines = useMemo(() => {
-    const map = new Map<string, any>();
-    const results = [convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4];
-    for (let i = 0; i < positionIds.length && i < results.length; i++) {
-      const result = results[i];
-      if (result && result.latestSnapshot) {
-        map.set(positionIds[i], result);
-      }
-    }
-    return map;
-  }, [positionIds, convTimeline0, convTimeline1, convTimeline2, convTimeline3, convTimeline4]);
+  type BackendTimeline = Awaited<ReturnType<typeof getBackendHistoricalTimeline>>;
+  const [backendTimelines, setBackendTimelines] = useState<Map<string, BackendTimeline>>(new Map());
+  useEffect(() => {
+    let cancelled = false;
+    const loadTimelines = async () => {
+      const ids = positionIds.slice(0, 5);
+      const results = await Promise.allSettled(ids.map((id) => getBackendHistoricalTimeline(id)));
+      if (cancelled) return;
+      const next = new Map<string, BackendTimeline>();
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled" && result.value.latestSnapshot) {
+          next.set(ids[index], result.value);
+        }
+      });
+      setBackendTimelines(next);
+    };
+    if (positionIds.length > 0) void loadTimelines();
+    const interval = window.setInterval(() => {
+      if (positionIds.length > 0) void loadTimelines();
+    }, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [positionIds]);
 
   // Track last-persisted snapshot identity to prevent redundant saves
   const lastPersistedRef = useRef<Map<string, string>>(new Map());
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ──────────────
-  const alertRules = useQuery(api.alertRules.listRules);
+  const [alertRules, setAlertRules] = useState<BackendAlertRule[] | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    const loadRules = () => listBackendAlertRules()
+      .then((result) => { if (!cancelled) setAlertRules(result.items); })
+      .catch(() => { if (!cancelled) setAlertRules([]); });
+    void loadRules();
+    const interval = window.setInterval(() => void loadRules(), 60_000);
+    return () => { cancelled = true; window.clearInterval(interval); };
+  }, []);
   const prevStateRef = useRef<PreviousStateStore | null>(null);
   const triggerRecordsRef = useRef<Map<string, RuleTriggerRecord>>(new Map());
   const bridgeInitializedRef = useRef(false);
   const diagnosticsRef = useRef<AlertDiagnosticEvent[]>([]);
   const healthBufferRef = useRef<HealthEventBuffer>(createHealthEventBuffer());
-  const saveHealthMut = useMutation(api.runtimeHealth.saveRuntimeHealth);
   const healthSnapshot = useMemo(() => buildSnapshotFromBuffer(healthBufferRef.current, Date.now()), [intelligenceMap]);
 
-  // ─── Phase 91: Build Historical Timelines (Convex-first merge) ──
+  // ─── Phase 91: Build Historical Timelines (backend-first merge) ──
   useEffect(() => {
     if (intelligenceMap.size === 0) return;
 
@@ -587,10 +633,10 @@ export function PositionProtectionDashboard() {
         const lastId = lastPersistedRef.current.get(posId) ?? null;
         const stale = isSnapshotStale(snapshot, lastId);
 
-        // Persist meaningful changes to Convex (fire-and-forget)
+        // Persist meaningful changes to the self-hosted backend (fire-and-forget)
         if (decision.shouldPersistSnapshot && !stale) {
           lastPersistedRef.current.set(posId, snapshotIdentity(snapshot));
-          saveSnapshotMut(snapshotToArgs(snapshot)).then(() => {
+          saveBackendHistoricalSnapshot(snapshotToArgs(snapshot) as unknown as Record<string, unknown>).then(() => {
             healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save snapshot",
@@ -606,9 +652,9 @@ export function PositionProtectionDashboard() {
           });
         }
         if (decision.shouldPersistEvents && decision.newEvents.length > 0 && !stale) {
-          saveEventsMut(eventsToArgs(
+          saveBackendHistoricalEvents(eventsToArgs(
             posId, intel.instrument, intel.side, decision.newEvents,
-          )).then(() => {
+          ) as unknown as Record<string, unknown>).then(() => {
             healthBufferRef.current = recordProviderResult(healthBufferRef.current, {
               component: "HISTORICAL_PERSISTENCE",
               operation: "Save events",
@@ -627,45 +673,44 @@ export function PositionProtectionDashboard() {
         // Phase 91: Build local timeline (optimistic layer)
         const localTimeline = buildTimeline(existing, snapshot);
 
-        // Phase 91: Merge with Convex data if available
-        const convData = convTimelines.get(posId);
-        if (convData) {
-          // Reconstruct authoritative timeline from Convex
+        // Phase 91: Merge with backend data if available
+        const backendData = positionIds.length > 0 ? backendTimelines.get(posId) : undefined;
+        if (backendData) {
+          // Reconstruct authoritative timeline from backend
           const persistedSnapshots: PersistedSnapshot[] = [];
-          if (convData.latestSnapshot) persistedSnapshots.push(convData.latestSnapshot);
-          if (convData.previousSnapshot) persistedSnapshots.push(convData.previousSnapshot);
-          const persistedEvents: PersistedEvent[] = convData.events ?? [];
-          const convTimeline = reconstructTimeline(persistedSnapshots, persistedEvents);
+          if (backendData.latestSnapshot) persistedSnapshots.push(backendData.latestSnapshot as unknown as PersistedSnapshot);
+          if (backendData.previousSnapshot) persistedSnapshots.push(backendData.previousSnapshot as unknown as PersistedSnapshot);
+          const persistedEvents = (backendData.events ?? []) as unknown as PersistedEvent[];
+          const backendTimeline = reconstructTimeline(persistedSnapshots, persistedEvents);
 
-          // Merge: local optimistic + Convex authoritative
-          const mergedLatest = mergeSnapshots(localTimeline.latestSnapshot, convTimeline.latestSnapshot);
-          const mergedPrevious = mergeSnapshots(localTimeline.previousSnapshot, convTimeline.previousSnapshot);
-          const mergedEvents = mergeTimelineEvents(localTimeline.events, convTimeline.events);
+          // Merge: local optimistic + backend authoritative
+          const mergedLatest = mergeSnapshots(localTimeline.latestSnapshot, backendTimeline.latestSnapshot);
+          const mergedPrevious = mergeSnapshots(localTimeline.previousSnapshot, backendTimeline.previousSnapshot);
+          const mergedEvents = mergeTimelineEvents(localTimeline.events, backendTimeline.events);
 
           next.set(posId, {
             positionId: posId,
             latestSnapshot: mergedLatest,
             previousSnapshot: mergedPrevious,
             events: mergedEvents,
-            summary: localTimeline.summary ?? convTimeline.summary,
+            summary: localTimeline.summary ?? backendTimeline.summary,
           });
         } else {
-          // No Convex data yet — use local optimistic timeline
+          // No backend data yet — use local optimistic timeline
           next.set(posId, localTimeline);
         }
       }
       return next;
     });
-  }, [intelligenceMap, convTimelines, saveSnapshotMut, saveEventsMut]);
+  }, [intelligenceMap, backendTimelines, positionIds.length]);
 
   // ─── Phase 95: Runtime Alert Evaluation Bridge ────────────
-  const createNotificationMut = useMutation(api.notifications.createNotification);
 
   useEffect(() => {
     if (intelligenceMap.size === 0) return;
     if (!alertRules || alertRules.length === 0) return;
 
-    // Cast Convex records to AlertRule[] (scope/type fields are stored as strings)
+    // Cast backend records to AlertRule[] (scope/type fields are stored as strings)
     const typedRules = alertRules as unknown as import("@/lib/position-protection/alert-rule-engine").AlertRule[];
 
     const now = Date.now();
@@ -713,9 +758,9 @@ export function PositionProtectionDashboard() {
       message: `${typedRules.length} rules evaluated, ${result.notifications.length} notifications generated`,
     });
 
-    // Persist notifications to Convex (fire-and-forget, rate-limit safe)
+    // Persist notifications to backend (fire-and-forget, rate-limit safe)
     for (const notif of result.notifications) {
-      createNotificationMut({
+      createBackendNotification({
         notificationId: notif.notificationId,
         alertIdentity: notif.alertIdentity,
         ruleId: notif.ruleId,
@@ -749,7 +794,7 @@ export function PositionProtectionDashboard() {
         });
       });
     }
-  }, [intelligenceMap, alertRules, createNotificationMut]);
+  }, [intelligenceMap, alertRules]);
 
   // ─── Phase 95/97: Reset bridge state when positions are removed ──
   useEffect(() => {
@@ -789,7 +834,7 @@ export function PositionProtectionDashboard() {
     if (snapshotToPersist) {
       healthBufferRef.current = markPersisted(healthBufferRef.current, snapshotToPersist);
       isPersistingHealthRef.current = true;
-      saveHealthMut({
+      saveBackendRuntimeHealth({
         timestamp: snapshotToPersist.timestamp,
         overallStatus: snapshotToPersist.overallStatus,
         components: snapshotToPersist.components.map((c) => ({
@@ -817,7 +862,7 @@ export function PositionProtectionDashboard() {
         // Do NOT record a health event for persistence failure — prevents recursive loop
       });
     }
-  }, [intelligenceMap, positions.length, saveHealthMut]);
+  }, [intelligenceMap, positions.length]);
 
   // ─── Toast Notifications on State Transitions ───────────
   useEffect(() => {
@@ -884,7 +929,7 @@ export function PositionProtectionDashboard() {
       removePos(positionId);
       prevAlertsRef.current.delete(positionId);
       // Phase 90: Clean up persisted historical intelligence
-      deleteHistoryMut({ positionId }).catch(() => {});
+      void deleteBackendHistoricalTimeline(positionId).catch(() => {});
       // Also remove from local timeline state
       setTimelines(prev => {
         const next = new Map(prev);
@@ -896,7 +941,7 @@ export function PositionProtectionDashboard() {
         duration: 3000,
       });
     },
-    [removePos, deleteHistoryMut],
+    [removePos],
   );
 
   // ─── Summary Stats ───────────────────────────────────────

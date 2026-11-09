@@ -510,6 +510,12 @@ const FOREX_CURRENCY_CODES = new Set([
   "ZAR", "TRY", "PLN", "HUF", "CZK", "ILS",
 ]);
 
+function hasActualDxyIndex(context: TechnicalData["crossAsset"]): boolean {
+  if (!context?.available || context.dataKind !== "actual_price") return false;
+  return context.comparatorSymbol.trim().toUpperCase() === "DXY" ||
+    context.providerSymbol?.trim().toUpperCase() === "DX-Y.NYB";
+}
+
 function scoreCurrencyStrengthOnPair(instrument: string, currency: string, strength: number): number {
   const normalized = instrument.toUpperCase().replace(/[^A-Z]/g, "");
   if (normalized.length !== 6 || !Number.isFinite(strength) || strength === 0) return 0;
@@ -552,11 +558,12 @@ function scoreFundamentals(input: AnalysisInput): FactorScore {
     // Phase 7C: when ACTUAL DXY price data is available via the cross-asset
     // layer, the proxy is REDUNDANT and contributes nothing (one underlying
     // factor = one evidence; the CROSS_ASSET layer already carries it).
-    const actualDxyAvailable =
-      input.technicalData?.crossAsset?.available === true &&
-      input.technicalData.crossAsset.dataKind === "actual_price" &&
-      /DXY/i.test(input.technicalData.crossAsset.comparatorSymbol);
-    if (!actualDxyAvailable && macro.dxyTrend) {
+    const crossAsset = input.technicalData?.crossAsset;
+    const actualDxyAvailable = hasActualDxyIndex(crossAsset);
+    const dxyPriceSeriesAvailable = actualDxyAvailable ||
+      (crossAsset?.available === true && crossAsset.dataKind === "actual_price" &&
+        /DXY.*FUTURES PROXY/i.test(crossAsset.comparatorSymbol));
+    if (!dxyPriceSeriesAvailable && macro.dxyTrend) {
       const usdStrength = macro.dxyTrend === "rising" ? 1 : -1;
       if (input.instrumentType === "forex") {
         score += scoreCurrencyStrengthOnPair(input.instrument, "USD", usdStrength);
@@ -2667,19 +2674,25 @@ function generateFundamentalSummary(input: AnalysisInput, fundamentalScore: Fact
 
   // Phase 7C — USD/DXY provenance is independent of whether Alpha Vantage
   // macro data exists: actual-price usage must always be disclosed.
-  const actualDxy =
-    input.technicalData?.crossAsset?.available === true &&
-    input.technicalData.crossAsset.dataKind === "actual_price" &&
-    /DXY/i.test(input.technicalData.crossAsset.comparatorSymbol);
+  const crossAsset = input.technicalData?.crossAsset;
+  const actualDxy = hasActualDxyIndex(crossAsset);
+  const dxyFuturesProxy = crossAsset?.available === true &&
+    /DXY.*FUTURES PROXY/i.test(crossAsset.comparatorSymbol);
+  const actualDxyProvider = actualDxy
+    ? input.technicalData?.crossAsset?.provider?.trim() || "verified market-data provider"
+    : "";
+  if (dxyFuturesProxy) {
+    parts.push(`USD strength context: DXY futures proxy (${crossAsset?.providerSymbol ?? "DX=F"}) in use — not the cash DXY index; news-derived USD proxy excluded from scoring to avoid double counting.`);
+  }
   if (macro && macro.confidence !== "unavailable") {
     parts.push(`Macro context (${macro.confidence} confidence): ${macro.summary}`);
     if (actualDxy) {
-      parts.push("USD strength context: ACTUAL DXY price data in use (Twelve Data) \u2014 news-derived proxy redundant and excluded from scoring.");
-    } else if (macro.dxyTrend && (input.instrumentType === "forex" || input.instrumentType === "commodity")) {
+      parts.push(`USD strength context: ACTUAL DXY price data in use (${actualDxyProvider}) — news-derived proxy redundant and excluded from scoring.`);
+    } else if (!dxyFuturesProxy && macro.dxyTrend && (input.instrumentType === "forex" || input.instrumentType === "commodity")) {
       parts.push(`USD strength context: ${macro.dxyTrend} (NEWS-derived proxy, not actual DXY price data).`);
     }
   } else if (actualDxy) {
-    parts.push("USD strength context: ACTUAL DXY price data in use (Twelve Data) \u2014 news-derived proxy redundant and excluded from scoring.");
+    parts.push(`USD strength context: ACTUAL DXY price data in use (${actualDxyProvider}) — news-derived proxy redundant and excluded from scoring.`);
   }
 
   // Honest unavailability notes for asset classes without real providers.

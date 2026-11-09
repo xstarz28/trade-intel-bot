@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useMemo } from "react";
+import { lazy, Suspense, useState, useCallback, useRef, useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { InstrumentInput } from "@/components/InstrumentInput";
@@ -6,13 +6,32 @@ import { RiskSizingControl, type RiskSizingInputs } from "@/components/RiskSizin
 import { AnalysisResultDisplay } from "@/components/AnalysisResult";
 import { AnalysisHistory } from "@/components/AnalysisHistory";
 import { useAuth } from "@/hooks/use-auth";
+import {
+  analyzeBackendMarket,
+  fetchBackendFxRate,
+  fetchBackendCotPositioning,
+  fetchBackendOkxFuturesOpenInterest,
+  fetchBackendOkxInstrumentSpec,
+  fetchBackendOkxOrderBook,
+  fetchBackendCalendar,
+  fetchBackendAlphaVantage,
+  fetchBackendCryptoDerivatives,
+  fetchBackendCryptoFundamentals,
+  fetchBackendEiaInventory,
+  fetchBackendTreasuryYields,
+  listBackendAnalyses,
+  saveBackendAnalysis,
+  type BackendAnalysisRecord,
+  type BackendMarketAnalysisResult,
+} from "@/lib/backend-api";
+const AccountMigrationPanel = lazy(() => import("@/components/AccountMigrationPanel").then((module) => ({ default: module.AccountMigrationPanel })));
+const LegacyConvexMigrationProvider = lazy(() => import("@/lib/convex-provider").then((module) => ({ default: module.LegacyConvexMigrationProvider })));
+import { isAllowedConvexCloudUrl } from "@/lib/convex-url";
 import { runAnalysis, type AnalysisInput } from "@/lib/analysis-engine";
 import { calculateTechnical } from "@/lib/data/technical";
 import type { AnalysisResult } from "@/types/analysis";
 import { buildHistoricalContextSummaries, buildPersistedContextSummaries, resolveHistoricalDecision } from "@/lib/analysis-history";
 import type { MarketDataResult } from "@/lib/data/market-types";
-import { api } from "@/convex/_generated/api";
-import { useMutation, useQuery, useAction } from "convex/react";
 import { fetchOptionalSlowData } from "@/lib/data/optional-providers";
 import { parseSymbolCurrencies } from "@/lib/risk/spec-resolver";
 import { resolveStyle, adaptSetupTimeframe } from "@/lib/trading-style";
@@ -28,6 +47,7 @@ import { getAllInstruments } from "@/lib/data/universal/instruments";
 import { useNavigate } from "react-router";
 import { motion, AnimatePresence } from "framer-motion";
 import { PositionProtectionDashboard } from "@/components/PositionProtectionDashboard";
+import { BackendOpportunityRadar } from "@/components/BackendOpportunityRadar";
 import { InvestorWorkspace } from "@/components/InvestorWorkspace";
 import { useI18n, SUPPORTED_LOCALES, LOCALE_LABELS, type Locale } from "@/lib/i18n";
 import {
@@ -38,7 +58,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { BarChart3, Briefcase } from "lucide-react";
 
-/** Convert a Convex DB record to the AnalysisResult shape used by the UI. */
+/** Convert a self-hosted analysis-history record to the AnalysisResult shape used by the UI. */
 function fromDbRecord(record: any): AnalysisResult {
   const historicalContextSummaries = buildHistoricalContextSummaries(record);
   const historicalDecision = resolveHistoricalDecision(record.recommendation, record.noTradeReasons);
@@ -83,6 +103,29 @@ const ACTION_TIMEOUTS_MS = {
   calendar: 8_000,
   derivatives: 8_000,
 } as const;
+
+function normalizeMarketDataResult(
+  result: MarketDataResult | BackendMarketAnalysisResult,
+): MarketDataResult {
+  let errorCode: MarketDataResult["errorCode"];
+  switch (result.errorCode) {
+    case "UNSUPPORTED":
+      errorCode = "UNSUPPORTED_INSTRUMENT";
+      break;
+    case "INVALID_INPUT":
+      errorCode = "API_UNAVAILABLE";
+      break;
+    default:
+      errorCode = result.errorCode;
+  }
+  return {
+    success: result.success,
+    data: result.data,
+    technical: result.technical,
+    error: result.error,
+    errorCode,
+  };
+}
 
 function withActionTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return Promise.race([
@@ -141,22 +184,25 @@ export default function Dashboard() {
   // Phase 153 — retain the latest verified live market snapshot per instrument.
   // This is runtime-only state and is intentionally NOT reconstructed from history.
   const liveSourceRef = useRef(new Map<string, LiveCandidateSource>());
-  // Convex persistence
-  const saveAnalysis = useMutation(api.analyses.save);
-  const dbHistory = useQuery(api.analyses.list);
-  // Convex actions for server-side data fetching
-  const fetchMarketData = useAction(api.marketData.fetchMarketData);
-  const fetchFxRate = useAction(api.marketData.fetchFxRate);
-  const fetchIntelligence = useAction(api.alphaVantage.fetchIntelligence);
-  const fetchDerivatives = useAction(api.coinglass.fetchDerivatives);
-  const fetchDeFiLlamaFundamentals = useAction(api.coinglass.fetchDeFiLlamaFundamentals);
-  const fetchCalendar = useAction(api.tradingEconomics.fetchCalendar);
-  const fetchTreasuryYields = useAction(api.treasury.fetchTreasuryYields);
-  const fetchCotPositioning = useAction(api.cot.fetchCotPositioning);
-  const fetchEiaInventory = useAction(api.eia.fetchEiaInventory);
-  const fetchOkxOrderBook = useAction(api.okx.fetchOkxOrderBook);
-  const fetchOkxInstrumentSpec = useAction(api.okx.fetchOkxInstrumentSpec);
-  const fetchOkxFuturesOpenInterest = useAction(api.okx.fetchOkxFuturesOpenInterest);
+  // Analysis history is persisted by the self-hosted backend, scoped to its session.
+  const [dbHistory, setDbHistory] = useState<BackendAnalysisRecord[]>([]);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    listBackendAnalyses()
+      .then(({ items }) => {
+        if (!active) return;
+        setDbHistory(items);
+        setHistoryError(null);
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        setHistoryError(error instanceof Error ? error.message : "Unable to load analysis history");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleSignOut = async () => {
     await signOut();
@@ -222,41 +268,44 @@ export default function Dashboard() {
         let defiFundamentalsResult: any = null;
         let calendarResult: any = null;
         try {
+          // All asset classes, including literal OKX perpetual and dated-futures
+          // contracts, are acquired by the self-hosted engine. Derivatives are
+          // never remapped to spot instruments when their exact contract fails.
+          const marketPromise: Promise<MarketDataResult | BackendMarketAnalysisResult> =
+            analyzeBackendMarket({
+              instrument: input.instrument,
+              instrumentType: input.instrumentType,
+              timeframe: input.timeframe,
+              tradingStyle: input.tradingStyle,
+            });
+
           // Build fetch promises
           const fetchPromises: Promise<any>[] = [
             withActionTimeout(
-              fetchMarketData({
-                instrument: input.instrument,
-                instrumentType: input.instrumentType,
-                timeframe: input.timeframe,
-                tradingStyle: input.tradingStyle,
-              }),
+              marketPromise,
               ACTION_TIMEOUTS_MS.market,
               "Primary market data",
             ),
             withActionTimeout(
-              fetchIntelligence({
-                instrument: input.instrument,
-                instrumentType: input.instrumentType,
-              }),
+              fetchBackendAlphaVantage(input.instrument, input.instrumentType),
               ACTION_TIMEOUTS_MS.intelligence,
               "Intelligence",
             ),
             withActionTimeout(
-              fetchCalendar({
-                instrument: input.instrument,
-                instrumentType: input.instrumentType,
-              }),
+              fetchBackendCalendar(input.instrument, input.instrumentType),
               ACTION_TIMEOUTS_MS.calendar,
               "Calendar",
             ),
           ];
           if (input.instrumentType === "crypto") {
             fetchPromises.push(
-              withActionTimeout(
-                /-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())
-                  ? fetchOkxFuturesOpenInterest({ instrument: input.instrument })
-                  : fetchDerivatives({ instrument: input.instrument }),
+              withActionTimeout<unknown>(
+                Promise.resolve().then(async (): Promise<unknown> => {
+                  if (/-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())) {
+                    return fetchBackendOkxFuturesOpenInterest(input.instrument);
+                  }
+                  return fetchBackendCryptoDerivatives(input.instrument);
+                }),
                 ACTION_TIMEOUTS_MS.derivatives,
                 /-[0-9]{6}$/.test(input.instrument.trim().toUpperCase())
                   ? "Exact-contract OKX futures open interest"
@@ -265,7 +314,7 @@ export default function Dashboard() {
             );
             fetchPromises.push(
               withActionTimeout(
-                fetchDeFiLlamaFundamentals({ instrument: input.instrument }),
+                fetchBackendCryptoFundamentals(input.instrument),
                 ACTION_TIMEOUTS_MS.intelligence,
                 "DeFiLlama fundamentals",
               ),
@@ -307,7 +356,21 @@ export default function Dashboard() {
                 calculateTechnical(nativeLive.marketData.candles),
             };
           } else if (marketResult.status === "fulfilled") {
-            marketDataResult = marketResult.value as MarketDataResult;
+            const marketValue = marketResult.value as MarketDataResult | BackendMarketAnalysisResult;
+            marketDataResult = normalizeMarketDataResult(marketValue);
+            if ("analysis" in marketValue && marketValue.analysis) {
+              const backendAnalysis = marketValue.analysis;
+              intelligenceResult = {
+                success: Boolean(
+                  backendAnalysis.fundamentalData ||
+                  backendAnalysis.sentimentData ||
+                  backendAnalysis.macroData,
+                ),
+                fundamentals: backendAnalysis.fundamentalData,
+                sentiment: backendAnalysis.sentimentData,
+                macro: backendAnalysis.macroData,
+              };
+            }
           } else if (nativeLive?.marketData) {
             // Only use a verified snapshot when its actual candle interval matches the request.
             marketDataResult = {
@@ -385,7 +448,7 @@ export default function Dashboard() {
           updateStep(1, "done");
 
           // Intelligence is non-critical
-          if (intelResult.status === "fulfilled") {
+          if (intelResult.status === "fulfilled" && (intelResult.value?.success || !intelligenceResult)) {
             intelligenceResult = intelResult.value;
           }
           // Calendar is non-critical
@@ -417,7 +480,7 @@ export default function Dashboard() {
           updateStep(2, "done");
         }
 
-        // Step 4: Calculating indicators (already done in Convex action)
+        // Step 4: Calculating indicators (already done by the self-hosted backend analysis engine)
         updateStep(3, "active");
         await new Promise((r) => setTimeout(r, 150));
         updateStep(3, "done");
@@ -468,18 +531,18 @@ export default function Dashboard() {
           },
           {
             fx: fxPair
-              ? () => fetchFxRate({ from: fxPair!.from, to: fxPair!.to })
+              ? () => fetchBackendFxRate(fxPair!.from, fxPair!.to)
               : undefined,
-            cot: () => fetchCotPositioning({ instrument: input.instrument }),
+            cot: () => fetchBackendCotPositioning(input.instrument),
             execution: input.instrumentType === "crypto" &&
               (input.instrument.toUpperCase().endsWith("-SWAP") || /-[0-9]{6}$/.test(input.instrument.toUpperCase()))
-              ? () => fetchOkxOrderBook({ instrument: input.instrument })
+              ? () => fetchBackendOkxOrderBook(input.instrument)
               : undefined,
-            eia: () => fetchEiaInventory({}),
-            treasury: () => fetchTreasuryYields({}),
+            eia: () => fetchBackendEiaInventory(),
+            treasury: () => fetchBackendTreasuryYields(),
             okxSpec: input.instrumentType === "crypto" &&
               (input.instrument.toUpperCase().endsWith("-SWAP") || /-[0-9]{6}$/.test(input.instrument.toUpperCase()))
-              ? () => fetchOkxInstrumentSpec({ instrument: input.instrument })
+              ? () => fetchBackendOkxInstrumentSpec(input.instrument)
               : undefined,
           },
         );
@@ -891,9 +954,9 @@ export default function Dashboard() {
 
         setCurrentResult(result);
 
-        // Persist to Convex (fire-and-forget)
+        // Persist the immutable analysis snapshot to the self-hosted account history.
         try {
-          await saveAnalysis({
+          const saved = await saveBackendAnalysis({
             instrument: result.instrument,
             instrumentType: result.instrumentType,
             timeframe: result.timeframe,
@@ -915,8 +978,14 @@ export default function Dashboard() {
             dataSource: result.dataSource,
             ...buildPersistedContextSummaries(result),
           });
-        } catch {
-          // Save failed (guest user) — analysis still shows in session
+          setDbHistory((current) => [
+            saved.item,
+            ...current.filter((item) => item._id !== saved.item._id),
+          ].slice(0, 20));
+          setHistoryError(null);
+        } catch (error) {
+          // Persistence failure must not discard a valid analysis result.
+          setHistoryError(error instanceof Error ? error.message : "Unable to save analysis history");
         }
       } catch (err: any) {
         if (!isStaleRun()) {
@@ -930,7 +999,7 @@ export default function Dashboard() {
         }
       }
     },
-    [fetchMarketData, fetchFxRate, fetchIntelligence, fetchCalendar, fetchDerivatives, fetchDeFiLlamaFundamentals, fetchTreasuryYields, fetchCotPositioning, fetchEiaInventory, fetchOkxOrderBook, fetchOkxInstrumentSpec, saveAnalysis, updateStep, riskSizingInputs, t],
+    [updateStep, riskSizingInputs, t],
   );
 
   const handleSelectHistory = useCallback((analysis: AnalysisResult) => {
@@ -1093,6 +1162,17 @@ export default function Dashboard() {
 
       {/* Main */}
       <main className="mx-auto max-w-7xl px-4 sm:px-6 py-6">
+        <div className="mb-5">
+          {isAllowedConvexCloudUrl(import.meta.env.VITE_LEGACY_CONVEX_URL) ? (
+            <Suspense fallback={null}><LegacyConvexMigrationProvider><AccountMigrationPanel /></LegacyConvexMigrationProvider></Suspense>
+          ) : null}
+        </div>
+        <BackendOpportunityRadar />
+        {historyError && (
+          <p className="mb-4 text-xs text-destructive">
+            Analysis history is temporarily unavailable: {historyError}
+          </p>
+        )}
         {workspaceMode === "investor" && investorTab === "portfolio" ? (
           <InvestorWorkspace />
         ) : workspaceMode === "investor" && investorTab === "intelligence" ? (

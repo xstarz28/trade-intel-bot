@@ -29,7 +29,7 @@ export function isUsableSmc(
 }
 
 /** Structural subset of the core bias breakdown (keeps this module free
- *  of app-alias imports so BOTH the Convex bundler and Vite can use it). */
+ *  of app-alias imports so the backend-shared TypeScript build and Vite can use it). */
 interface CoreBreakdownSubset {
   fundamental: number;
   sentiment: number;
@@ -345,15 +345,13 @@ export function crossAssetComparator(instrumentType: string, instrument: string)
 }
 
 /**
- * Phase 7C — DXY candidate symbols on Twelve Data, tried in order.
+ * Legacy Twelve Data DXY discovery candidates.
  *
- * LIVE-VERIFIED (Phase 7C audit, this account/plan): "DXY", "DX.Y.NYB",
- * "USD_INDEX" and "I:DXY" ALL returned HTTP 404 invalid-symbol while the
- * control EUR/USD series succeeded. Until the account plan exposes an actual
- * dollar-index series, ACTUAL DXY stays explicitly unavailable and the
- * NEWS-derived proxy remains the labeled fallback. This list is re-probed
- * defensively (with a failure cache) so an upgraded plan picks up actual DXY
- * without code changes.
+ * The active backend cross-asset path now resolves the actual DXY index from
+ * the Yahoo Finance public comparator adapter (DX-Y.NYB), with the separately
+ * labeled DX=F futures proxy only as fallback. The historical HTTP 404 results
+ * below apply only to the Twelve Data symbols and must not be interpreted as
+ * evidence that actual DXY is unavailable from every provider.
  */
 export const DXY_CANDIDATE_SYMBOLS = ["DXY", "DX.Y.NYB", "USD_INDEX", "I:DXY"] as const;
 
