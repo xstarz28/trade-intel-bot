@@ -41,17 +41,17 @@ async function readBody(request) {
   } catch { throw Object.assign(new Error("Invalid JSON object"),{status:400}); }
 }
 function str(v,n,optional=false) {
-  if(optional&&v===undefined) return null;
+  if(optional&&(v===undefined||v===null)) return null;
   if(typeof v!=="string"||(!optional&&!v.trim())) throw Object.assign(new Error(`${n} must be a string`),{status:400});
   return v;
 }
 function num(v,n,optional=false) {
-  if(optional&&v===undefined) return null;
+  if(optional&&(v===undefined||v===null)) return null;
   if(typeof v!=="number"||!Number.isFinite(v)) throw Object.assign(new Error(`${n} must be finite`),{status:400});
   return v;
 }
 function bool(v,n,optional=false) {
-  if(optional&&v===undefined) return null;
+  if(optional&&(v===undefined||v===null)) return null;
   if(typeof v!=="boolean") throw Object.assign(new Error(`${n} must be boolean`),{status:400});
   return v;
 }
