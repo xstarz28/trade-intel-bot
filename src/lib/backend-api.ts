@@ -1020,7 +1020,7 @@ export function fetchBackendTreasuryYields(fetchImpl?: typeof fetch) {
 }
 
 export interface BackendOpportunityResponse {
-  status: "available" | "warming_up";
+  status: "available" | "warming_up" | "stale";
   lastScanAt: number;
   cursor: number;
   metrics: Record<string, number>;
