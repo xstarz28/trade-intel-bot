@@ -1126,6 +1126,20 @@ describe("self-hosted backend", () => {
         assert.equal(closedEntry.pnl, 12.5);
         assert.equal(closedEntry.exitPrice, null);
 
+        const combinedFilter = await fetch(
+          `${baseUrl}/api/v1/journal?instrument=ETH-USDT&status=OPEN`,
+          { headers: { Origin: env.APP_ORIGIN, Cookie: cookie } },
+        );
+        assert.equal(combinedFilter.status, 200);
+        assert.deepEqual((await combinedFilter.json()).items, [],
+          "instrument and status filters must both apply when supplied together");
+
+        const matchingFilter = await fetch(
+          `${baseUrl}/api/v1/journal?instrument=ETH-USDT&status=CLOSED`,
+          { headers: { Origin: env.APP_ORIGIN, Cookie: cookie } },
+        );
+        assert.equal((await matchingFilter.json()).items.length, 1);
+
         const otherSignIn = await fetch(`${baseUrl}/api/v1/auth/anonymous`, {
           method: "POST", headers: { Origin: env.APP_ORIGIN },
         });
