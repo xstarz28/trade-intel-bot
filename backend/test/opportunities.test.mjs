@@ -352,6 +352,40 @@ describe("self-hosted opportunity scanner persistence", () => {
     }
   });
 
+  it("marks persisted radar snapshots stale after five minutes and fails closed on future timestamps", async () => {
+    const { database } = fixture();
+    const token = "c".repeat(48);
+    const now = Date.now();
+    const userId = "radar-freshness-user";
+    database.raw.prepare(
+      "INSERT INTO users (id, name, is_anonymous, role, created_at, updated_at) VALUES (?, ?, 1, 'user', ?, ?)",
+    ).run(userId, userId, now, now);
+    database.raw.prepare(
+      "INSERT INTO auth_sessions (id, user_id, token_hash, expires_at, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(randomUUID(), userId, createHash("sha256").update(token).digest("hex"), now + 60_000, now, now);
+    const handler = createOpportunityHandler({ database, env: { NODE_ENV: "development" } });
+    const invoke = async () => {
+      const response = responseCapture();
+      await handler(
+        { method: "GET", headers: { cookie: `xstarz_session=${token}` } },
+        response,
+        new URL("http://localhost/api/v1/opportunities"),
+      );
+      return JSON.parse(response.body);
+    };
+    try {
+      assert.equal((await invoke()).status, "warming_up");
+      database.raw.prepare("UPDATE market_radar_state SET last_scan_at=? WHERE id=1").run(now - 4 * 60_000);
+      assert.equal((await invoke()).status, "available");
+      database.raw.prepare("UPDATE market_radar_state SET last_scan_at=? WHERE id=1").run(now - 6 * 60_000);
+      assert.equal((await invoke()).status, "stale");
+      database.raw.prepare("UPDATE market_radar_state SET last_scan_at=? WHERE id=1").run(Date.now() + 60_000);
+      assert.equal((await invoke()).status, "stale");
+    } finally {
+      database.close();
+    }
+  });
+
   it("requires an authenticated backend session before exposing opportunities", async () => {
     const { database } = fixture();
     const handler = createOpportunityHandler({ database });
