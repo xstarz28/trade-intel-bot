@@ -54,7 +54,10 @@ async function cached<T>(key: string, ttlMs: number, load: () => Promise<T>): Pr
   const existing = enrichmentCache.get(key);
   if (existing && existing.expiresAt > Date.now()) return existing.value as T;
   const value = await load();
-  if ((value as { success?: boolean } | null)?.success !== false) {
+  // Missing provider data is not a successful cache entry: a transient empty
+  // response must be retried on the next scan instead of hiding recovered data
+  // for the full enrichment TTL (up to six hours for fundamentals).
+  if (value !== null && value !== undefined && (value as { success?: boolean }).success !== false) {
     enrichmentCache.set(key, { value, expiresAt: Date.now() + ttlMs });
   }
   if (enrichmentCache.size > 2_000) {
