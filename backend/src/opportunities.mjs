@@ -4,6 +4,7 @@ import { createUserRateLimiter } from "./market-data.mjs";
 
 const SCAN_LEASE_DURATION_MS = 120_000;
 const SCAN_LEASE_HEARTBEAT_MS = 30_000;
+const RADAR_STALE_AFTER_MS = 5 * 60_000;
 
 function json(response, status, value) {
   const body = JSON.stringify(value);
@@ -223,7 +224,11 @@ export function createOpportunityHandler({ database, env = process.env, service 
       ),
       errors: safeJson(state.errors_json, []),
       items,
-      status: state.last_scan_at > 0 ? "available" : "warming_up",
+      status: state.last_scan_at <= 0
+        ? "warming_up"
+        : Number.isFinite(state.last_scan_at) && Date.now() - state.last_scan_at >= 0 && Date.now() - state.last_scan_at <= RADAR_STALE_AFTER_MS
+          ? "available"
+          : "stale",
     });
     return true;
   };
